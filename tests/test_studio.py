@@ -112,12 +112,53 @@ async def desktop():
         await b.close()
 
 
+def touch(*points):
+    return [{"x": x, "y": y, "id": i + 1, "radiusX": 4, "radiusY": 4, "force": 1} for i, (x, y) in enumerate(points)]
+
+
 async def phone():
     print("phone, touch")
     b = await Browser(390, 844, mobile=True).start()
     try:
         await b.goto(serve() + "/studio.html")
         await corner_tests(b, b.touch_drag, "touch")
+
+        # browser bars sliding in/out resize the page mid-drag: nothing may jump
+        s = await b.js(STATE)
+        tr = s["handles"][2]
+        target = [tr[0], tr[1] - 50]
+        await b.send("Input.dispatchTouchEvent", type="touchStart", touchPoints=touch(tr))
+        for i in range(1, 13):
+            if i == 4:
+                await b.send("Emulation.setDeviceMetricsOverride", width=390, height=760, deviceScaleFactor=2, mobile=True)
+                await asyncio.sleep(0.4)   # let layout and the canvas resize happen
+            if i == 9:
+                await b.send("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+                await asyncio.sleep(0.4)
+            await asyncio.sleep(0.05)
+            await b.send("Input.dispatchTouchEvent", type="touchMove", touchPoints=touch([tr[0], tr[1] - 50 * i / 12]))
+            if i == 6:   # while the page is shorter: the corner must still be under the finger
+                await asyncio.sleep(0.3)
+                mid = await b.js(STATE)
+                check(near(mid["handles"][0], s["handles"][0], 0.5), f"page resize mid-drag: opposite corner doesn't jump while resized ({mid['handles'][0][1]:.1f} vs {s['handles'][0][1]:.1f})")
+                check(abs(mid["handles"][2][1] - (tr[1] - 25)) < 1.5, f"page resize mid-drag: corner stays under the finger while resized ({mid['handles'][2][1]:.1f} vs {tr[1] - 25:.1f})")
+        await b.send("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        await asyncio.sleep(0.3)
+        s2 = await b.js(STATE)
+        check(near(s2["handles"][0], s["handles"][0], 0.5), "page resize mid-drag: opposite corner stays put on screen")
+        check(abs(s2["handles"][2][1] - target[1]) < 1.5, f"page resize mid-drag: corner ends under the finger ({s2['handles'][2][1]:.1f} vs {target[1]:.1f})")
+
+        # a second finger landing during a resize keeps the resize instead of undoing it
+        s = await b.js(STATE)
+        tr = s["handles"][2]
+        await b.send("Input.dispatchTouchEvent", type="touchStart", touchPoints=touch(tr))
+        for i in range(1, 7):
+            await b.send("Input.dispatchTouchEvent", type="touchMove", touchPoints=touch([tr[0] - 6 * i, tr[1]]))
+        await b.send("Input.dispatchTouchEvent", type="touchStart", touchPoints=touch([tr[0] - 36, tr[1]], [60, 600]))
+        await b.send("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        await asyncio.sleep(0.3)
+        s2 = await b.js(STATE)
+        check(s2["w"] < s["w"] - 1, f"second finger: resize kept ({s['w']:.1f} → {s2['w']:.1f} mm)")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()

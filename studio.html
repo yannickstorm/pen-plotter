@@ -229,7 +229,7 @@
     body { min-height: 100%; overflow: visible; grid-template-rows: auto auto; }
     .app { grid-template-columns: 1fr; min-height: auto; }
     .left > .sect { flex: none; }
-    .stage { height: 70vh; min-height: 380px; order: -1; }
+    .stage { height: 70vh; height: 70svh; min-height: 380px; order: -1; }
     .left, .right { border: 0; border-top: 1px solid var(--line); overflow: visible; }
     .panes { overflow: visible; padding: 12px 16px; }
     .sect { padding: 14px 16px; }
@@ -1536,7 +1536,9 @@ function fitView() {
 function resize() {
   const r = wrap.getBoundingClientRect(), dpr = devicePixelRatio || 1, first = !V.W;
   V.W = r.width; V.H = r.height; cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
-  if (first || V.auto) fitView(); else draw();
+  // Phones resize the page as browser bars slide in and out; refitting then would move everything
+  // under the user's finger. Auto-fit only until the canvas is first touched, and never mid-drag.
+  if (first || (V.auto && !drag && !pinch)) fitView(); else draw();
 }
 new ResizeObserver(resize).observe(wrap);
 
@@ -1713,10 +1715,11 @@ const touches = new Map();   // pointerId → [px, py] for two-finger pinch zoom
 let pinch = null;
 cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
+  V.auto = false;
   if (e.pointerType === 'touch') {
     touches.set(e.pointerId, [px, py]);
-    if (touches.size === 2) {   // second finger: cancel the one-finger action and start pinching
-      if (drag && drag.it && drag.mode !== 'pan') Object.assign(drag.it, {cx: drag.cx, cy: drag.cy, w: drag.w, rot: drag.rot, aspect: drag.aspect});
+    if (touches.size === 2) {   // second finger: finish the one-finger action as it is and start pinching
+      if (drag && drag.moved && drag.mode !== 'pan') endDrag();
       const [a, b] = [...touches.values()];
       pinch = {d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], k: V.k, ox: V.ox, oy: V.oy};
       drag = null; draw(); return;
@@ -1797,6 +1800,7 @@ function scaleDrag(it, wx, wy, fromCentre, snap) {
 }
 function endDrag(e) {
   if (e && touches.delete(e.pointerId) && pinch) { if (touches.size < 2) pinch = null; drag = null; return; }
+  if (e && e.type === 'pointercancel' && drag && !drag.moved) { drag = null; return; }
   if (drag && drag.moved && drag.mode !== 'pan') {
     if (drag.mode === 'scale') { renderObjects(); schedule(0); } else { computePlan(); renderStatus(); renderPens(); draw(); }
   }
