@@ -1,0 +1,21 @@
+# custom GRBL firmware build (kept locally)
+grbl/
+
+# generated output
+*.gcode
+*.nc
+*.hpgl
+underwater.svg
+great-wave-multicolor.svg
+*.plotstudio.json
+
+# source images
+*.webp
+*.png
+*.jpg
+*.jpeg
+
+# editor / python
+.vscode/
+__pycache__/
+*.pyc

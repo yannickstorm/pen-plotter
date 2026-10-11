@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pen Plotter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #15181d; --panel-2: #1b1f26; --raise: #232832;
+    --line: #2a303a; --line-2: #363d49;
+    --fg: #eceff4; --muted: #8a93a3; --faint: #5b6372;
+    --accent: #8b7bff; --accent-2: #b4a9ff; --accent-ink: #0d0b1f;
+    --ok: #3ddc97; --warn: #ffb547; --danger: #ff5c6c;
+    --paper: #f5f2ea; --paper-grid: rgba(40, 50, 80, .07); --paper-grid-2: rgba(40, 50, 80, .16);
+    --ink: #1f2a6b; --ink-done: #11a36b; --travel: rgba(31, 42, 107, .28); --head: #ff4d6d;
+    --mat: #101317;
+    --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 10px 30px rgba(0,0,0,.35);
+    --radius: 14px;
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eceef2; --panel: #ffffff; --panel-2: #f5f6f9; --raise: #eef0f4;
+      --line: #e1e4ea; --line-2: #d0d5de;
+      --fg: #161a22; --muted: #5f6878; --faint: #9aa2b1;
+      --accent: #5b47f5; --accent-2: #4636d6; --accent-ink: #ffffff;
+      --mat: #dfe2e8;
+      --shadow: 0 1px 2px rgba(20,25,40,.06), 0 8px 24px rgba(20,25,40,.06);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased;
+    display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .mono { font-family: var(--mono); font-feature-settings: "zero"; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    display: flex; align-items: center; gap: 18px; padding: 12px 20px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), #ff7ab6); color: #fff;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .brand h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  .brand small { display: block; color: var(--muted); font-size: 11.5px; margin-top: -1px; }
+
+  .readout { display: flex; gap: 6px; }
+  .axis {
+    display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; min-width: 112px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .axis b { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .axis span { font: 500 16px var(--mono); margin-left: auto; letter-spacing: -.02em; }
+  .axis em { font-style: normal; font-size: 11px; color: var(--faint); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .chip.idle i  { background: var(--ok);  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
+  .chip.run i   { background: var(--accent); animation: pulse 1s infinite; }
+  .chip.hold i, .chip.busy i { background: var(--warn); }
+  .chip.alarm i { background: var(--danger); animation: pulse .6s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px transparent; opacity: .55; } }
+
+  /* ---------- buttons & inputs ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    height: 34px; padding: 0 14px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--line-2); background: var(--raise); font-weight: 500; font-size: 13px;
+    transition: background .15s, border-color .15s, transform .05s, box-shadow .15s;
+  }
+  .btn:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line-2)); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+  .btn.primary:hover { background: var(--accent-2); }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+  .btn.block { width: 100%; }
+  .btn svg { width: 15px; height: 15px; flex: none; }
+  .stop {
+    height: 38px; padding: 0 18px; border-radius: 10px; border: 0; cursor: pointer;
+    background: var(--danger); color: #fff; font-weight: 700; letter-spacing: .06em; font-size: 12.5px;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--danger) 40%, transparent);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .stop:hover { filter: brightness(1.08); }
+  .stop:active { transform: translateY(1px); }
+
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field > span { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+  .input, .field input, .field select, textarea {
+    height: 34px; width: 100%; padding: 0 10px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--panel-2); outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field input:focus, .field select:focus, textarea:focus, .input:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .suffix { position: relative; }
+  .suffix input { padding-right: 34px; }
+  .suffix::after { content: attr(data-unit); position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--faint); font-size: 11.5px; pointer-events: none; }
+  input[type=number] { font-family: var(--mono); font-size: 13px; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+  /* ---------- layout ---------- */
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0; }
+  .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px; gap: 14px; }
+  .bed {
+    position: relative; flex: 1; min-height: 0; border-radius: var(--radius);
+    background:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--fg) 7%, transparent) 1px, transparent 0) 0 0 / 18px 18px,
+      var(--mat);
+    border: 1px solid var(--line); overflow: hidden;
+  }
+  .bed canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  .bed.drop { outline: 2px dashed var(--accent); outline-offset: -8px; }
+  .bed-hud {
+    position: absolute; left: 14px; top: 12px; display: flex; gap: 8px; pointer-events: none;
+  }
+  .hud {
+    padding: 5px 10px; border-radius: 8px; font: 12px var(--mono); color: var(--muted);
+    background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+  }
+  .hud b { color: var(--fg); font-weight: 500; }
+  .bed-legend { position: absolute; right: 16px; top: 18px; display: flex; gap: 12px; font-size: 11.5px; color: var(--muted); pointer-events: none; }
+  .bed-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .bed-legend i { width: 14px; height: 0; border-top: 2px solid var(--ink); }
+  .bed-legend i.t { border-top: 1.5px dashed var(--muted); }
+  .bed-legend i.d { border-color: var(--ink-done); }
+  .bed-legend i.h { width: 9px; height: 9px; border: 2px solid var(--head); border-radius: 50%; }
+  .bed-empty {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); pointer-events: none; white-space: nowrap;
+    font-size: 12px; color: var(--muted); padding: 5px 12px; border-radius: 999px;
+    background: color-mix(in srgb, var(--panel) 82%, transparent); border: 1px solid var(--line); backdrop-filter: blur(8px);
+  }
+
+  /* job bar */
+  .jobbar {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center;
+    padding: 14px 16px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .job-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; min-width: 0; }
+  .job-title strong { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job-title span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job-title span.bad { color: var(--danger); }
+  .bar { height: 6px; border-radius: 999px; background: var(--raise); overflow: hidden; }
+  .bar > div { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #ff7ab6); transition: width .3s; }
+  .job-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+  .job-actions { display: flex; gap: 8px; }
+  .run { height: 42px; padding: 0 22px; font-size: 14px; border-radius: 11px; }
+
+  /* ---------- sidebar ---------- */
+  .side { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 12px 14px 0; }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 0 10px;
+    border: 0; background: none; color: var(--muted); font-size: 11.5px; font-weight: 500; cursor: pointer;
+    border-radius: 10px; transition: background .15s, color .15s;
+  }
+  .tab svg { width: 18px; height: 18px; }
+  .tab:hover { background: var(--panel-2); color: var(--fg); }
+  .tab.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .panes { flex: 1; overflow: auto; padding: 14px; }
+  .pane { display: none; flex-direction: column; gap: 14px; }
+  .pane.on { display: flex; }
+
+  .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .card h3 small { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--faint); font-size: 11.5px; }
+  .card p.note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > .grow { flex: 1; }
+
+  /* jog */
+  .jog { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
+  .dpad { position: relative; width: 148px; height: 148px; border-radius: 50%; background: var(--raise); border: 1px solid var(--line-2); }
+  .dpad button {
+    position: absolute; width: 46px; height: 46px; border-radius: 12px; border: 0; cursor: pointer;
+    background: var(--panel); color: var(--fg); display: grid; place-items: center;
+    box-shadow: 0 1px 0 var(--line-2), 0 2px 6px rgba(0,0,0,.18); transition: background .12s, color .12s;
+  }
+  .dpad button:hover { background: var(--accent); color: var(--accent-ink); }
+  .dpad button:active { transform: scale(.96); }
+  .dpad svg { width: 18px; height: 18px; }
+  .dpad .u { top: 8px; left: 50%; margin-left: -23px; }
+  .dpad .d { bottom: 8px; left: 50%; margin-left: -23px; }
+  .dpad .l { left: 8px; top: 50%; margin-top: -23px; }
+  .dpad .r { right: 8px; top: 50%; margin-top: -23px; }
+  .dpad .c { left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: var(--line-2); box-shadow: none; pointer-events: none; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; gap: 3px; border-radius: 10px; background: var(--raise); border: 1px solid var(--line); }
+  .seg button { height: 28px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; font: 500 12px var(--mono); }
+  .seg button.on { background: var(--panel); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+
+  /* pen */
+  .pen-viz { display: flex; align-items: center; gap: 14px; }
+  .pen-state { flex: 1; }
+  .pen-state b { display: block; font-size: 20px; font-weight: 650; letter-spacing: -.02em; }
+  .pen-state span { font-size: 12px; color: var(--muted); }
+  .pen-icon { width: 46px; height: 46px; border-radius: 12px; background: var(--raise); display: grid; place-items: center; border: 1px solid var(--line-2); }
+  .pen-icon svg { width: 22px; height: 22px; transition: transform .25s; }
+  .pen-icon.down svg { transform: translateY(5px); color: var(--accent); }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px; background: var(--raise); outline: none; margin: 16px 0 6px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 3px solid var(--panel); box-shadow: 0 0 0 1px var(--accent); cursor: pointer; }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 3px solid var(--panel); cursor: pointer; }
+  .range-ends { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--faint); }
+
+  /* design */
+  .drop-zone {
+    display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; cursor: pointer;
+    border: 1.5px dashed var(--line-2); background: var(--panel-2); transition: border-color .15s, background .15s;
+  }
+  .drop-zone:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel-2)); }
+  .drop-zone .ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); flex: none; }
+  .drop-zone b { display: block; font-size: 13px; font-weight: 600; }
+  .drop-zone span { font-size: 12px; color: var(--muted); }
+  #file { display: none; }
+  textarea { height: 180px; padding: 10px; resize: vertical; font: 12px/1.5 var(--mono); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { padding: 10px 12px; border-radius: 10px; background: var(--raise); }
+  .stat span { display: block; font-size: 11px; color: var(--muted); }
+  .stat b { font: 500 13.5px var(--mono); }
+
+  /* shapes */
+  .shape-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .shape-pick button {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0 9px;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--raise); color: var(--muted); cursor: pointer; font-size: 11.5px; font-weight: 500;
+  }
+  .shape-pick button svg { width: 24px; height: 24px; }
+  .shape-pick button.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--raise)); }
+  #shapeFields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); grid-column: 1 / -1; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  /* console */
+  #log {
+    margin: 0; height: 340px; overflow: auto; padding: 12px; border-radius: 10px;
+    background: var(--mat); border: 1px solid var(--line); font: 12px/1.6 var(--mono); color: var(--muted); white-space: pre-wrap;
+  }
+  #log .tx { color: var(--accent); }
+  #log .err { color: var(--danger); }
+  #log .ok { color: var(--faint); }
+
+  /* toast */
+  #err {
+    position: fixed; left: 50%; top: 72px; transform: translate(-50%, -8px); opacity: 0; pointer-events: none;
+    max-width: min(560px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 10;
+    background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 12px 40px rgba(0,0,0,.35); transition: opacity .2s, transform .2s;
+  }
+  #err.show { opacity: 1; transform: translate(-50%, 0); }
+  #err.bad { border-color: color-mix(in srgb, var(--danger) 60%, var(--line-2)); color: var(--danger); }
+
+  @media (max-width: 980px) {
+    body { overflow: auto; grid-template-rows: auto auto; }
+    .app { grid-template-columns: 1fr; }
+    .stage { padding: 12px; }
+    .bed { flex: none; height: 62vw; min-height: 260px; }
+    .side { border-left: 0; border-top: 1px solid var(--line); }
+    .topbar { display: grid; grid-template-columns: 1fr auto auto; grid-template-areas: "brand conn stop" "chip read read"; padding: 10px 16px; gap: 10px; }
+    .brand { grid-area: brand; } #btnConn { grid-area: conn; } #btnStop { grid-area: stop; }
+    .chip { grid-area: chip; justify-self: start; } .readout { grid-area: read; }
+    .axis { flex: 1; min-width: 0; }
+    .bed-legend { display: none; }
+  }
+  @media (max-width: 520px) {
+    .jobbar { grid-template-columns: 1fr; }
+    .run { width: 100%; }
+    .brand small { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+    </div>
+    <div><h1>Pen Plotter</h1><small id="portName">GRBL · /dev/ttyUSB0</small></div>
+  </div>
+  <a href="/studio" class="btn ghost" title="Convert images and vectors to G-code">Studio</a>
+  <div class="readout">
+    <div class="axis"><b>X</b><span id="posX">—</span><em>mm</em></div>
+    <div class="axis"><b>Y</b><span id="posY">—</span><em>mm</em></div>
+  </div>
+  <div class="chip" id="chip"><i></i><span id="state">Disconnected</span></div>
+  <button id="btnConn" class="btn primary">Connect</button>
+  <button id="btnStop" class="stop" title="Feed hold + reset">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>STOP
+  </button>
+</header>
+
+<div class="app">
+  <!-- ================= stage ================= -->
+  <section class="stage">
+    <div class="bed" id="bed">
+      <canvas id="cv"></canvas>
+      <div class="bed-empty" id="bedHint">Click the bed to move · drop a G-code file to place it</div>
+      <div class="bed-hud"><div class="hud">bed <b id="bedSize">310 × 210</b> mm</div><div class="hud">cursor <b id="hover">—</b></div></div>
+      <div class="bed-legend">
+        <span><i></i>pen</span><span><i class="t"></i>travel</span><span><i class="d"></i>plotted</span><span><i class="h"></i>head</span>
+      </div>
+    </div>
+
+    <div class="jobbar">
+      <div style="min-width:0">
+        <div class="job-title"><strong id="jobName">No design loaded</strong><span id="dinfo"></span></div>
+        <div class="bar"><div id="progFill"></div></div>
+        <div class="job-meta"><span id="jobtxt">Idle</span><span id="jobpct"></span></div>
+      </div>
+      <div class="job-actions">
+        <button id="btnResume" class="btn run" hidden title="Cycle start: continue after a pause (M0 pen change) or feed hold">Resume</button>
+        <button id="btnRun" class="btn primary run" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>Plot
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= sidebar ================= -->
+  <aside class="side">
+    <nav class="tabs">
+      <button class="tab on" data-tab="machine">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Machine
+      </button>
+      <button class="tab" data-tab="design">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>Design
+      </button>
+      <button class="tab" data-tab="shapes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5"/><rect x="11" y="11" width="10" height="10" rx="1.5"/></svg>Shapes
+      </button>
+      <button class="tab" data-tab="console">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5M12 19h8"/></svg>Console
+      </button>
+    </nav>
+
+    <div class="panes">
+      <!-- machine -->
+      <div class="pane on" data-pane="machine">
+        <div class="card">
+          <h3>Jog <small>clamped to work area</small></h3>
+          <div class="jog">
+            <div class="dpad">
+              <button class="u" data-j="0,1" title="+Y"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></button>
+              <button class="l" data-j="-1,0" title="−X"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+              <button class="r" data-j="1,0" title="+X"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+              <button class="d" data-j="0,-1" title="−Y"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+              <span class="c"></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+              <div class="field"><span>Step (mm)</span>
+                <div class="seg" id="stepSeg">
+                  <button data-s="0.5">.5</button><button data-s="1">1</button><button data-s="5" class="on">5</button><button data-s="10">10</button><button data-s="50">50</button>
+                </div>
+              </div>
+              <label class="field"><span>Speed</span><div class="suffix" data-unit="mm/min"><input id="feed" type="number" value="3000" min="100" max="8000" step="100"></div></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Go to</h3>
+          <div class="grid2">
+            <label class="field"><span>X</span><div class="suffix" data-unit="mm"><input id="gx" type="number" value="0" step="any"></div></label>
+            <label class="field"><span>Y</span><div class="suffix" data-unit="mm"><input id="gy" type="number" value="0" step="any"></div></label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button id="btnGo" class="btn primary grow">Move</button>
+            <button id="btnHome" class="btn">To 0,0</button>
+            <button id="btnZero" class="btn" title="Make the current position 0,0">Set origin</button>
+          </div>
+          <p class="note">The pen stays where it is — lift it before moving.</p>
+        </div>
+
+        <div class="card">
+          <h3>Pen <small>servo S value</small></h3>
+          <div class="pen-viz">
+            <div class="pen-icon" id="penIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v13M8 11l4 6 4-6"/><path d="M5 21h14"/></svg></div>
+            <div class="pen-state"><b id="penLabel">Unknown</b><span>S = <span id="penVal" class="mono">—</span></span></div>
+            <div class="seg" style="width:130px"><button id="penUp">Up</button><button id="penDown">Down</button></div>
+          </div>
+          <input type="range" id="pen" min="0" max="40" value="0">
+          <div class="range-ends"><span>0 · up</span><span>40</span></div>
+          <div class="grid2" style="margin-top:12px">
+            <label class="field"><span>Up value</span><input id="upS" type="number" value="0" min="0" max="255"></label>
+            <label class="field"><span>Down value</span><input id="downS" type="number" value="35" min="0" max="255"></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- design -->
+      <div class="pane" data-pane="design">
+        <label class="drop-zone" for="file">
+          <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></div>
+          <div><b>Open G-code</b><span>or drop a file onto the bed</span></div>
+        </label>
+        <input type="file" id="file" accept=".gcode,.nc,.txt,.gc,.ngc">
+
+        <div class="card">
+          <h3>Placement <small>drag on the bed</small></h3>
+          <div class="grid2">
+            <label class="field"><span>Offset X</span><div class="suffix" data-unit="mm"><input id="offx" type="number" value="0" step="1"></div></label>
+            <label class="field"><span>Offset Y</span><div class="suffix" data-unit="mm"><input id="offy" type="number" value="0" step="1"></div></label>
+          </div>
+          <div class="grid2" style="margin-top:10px">
+            <button id="btnOrigin" class="btn sm">Corner to 0,0</button>
+            <button id="btnCenter" class="btn sm">Center on bed</button>
+          </div>
+          <div class="stats" style="margin-top:12px">
+            <div class="stat"><span>Size</span><b id="statSize">—</b></div>
+            <div class="stat"><span>Lines</span><b id="statLines">—</b></div>
+          </div>
+          <p class="note">The offset is applied when you plot; the source below is not changed.</p>
+        </div>
+
+        <div class="card">
+          <h3>Source</h3>
+          <textarea id="gcode" spellcheck="false" placeholder="Paste G-code here…"></textarea>
+        </div>
+      </div>
+
+      <!-- shapes -->
+      <div class="pane" data-pane="shapes">
+        <div class="card">
+          <h3>Draw a shape</h3>
+          <div class="shape-pick" id="shapePick">
+            <button data-k="line" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20L20 4"/></svg>Line</button>
+            <button data-k="rect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>Rect</button>
+            <button data-k="circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>Circle</button>
+            <button data-k="arc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16a8 8 0 0 1 16 0"/></svg>Arc</button>
+          </div>
+          <input type="hidden" id="kind" value="line">
+          <div id="shapeFields"></div>
+          <button id="btnShape" class="btn primary block" style="margin-top:14px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>Draw now
+          </button>
+          <p class="note">Coordinates are absolute (mm). Angles in degrees, 0° = +X. Shapes that leave the work area are refused.</p>
+        </div>
+      </div>
+
+      <!-- console -->
+      <div class="pane" data-pane="console">
+        <div class="card">
+          <h3>Console <button class="btn sm ghost" id="btnClear">Clear</button></h3>
+          <pre id="log"></pre>
+          <div class="row" style="margin-top:10px">
+            <input id="cmd" class="input mono grow" placeholder="G-code, e.g. G1 X10 Y10 F2000" autocomplete="off">
+            <button id="btnSend" class="btn primary">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div id="err"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let st = {work: [310, 210], pos: [0, 0, 0], connected: false, job: {}};
+let since = 0, jobName = null;
+
+// ---------- api + toast ----------
+let toastTimer;
+function toast(msg, bad = true) {
+  const el = $('err');
+  el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = '', bad ? 5000 : 2200);
+}
+async function api(path, body) {
+  try {
+    const r = await fetch('/api/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+    const j = await r.json();
+    if (j.error) toast(j.error);
+    return j;
+  } catch (e) { toast(String(e)); return {error: String(e)}; }
+}
+const feed = () => +$('feed').value || 3000;
+
+// ---------- tabs ----------
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === t.dataset.tab));
+});
+
+// ---------- status polling ----------
+function esc(s) { return s.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c])); }
+async function poll() {
+  try {
+    const r = await fetch('/api/status?since=' + since);
+    st = await r.json();
+    since = st.seq;
+    const s = st.connected ? st.state : 'Disconnected';
+    $('state').textContent = s;
+    $('chip').className = 'chip ' + ({Idle: 'idle', Run: 'run', Hold: 'hold', Alarm: 'alarm', Connecting: 'busy'}[s] || '');
+    $('posX').textContent = st.connected ? st.pos[0].toFixed(2) : '—';
+    $('posY').textContent = st.connected ? st.pos[1].toFixed(2) : '—';
+    $('portName').textContent = 'GRBL · ' + st.port;
+    $('bedSize').textContent = `${st.work[0]} × ${st.work[1]}`;
+    $('btnConn').textContent = st.connected ? 'Disconnect' : 'Connect';
+    $('btnConn').classList.toggle('primary', !st.connected);
+    const up = +$('upS').value, down = +$('downS').value;
+    $('penVal').textContent = st.pen ?? '—';
+    if (st.pen != null && document.activeElement !== $('pen')) $('pen').value = st.pen;
+    $('penLabel').textContent = st.pen == null ? 'Unknown' : st.pen === up ? 'Up' : st.pen === down ? 'Down' : 'Custom';
+    $('penIcon').classList.toggle('down', st.pen != null && st.pen !== up);
+    $('penUp').classList.toggle('on', st.pen === up);
+    $('penDown').classList.toggle('on', st.pen === down);
+    const j = st.job, pct = j.total ? j.sent / j.total * 100 : 0;
+    $('progFill').style.width = pct + '%';
+    $('jobpct').textContent = j.total ? Math.round(pct) + '%' : '';
+    $('jobtxt').textContent = j.running ? `Plotting · line ${j.sent} of ${j.total}`
+      : j.error ? `Stopped · ${j.error}` : j.total && j.sent === j.total ? `Done · ${j.total} lines` : 'Idle';
+    $('btnResume').hidden = !(st.connected && /^Hold/.test(st.state));
+    updateInfo();
+    if (st.log.length) {
+      const el = $('log'), stick = el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+      el.insertAdjacentHTML('beforeend', st.log.map(([, t]) =>
+        `<div class="${t.startsWith('>') ? 'tx' : /error|ALARM/i.test(t) ? 'err' : t === '< ok' ? 'ok' : ''}">${esc(t)}</div>`).join(''));
+      while (el.childNodes.length > 500) el.firstChild.remove();
+      if (stick) el.scrollTop = el.scrollHeight;
+    }
+  } catch (e) {
+    $('state').textContent = 'Server offline'; $('chip').className = 'chip alarm';
+  }
+  draw();
+  setTimeout(poll, 300);
+}
+
+// ---------- bed canvas ----------
+const cv = $('cv'), ctx = cv.getContext('2d'), bed = $('bed');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let view = {W: 0, H: 0, x: 0, y: 0, w: 1, h: 1};   // paper rect in CSS px
+let hover = null;
+
+function layout() {
+  const r = bed.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const small = r.width < 640;
+  const pad = small ? {l: 34, r: 12, t: 50, b: 30} : {l: 46, r: 24, t: 62, b: 44};
+  const aw = r.width - pad.l - pad.r, ah = r.height - pad.t - pad.b;
+  const k = Math.min(aw / st.work[0], ah / st.work[1]);
+  const w = st.work[0] * k, h = st.work[1] * k;
+  view = {W: r.width, H: r.height, w, h, x: pad.l + (aw - w) / 2, y: pad.t + (ah - h) / 2};
+  draw();
+}
+new ResizeObserver(layout).observe(bed);
+
+const toPx = (x, y) => [view.x + x / st.work[0] * view.w, view.y + view.h - y / st.work[1] * view.h];
+const evWork = e => {
+  const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left - view.x) / view.w * st.work[0], (view.y + view.h - (e.clientY - r.top)) / view.h * st.work[1]];
+};
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, mm = view.w / st.work[0];
+  c.clearRect(0, 0, view.W, view.H);
+
+  // paper with soft shadow
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 24; c.shadowOffsetY = 8;
+  c.fillStyle = css('--paper'); c.beginPath(); c.roundRect(view.x, view.y, view.w, view.h, 4); c.fill();
+  c.restore();
+
+  // grid: 10 mm minor, 50 mm major
+  c.save(); c.beginPath(); c.rect(view.x, view.y, view.w, view.h); c.clip();
+  for (const [step, col] of [[10, css('--paper-grid')], [50, css('--paper-grid-2')]]) {
+    c.strokeStyle = col; c.lineWidth = 1; c.beginPath();
+    for (let x = step; x < st.work[0]; x += step) { const [px] = toPx(x, 0); c.moveTo(Math.round(px) + .5, view.y); c.lineTo(Math.round(px) + .5, view.y + view.h); }
+    for (let y = step; y < st.work[1]; y += step) { const [, py] = toPx(0, y); c.moveTo(view.x, Math.round(py) + .5); c.lineTo(view.x + view.w, Math.round(py) + .5); }
+    c.stroke();
+  }
+  c.restore();
+
+  // rulers
+  c.fillStyle = css('--faint'); c.strokeStyle = css('--line-2'); c.font = '10.5px ' + css('--mono'); c.lineWidth = 1;
+  c.textAlign = 'center'; c.textBaseline = 'top'; c.beginPath();
+  for (let x = 0; x <= st.work[0]; x += 10) {
+    const [px] = toPx(x, 0), big = x % 50 === 0, yb = view.y + view.h;
+    c.moveTo(px, yb + 4); c.lineTo(px, yb + (big ? 11 : 7));
+    if (big) c.fillText(x, px, yb + 14);
+  }
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  for (let y = 0; y <= st.work[1]; y += 10) {
+    const [, py] = toPx(0, y), big = y % 50 === 0;
+    c.moveTo(view.x - 4, py); c.lineTo(view.x - (big ? 11 : 7), py);
+    if (big) c.fillText(y, view.x - 14, py);
+  }
+  c.stroke();
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+
+  // origin marker
+  const [ox0, oy0] = toPx(0, 0);
+  c.fillStyle = css('--accent'); c.beginPath(); c.arc(ox0, oy0, 3.5, 0, 7); c.fill();
+
+  // design
+  const [ox, oy] = off(), done = st.job && st.job.total ? st.job.sent : 0;
+  const ink = css('--ink'), inkDone = css('--ink-done'), travel = css('--travel');
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  c.setLineDash([3, 4]); c.strokeStyle = travel; c.lineWidth = 1; c.beginPath();
+  for (const s of segs) if (!s.down) { const [a, b] = toPx(s.x0 + ox, s.y0 + oy), [d, e] = toPx(s.x1 + ox, s.y1 + oy); c.moveTo(a, b); c.lineTo(d, e); }
+  c.stroke(); c.setLineDash([]);
+  c.lineWidth = Math.max(1.3, Math.min(2.6, .5 * mm));
+  for (const [col, want] of [[ink, false], [inkDone, true]]) {
+    c.strokeStyle = col; c.beginPath();
+    for (const s of segs) if (s.down && (s.line <= done) === want) {
+      const [a, b] = toPx(s.x0 + ox, s.y0 + oy), [d, e] = toPx(s.x1 + ox, s.y1 + oy); c.moveTo(a, b); c.lineTo(d, e);
+    }
+    c.stroke();
+  }
+
+  // design bounds + handles
+  const p = placed();
+  if (p) {
+    const [a, b] = toPx(p.x0, p.y1), [d, e] = toPx(p.x1, p.y0), ok = inBounds();
+    const col = ok ? css('--accent') : css('--danger');
+    c.strokeStyle = col; c.lineWidth = 1; c.setLineDash([5, 4]);
+    c.strokeRect(a - 4, b - 4, d - a + 8, e - b + 8); c.setLineDash([]);
+    c.fillStyle = css('--panel'); c.strokeStyle = col; c.lineWidth = 1.5;
+    for (const [hx, hy] of [[a - 4, b - 4], [d + 4, b - 4], [a - 4, e + 4], [d + 4, e + 4]]) { c.beginPath(); c.rect(hx - 3.5, hy - 3.5, 7, 7); c.fill(); c.stroke(); }
+    const label = `${(p.x1 - p.x0).toFixed(1)} × ${(p.y1 - p.y0).toFixed(1)} mm`;
+    c.font = '600 11px ' + css('--sans'); const tw = c.measureText(label).width;
+    c.fillStyle = col; c.beginPath(); c.roundRect(a - 4, b - 26, tw + 14, 19, 5); c.fill();
+    c.fillStyle = ok ? css('--accent-ink') : '#fff'; c.fillText(label, a + 3, b - 12.5);
+  }
+
+  // hover crosshair
+  if (hover && !drag) {
+    const [hx, hy] = toPx(...hover);
+    if (hx >= view.x && hx <= view.x + view.w && hy >= view.y && hy <= view.y + view.h) {
+      c.strokeStyle = css('--accent'); c.globalAlpha = .35; c.lineWidth = 1; c.setLineDash([2, 3]); c.beginPath();
+      c.moveTo(hx, view.y); c.lineTo(hx, view.y + view.h); c.moveTo(view.x, hy); c.lineTo(view.x + view.w, hy); c.stroke();
+      c.setLineDash([]); c.globalAlpha = 1;
+    }
+  }
+
+  // machine head
+  if (st.connected) {
+    const [px, py] = toPx(st.pos[0], st.pos[1]), head = css('--head');
+    c.fillStyle = head; c.globalAlpha = .15; c.beginPath(); c.arc(px, py, 16, 0, 7); c.fill(); c.globalAlpha = 1;
+    c.strokeStyle = head; c.lineWidth = 2; c.beginPath(); c.arc(px, py, 8, 0, 7); c.stroke();
+    c.beginPath(); c.moveTo(px - 15, py); c.lineTo(px - 10, py); c.moveTo(px + 10, py); c.lineTo(px + 15, py);
+    c.moveTo(px, py - 15); c.lineTo(px, py - 10); c.moveTo(px, py + 10); c.lineTo(px, py + 15); c.stroke();
+    c.fillStyle = head; c.beginPath(); c.arc(px, py, st.pen != null && st.pen !== +$('upS').value ? 3.5 : 1.8, 0, 7); c.fill();
+  }
+}
+
+const onDesign = (x, y) => { const p = placed(); return p && x >= p.x0 - 2 && x <= p.x1 + 2 && y >= p.y0 - 2 && y <= p.y1 + 2; };
+let drag = null;
+cv.addEventListener('pointerdown', e => {
+  const [x, y] = evWork(e);
+  if (onDesign(x, y) && !(st.job && st.job.running)) {
+    drag = {x, y, ox: off()[0], oy: off()[1], moved: false};
+    cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing';
+  }
+});
+cv.addEventListener('pointermove', e => {
+  const [x, y] = evWork(e);
+  hover = [x, y];
+  const inside = x >= 0 && y >= 0 && x <= st.work[0] && y <= st.work[1];
+  $('hover').textContent = inside ? `${x.toFixed(1)}, ${y.toFixed(1)}` : '—';
+  if (drag) {
+    drag.moved = true;
+    setOffset(Math.round(drag.ox + x - drag.x), Math.round(drag.oy + y - drag.y));  // snaps to 1 mm
+  } else { cv.style.cursor = onDesign(x, y) ? 'grab' : inside ? 'crosshair' : 'default'; draw(); }
+});
+cv.addEventListener('pointerleave', () => { hover = null; $('hover').textContent = '—'; draw(); });
+cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = 'grab'; });
+cv.addEventListener('click', e => {
+  const [x, y] = evWork(e);
+  if (onDesign(x, y)) return;   // clicks on the design never move the machine
+  if (x < 0 || y < 0 || x > st.work[0] || y > st.work[1]) return;
+  api('goto', {x, y, feed: feed()});
+});
+
+// drop a file on the bed
+['dragenter', 'dragover'].forEach(t => bed.addEventListener(t, e => { e.preventDefault(); bed.classList.add('drop'); }));
+['dragleave', 'drop'].forEach(t => bed.addEventListener(t, () => bed.classList.remove('drop')));
+bed.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+// ---------- machine controls ----------
+$('btnConn').onclick = async () => {
+  if (!st.connected) { $('state').textContent = 'Connecting…'; $('chip').className = 'chip busy'; }
+  await api(st.connected ? 'disconnect' : 'connect');
+};
+$('btnStop').onclick = () => api('stop');
+$('btnResume').onclick = () => api('resume');
+$('btnZero').onclick = () => api('zero');
+let step = 5;
+document.querySelectorAll('#stepSeg button').forEach(b => b.onclick = () => {
+  step = +b.dataset.s;
+  document.querySelectorAll('#stepSeg button').forEach(x => x.classList.toggle('on', x === b));
+});
+document.querySelectorAll('[data-j]').forEach(b => b.onclick = () => {
+  const [x, y] = b.dataset.j.split(',').map(Number);
+  api('jog', {dx: x * step, dy: y * step, feed: feed()});
+});
+addEventListener('keydown', e => {   // arrow keys jog when not typing
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  const d = {ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]}[e.key];
+  if (d) { e.preventDefault(); api('jog', {dx: d[0] * step, dy: d[1] * step, feed: feed()}); }
+});
+$('btnGo').onclick = () => api('goto', {x: +$('gx').value, y: +$('gy').value, feed: feed()});
+$('btnHome').onclick = () => api('goto', {x: 0, y: 0, feed: feed()});
+
+const pen = s => { $('pen').value = s; return api('pen', {s}); };
+$('penUp').onclick = () => pen(+$('upS').value);
+$('penDown').onclick = () => pen(+$('downS').value);
+let penTimer;
+$('pen').oninput = () => { clearTimeout(penTimer); penTimer = setTimeout(() => api('pen', {s: +$('pen').value}), 80); };
+
+$('btnSend').onclick = async () => { const c = $('cmd').value.trim(); if (c) { await api('command', {cmd: c}); $('cmd').value = ''; } };
+$('cmd').onkeydown = e => { if (e.key === 'Enter') $('btnSend').click(); };
+$('btnClear').onclick = () => $('log').innerHTML = '';
+
+// ---------- design: parse, place, preview ----------
+// segs: {x0,y0,x1,y1,down,line}; line = 1-based index of the job line (matches the server's progress counter)
+let segs = [], bbox = null, nLines = 0;   // bbox of pen-down drawing, design coordinates
+const off = () => [+$('offx').value || 0, +$('offy').value || 0];
+
+function parseDesign() {
+  segs = []; bbox = null;
+  let x = 0, y = 0, down = false, mode = null, n = 0;
+  const up = +$('upS').value;
+  for (const raw of $('gcode').value.split('\n')) {
+    const l = raw.replace(/\(.*?\)|;.*/g, '').trim().toUpperCase();
+    if (!l) continue;
+    n++;
+    const m3 = l.match(/M3\s*S(\d+(\.\d+)?)/); if (m3) down = +m3[1] !== up;
+    if (/M5/.test(l)) down = false;
+    if (/G9[12]|G10/.test(l)) continue;
+    const g = l.match(/\bG0?([0-3])\b/); if (g) mode = +g[1];
+    const w = {}; for (const [, k, v] of l.matchAll(/([XYIJ])\s*(-?\d*\.?\d+)/g)) w[k] = +v;
+    if (mode === null || (w.X === undefined && w.Y === undefined)) continue;
+    const nx = w.X ?? x, ny = w.Y ?? y, pen = down && mode > 0;
+    if (mode >= 2 && (w.I !== undefined || w.J !== undefined)) {
+      const cx = x + (w.I || 0), cy = y + (w.J || 0), r = Math.hypot(x - cx, y - cy);
+      const a0 = Math.atan2(y - cy, x - cx), a1 = Math.atan2(ny - cy, nx - cx), T = 2 * Math.PI;
+      let sw = mode === 3 ? ((a1 - a0) % T + T) % T : -(((a0 - a1) % T + T) % T);
+      if (sw === 0) sw = mode === 3 ? T : -T;
+      let px = x, py = y;
+      for (let i = 1; i <= 72; i++) {
+        const a = a0 + sw * i / 72, qx = cx + r * Math.cos(a), qy = cy + r * Math.sin(a);
+        segs.push({x0: px, y0: py, x1: qx, y1: qy, down: pen, line: n}); px = qx; py = qy;
+      }
+    } else segs.push({x0: x, y0: y, x1: nx, y1: ny, down: pen, line: n});
+    x = nx; y = ny;
+  }
+  nLines = n;
+  for (const s of segs) if (s.down) {
+    bbox = bbox || {x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9};
+    bbox.x0 = Math.min(bbox.x0, s.x0, s.x1); bbox.x1 = Math.max(bbox.x1, s.x0, s.x1);
+    bbox.y0 = Math.min(bbox.y0, s.y0, s.y1); bbox.y1 = Math.max(bbox.y1, s.y0, s.y1);
+  }
+  $('bedHint').style.display = segs.length ? 'none' : '';
+  updateInfo(); draw();
+}
+
+// where the design lands (work coordinates), or null if no drawing
+function placed() {
+  if (!bbox) return null;
+  const [ox, oy] = off();
+  return {x0: bbox.x0 + ox, y0: bbox.y0 + oy, x1: bbox.x1 + ox, y1: bbox.y1 + oy};
+}
+function inBounds() {
+  const p = placed();
+  return !p || (p.x0 >= 0 && p.y0 >= 0 && p.x1 <= st.work[0] && p.y1 <= st.work[1]);
+}
+function updateInfo() {
+  const p = placed(), has = !!$('gcode').value.trim(), running = st.job && st.job.running;
+  $('jobName').textContent = jobName || (has ? 'Untitled design' : 'No design loaded');
+  $('statLines').textContent = has ? nLines : '—';
+  if (!p) {
+    $('dinfo').textContent = ''; $('statSize').textContent = '—';
+    $('btnRun').disabled = !has || running; return;
+  }
+  const ok = inBounds();
+  $('statSize').textContent = `${(p.x1 - p.x0).toFixed(1)} × ${(p.y1 - p.y0).toFixed(1)}`;
+  $('dinfo').textContent = ok ? `at X ${p.x0.toFixed(1)}–${p.x1.toFixed(1)} · Y ${p.y0.toFixed(1)}–${p.y1.toFixed(1)}` : 'outside the work area — move it onto the bed';
+  $('dinfo').className = ok ? '' : 'bad';
+  $('btnRun').disabled = !ok || running;
+}
+function setOffset(x, y) {
+  $('offx').value = +x.toFixed(2); $('offy').value = +y.toFixed(2); updateInfo(); draw();
+}
+
+// shift X/Y words of the G-code by the offset (absolute mode; I/J are relative so stay as is)
+function placedGcode() {
+  const [ox, oy] = off();
+  return $('gcode').value.split('\n').map(raw => {
+    const m = raw.match(/^([^;(]*)([\s\S]*)$/), code = m[1];
+    if (/G9[12]|G10/i.test(code)) return raw;
+    return code.replace(/([XY])\s*(-?\d*\.?\d+)/gi,
+      (_, k, v) => k + +(+v + (k.toUpperCase() === 'X' ? ox : oy)).toFixed(3)) + m[2];
+  }).join('\n');
+}
+
+async function loadFile(f) {
+  $('gcode').value = await f.text(); jobName = f.name;
+  setOffset(0, 0); parseDesign(); toast(`Loaded ${f.name}`, false);
+}
+$('file').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
+let parseTimer; $('gcode').oninput = () => { clearTimeout(parseTimer); parseTimer = setTimeout(parseDesign, 250); };
+$('offx').oninput = $('offy').oninput = () => { updateInfo(); draw(); };
+$('btnOrigin').onclick = () => bbox && setOffset(-bbox.x0, -bbox.y0);
+$('btnCenter').onclick = () => bbox && setOffset((st.work[0] - (bbox.x1 - bbox.x0)) / 2 - bbox.x0, (st.work[1] - (bbox.y1 - bbox.y0)) / 2 - bbox.y0);
+$('btnRun').onclick = () => {
+  const p = placed(), where = p ? ` at X ${p.x0.toFixed(1)}–${p.x1.toFixed(1)}, Y ${p.y0.toFixed(1)}–${p.y1.toFixed(1)}` : '';
+  if (confirm(`Plot ${jobName || 'this design'}${where}? The pen will move.`)) api('run', {gcode: placedGcode()});
+};
+
+// ---------- shapes ----------
+const FIELDS = {
+  line:   [['x1', 'Start X', 10], ['y1', 'Start Y', 10], ['x2', 'End X', 60], ['y2', 'End Y', 40]],
+  rect:   [['x', 'X', 10], ['y', 'Y', 10], ['w', 'Width', 50], ['h', 'Height', 30]],
+  circle: [['cx', 'Center X', 60], ['cy', 'Center Y', 60], ['r', 'Radius', 25]],
+  arc:    [['cx', 'Center X', 60], ['cy', 'Center Y', 60], ['r', 'Radius', 25], ['a0', 'Start °', 0], ['a1', 'End °', 180]],
+};
+function renderFields() {
+  const k = $('kind').value;
+  $('shapeFields').innerHTML = FIELDS[k].map(([id, label, v]) =>
+    `<label class="field"><span>${label}</span><div class="suffix" data-unit="${label.includes('°') ? 'deg' : 'mm'}"><input id="f_${id}" type="number" step="any" value="${v}"></div></label>`).join('')
+    + (k === 'arc' || k === 'circle' ? '<label class="check"><input id="f_ccw" type="checkbox" checked> Counter-clockwise</label>' : '');
+}
+document.querySelectorAll('#shapePick button').forEach(b => b.onclick = () => {
+  $('kind').value = b.dataset.k;
+  document.querySelectorAll('#shapePick button').forEach(x => x.classList.toggle('on', x === b));
+  renderFields();
+});
+renderFields();
+$('btnShape').onclick = async () => {
+  const k = $('kind').value, d = {kind: k, feed: feed(), up: +$('upS').value, down: +$('downS').value};
+  for (const [id] of FIELDS[k]) d[id] = +$('f_' + id).value;
+  if ($('f_ccw')) d.ccw = $('f_ccw').checked;
+  const j = await api('shape', d);
+  if (j.gcode) { $('gcode').value = j.gcode; jobName = k[0].toUpperCase() + k.slice(1); setOffset(0, 0); parseDesign(); }
+};
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+layout();
+poll();
+</script>
+</body>
+</html>
