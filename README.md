@@ -10,5 +10,6 @@ Tools for a CoreXY pen plotter running GRBL 1.1 with a servo pen (`M3 S0` = pen 
 | `build_artifact.py` | Builds the hosted copy of Plot Studio: `python3 build_artifact.py OUT.html [example-image]` |
 | `send.py` | Minimal command-line G-code sender |
 | `make_*.py` | Scripts that generate individual designs |
+| `tests/` | Browser tests for Plot Studio with real mouse/touch input: `python3 tests/test_studio.py` (needs google-chrome and `websockets`). `great-wave.webp` is the test image and the hosted example. |
 
 Plot Studio also works opened directly as a file or hosted; without the server it exports G-code / SVG / HPGL instead of plotting.

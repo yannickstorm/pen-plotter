@@ -9,11 +9,12 @@ underwater.svg
 great-wave-multicolor.svg
 *.plotstudio.json
 
-# source images
+# source images (the test image in tests/ is kept)
 *.webp
 *.png
 *.jpg
 *.jpeg
+!tests/great-wave.webp
 
 # editor / python
 .vscode/

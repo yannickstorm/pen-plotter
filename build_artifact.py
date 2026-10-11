@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
-DEFAULT_EXAMPLE = HERE / "the-great-wave-zy8s4x93kmzqi9ei.webp"
+DEFAULT_EXAMPLE = HERE / "tests" / "great-wave.webp"
 
 
 def main():

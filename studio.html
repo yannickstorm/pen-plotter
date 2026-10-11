@@ -1782,8 +1782,8 @@ function scaleDrag(it, wx, wy, fromCentre, snap) {
   const O = fromCentre ? [drag.cx, drag.cy] : drag.anchor, k = fromCentre ? 2 : 1, d = [wx - O[0], wy - O[1]];
   const lx = dot(d, drag.ex) * h.sx * k, ly = dot(d, drag.ey) * h.sy * k;   // pointer distance from the anchor, along the object's axes
   let w = drag.w, hh = drag.h;
-  if (h.sx && h.sy) {   // corner: uniform, project onto the diagonal
-    const s = (lx * drag.w + ly * drag.h) / (drag.w * drag.w + drag.h * drag.h);
+  if (h.sx && h.sy) {   // corner: uniform; the axis that changed most wins, so the corner stays under the pointer
+    const rx = lx / drag.w, ry = ly / drag.h, s = Math.abs(rx - 1) >= Math.abs(ry - 1) ? rx : ry;
     w = drag.w * s; if (snap) w = Math.round(w);
     w = Math.max(w, 1, 1 / drag.aspect); hh = w * drag.aspect;
   } else if (h.sx) { w = Math.max(1, snap ? Math.round(lx) : lx); }
@@ -2433,7 +2433,7 @@ renderObjects(); renderPens(); renderInspector(); renderDoc(); renderMach(); ren
 pollServer();
 if (EXAMPLE_SRC && HOSTED) loadExample();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
-window.__studio = {select: it => select(it), handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S};
+window.__studio = {select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S};
 </script>
 </body>
 </html>
