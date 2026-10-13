@@ -1,4 +1,4 @@
-"""Tiny Chrome DevTools Protocol driver for browser tests (needs google-chrome and `websockets`).
+"""Tiny Chrome DevTools Protocol driver for browser tests (needs Chrome or Chromium — set $CHROME to its path if not on PATH — and `websockets`).
 
 Real input (mouse, touch) goes through Input.dispatch*, so it exercises the same event path
 as a person using the page: pointer capture, hit testing, default actions.
@@ -7,6 +7,7 @@ import asyncio
 import functools
 import http.server
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -43,7 +44,8 @@ class Browser:
         self.width, self.height, self.mobile = width, height, mobile
         self.port = free_port()
         self.profile = tempfile.mkdtemp(prefix="cdp-")
-        chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
+        chrome = (os.environ.get("CHROME") or shutil.which("google-chrome") or shutil.which("chromium")
+                  or shutil.which("chromium-browser"))
         if not chrome:
             raise RuntimeError("google-chrome / chromium not found")
         self.proc = subprocess.Popen([chrome, "--headless=new", "--disable-gpu", "--no-sandbox", f"--remote-debugging-port={self.port}",

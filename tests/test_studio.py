@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Browser tests for Plot Studio (studio.html), driven through headless Chrome with real input.
 
-Run:  python3 tests/test_studio.py        (needs google-chrome and the `websockets` package)
+Run:  python3 tests/test_studio.py        (needs Chrome or Chromium — set $CHROME if it is not on PATH — and `pip install -r requirements-dev.txt`)
 """
 import asyncio
 import sys
