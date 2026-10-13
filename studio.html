@@ -54,7 +54,15 @@
 
   /* ---------- top bar ---------- */
   .topbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .topbar .spacer { flex: 1; }
+  .topbar:has(#btnPlot[hidden]) #btnExport { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }   /* export is the final step when no plotter is connected */
+  .filebar { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding-left: 14px; border-left: 1px solid var(--line); min-width: 0; }
+  .filebar .btn svg.chev { width: 12px; height: 12px; opacity: .6; }
+  .projname { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  .projname b { color: var(--fg); font-weight: 600; }
+  .menu kbd { margin-left: auto; padding-left: 18px; font: 11px var(--mono); color: var(--faint); }
+  .menu .mh { padding: 6px 10px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); }
   .brand-mark { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none;
     background: linear-gradient(135deg, var(--accent), #ff7ab6); color: #fff; box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent); }
   .brand h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
@@ -235,15 +243,17 @@
     .sect { padding: 14px 16px; }
     .tabs { padding: 12px 16px 0; }
     .brand small { display: none; }
+    .projname { max-width: 160px; }
   }
   @media (max-width: 560px) {
     .topbar { flex-wrap: wrap; padding: 10px 16px; }
     #mchip { display: none; }
+    .projname { display: none; }
+    .filebar { margin-left: 4px; padding-left: 8px; }
   }
 </style>
 </head>
 <body>
-
 <header class="topbar">
   <div class="brand">
     <div class="brand-mark">
@@ -251,9 +261,13 @@
     </div>
     <div><h1>Plot Studio</h1><small>Images &amp; vectors → pen-plotter G-code</small></div>
   </div>
+  <div class="filebar">
+    <button class="btn ghost" id="btnFile" aria-haspopup="menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>File<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+    <span class="projname" id="projName" title="Current project"></span>
+  </div>
+  <span class="spacer"></span>
   <a href="/" class="btn ghost" id="lnkCtl" hidden>Controller</a>
   <div class="chip" id="mchip" hidden><i></i><span id="mstate">—</span></div>
-  <button class="btn" id="btnOpen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Import</button>
   <button class="btn" id="btnExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Export</button>
   <button class="btn primary" id="btnPlot" hidden><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>Plot</button>
 </header>
@@ -321,6 +335,17 @@
 </div>
 
 <!-- menus -->
+<div class="menu" id="fileMenu" role="menu">
+  <div class="mh">Project</div>
+  <button data-f="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/></svg>New project</button>
+  <button data-f="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Open project…<kbd data-k="O"></kbd></button>
+  <button data-f="save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg>Save project<kbd data-k="S"></kbd></button>
+  <hr><div class="mh">Content</div>
+  <button data-f="import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Import file…<kbd data-k="I"></kbd></button>
+  <button data-f="example"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c3-6 6-6 9 0s6 6 9 0"/></svg>Load the example</button>
+  <hr><div class="mh">Output</div>
+  <button data-f="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Export G-code / SVG…<kbd data-k="E"></kbd></button>
+</div>
 <div class="menu" id="addMenu">
   <button data-add="file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Import file…</button>
   <button data-add="text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Text</button>
@@ -902,7 +927,7 @@ function penForColor(hex, budget) {
 // =====================================================================
 const IMG_DEF = {mode: 'hatch', spacing: 0.7, angle: 45, levels: 3, brightness: 0, contrast: 0, gamma: 1, invert: false, blur: 0,
   threshold: 0.5, amplitude: 1, frequency: 1, skipWhite: true, dots: 3000, dotSize: 0.4, colors: 4, outline: true, fill: true, tone: true,
-  detail: 500, smooth: true, lineLen: 12, pitch: 2.5, pen: ''};
+  detail: 1500, smooth: true, lineLen: 12, pitch: 2.5, jumpLift: 6, edges: false, edgeSrc: 'lines', edgeStrength: 0.5, edgePen: '', pen: ''};
 const VEC_DEF = {strokes: true, fills: 'auto', spacing: 0.8, angle: 45, cross: false, occlude: false, pen: ''};
 const TXT_DEF = {text: 'Hello', font: 'Caveat', weight: '700', italic: false, align: 'center', lineHeight: 1.15, style: 'single', spacing: 0.5, angle: 45, cross: false, pen: ''};
 const SHP_DEF = {shape: 'rect', sides: 5, inner: 0.45, corner: 0, fill: false, spacing: 1, angle: 45, cross: false, pen: ''};
@@ -926,7 +951,7 @@ function rasterGrid(it, cell) {
   const o = it.opts, gw = clamp(Math.round(it.w / cell), 8, 2400), gh = clamp(Math.round(H(it) / cell), 8, 2400);
   const key = [gw, gh, o.brightness, o.contrast, o.gamma, o.invert, o.blur].join();
   it._grids = it._grids || new Map();
-  if (it._grids.has(key)) return it._grids.get(key);
+  if (it._grids.has(key)) return sizedGrid(it, it._grids.get(key));
   const c = document.createElement('canvas'); c.width = gw; c.height = gh;
   const x = c.getContext('2d', {willReadFrequently: true});
   x.fillStyle = '#fff'; x.fillRect(0, 0, gw, gh); x.imageSmoothingQuality = 'high'; x.drawImage(it._img, 0, 0, gw, gh);
@@ -941,12 +966,6 @@ function rasterGrid(it, cell) {
     g[i] = o.invert ? v : 1 - v;   // darkness
   }
   if (o.blur > 0) g = boxBlur(g, gw, gh, o.blur / cell / 2);
-  const cw = it.w / gw, ch = H(it) / gh, w2 = it.w / 2, h2 = H(it) / 2;
-  const sampler = a => (px, py) => {   // bilinear value of grid a at local mm
-    const fx = clamp((px + w2) / cw - 0.5, 0, gw - 1), fy = clamp((h2 - py) / ch - 0.5, 0, gh - 1);
-    const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(x0 + 1, gw - 1), y1 = Math.min(y0 + 1, gh - 1), tx = fx - x0, ty = fy - y0;
-    return (a[y0 * gw + x0] * (1 - tx) + a[y0 * gw + x1] * tx) * (1 - ty) + (a[y1 * gw + x0] * (1 - tx) + a[y1 * gw + x1] * tx) * ty;
-  };
   // CMYK ink coverage per channel (tone adjustments applied through the luminance ratio)
   const cmyk = [0, 1, 2, 3].map(() => new Float32Array(n));
   for (let i = 0; i < n; i++) {
@@ -955,10 +974,21 @@ function rasterGrid(it, cell) {
     const kk = clamp(1 - Math.max(r, gg, b) * adj, 0, 1);
     cmyk[0][i] = k < 1 ? (1 - r - k) / (1 - k) : 0; cmyk[1][i] = k < 1 ? (1 - gg - k) / (1 - k) : 0; cmyk[2][i] = k < 1 ? (1 - b - k) / (1 - k) : 0; cmyk[3][i] = kk;
   }
-  const grid = {key, gw, gh, g, rgb, at: sampler(g), chan: cmyk.map(sampler), cw, ch};
+  const grid = {key, gw, gh, g, rgb, cmyk};
   it._grids.set(key, grid);
   while (it._grids.size > 3) it._grids.delete(it._grids.keys().next().value);
-  return grid;
+  return sizedGrid(it, grid);
+}
+// The cached raster is keyed by cell count, which stays the same when the object is resized, so the
+// mm cell size and the samplers must come from the object's current size, never from the cache.
+function sizedGrid(it, G) {
+  const {gw, gh} = G, cw = it.w / gw, ch = H(it) / gh, w2 = it.w / 2, h2 = H(it) / 2;
+  const sampler = a => (px, py) => {   // bilinear value of grid a at local mm
+    const fx = clamp((px + w2) / cw - 0.5, 0, gw - 1), fy = clamp((h2 - py) / ch - 0.5, 0, gh - 1);
+    const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(x0 + 1, gw - 1), y1 = Math.min(y0 + 1, gh - 1), tx = fx - x0, ty = fy - y0;
+    return (a[y0 * gw + x0] * (1 - tx) + a[y0 * gw + x1] * tx) * (1 - ty) + (a[y1 * gw + x0] * (1 - tx) + a[y1 * gw + x1] * tx) * ty;
+  };
+  return {key: G.key, gw, gh, g: G.g, rgb: G.rgb, at: sampler(G.g), chan: G.cmyk.map(sampler), cw, ch};
 }
 // pad a grid with a 1-cell zero border so iso-lines close
 function padGrid(f, W, Hh, p = 1) {
@@ -1079,6 +1109,141 @@ function ensureInks(it) {
   renderPens();
 }
 
+// One-line (TSP) tour: grid nearest-neighbour start, then 2-opt on k-nearest-neighbour lists
+// with don't-look bits, solved as a cycle and opened at its longest edge. Returns an index order.
+async function tspOrder(pts, budgetMs = 2500) {
+  const n = pts.length;
+  if (n < 4) return {order: pts.map((_, i) => i), local: new Float64Array(n)};
+  const X = new Float64Array(n), Y = new Float64Array(n);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < n; i++) { X[i] = pts[i][0]; Y[i] = pts[i][1]; x0 = Math.min(x0, X[i]); y0 = Math.min(y0, Y[i]); x1 = Math.max(x1, X[i]); y1 = Math.max(y1, Y[i]); }
+  const dist = (a, b) => Math.hypot(X[a] - X[b], Y[a] - Y[b]);
+  const cs = Math.max(Math.sqrt(Math.max((x1 - x0) * (y1 - y0), 1e-9) / n) * 1.4, 1e-6);
+  const GW = Math.floor((x1 - x0) / cs) + 1, GH = Math.floor((y1 - y0) / cs) + 1;
+  const cells = Array.from({length: GW * GH}, () => []), cx = new Int32Array(n), cy = new Int32Array(n);
+  for (let i = 0; i < n; i++) { cx[i] = Math.min(GW - 1, Math.floor((X[i] - x0) / cs)); cy[i] = Math.min(GH - 1, Math.floor((Y[i] - y0) / cs)); cells[cy[i] * GW + cx[i]].push(i); }
+  const ring = (gx, gy, r, fn, G = cells) => {
+    for (let j = gy - r; j <= gy + r; j++) {
+      if (j < 0 || j >= GH) continue;
+      const edge = j === gy - r || j === gy + r;
+      for (let i = gx - r; i <= gx + r; i += edge ? 1 : (2 * r || 1)) if (i >= 0 && i < GW) fn(G[j * GW + i]);
+    }
+  };
+  const maxR = Math.max(GW, GH);
+  // k nearest neighbours
+  const K = 10, nb = new Int32Array(n * K).fill(-1), local = new Float64Array(n);
+  for (let a = 0; a < n; a++) {
+    const cand = [];
+    for (let r = 0; r <= maxR; r++) {
+      ring(cx[a], cy[a], r, c => { for (const b of c) if (b !== a) cand.push([dist(a, b), b]); });
+      if (cand.length >= K && r >= 1) { cand.sort((p, q) => p[0] - q[0]); if (cand[K - 1][0] <= r * cs) break; }
+    }
+    cand.sort((p, q) => p[0] - q[0]);
+    for (let k = 0; k < K && k < cand.length; k++) nb[a * K + k] = cand[k][1];
+    local[a] = cand.length ? cand[Math.min(3, cand.length - 1)][0] : 0;   // local point spacing
+    if (a % 4000 === 3999) await tick();
+  }
+  // nearest-neighbour start
+  const live = cells.map(c => c.slice()), t = new Int32Array(n), pos = new Int32Array(n);
+  const take = b => { const L = live[cy[b] * GW + cx[b]], k = L.indexOf(b); L[k] = L[L.length - 1]; L.pop(); };
+  let cur = 0; take(0); t[0] = 0;
+  for (let s = 1; s < n; s++) {
+    let best = -1, bd = Infinity;
+    for (let r = 0; r <= maxR; r++) {
+      ring(cx[cur], cy[cur], r, c => { for (const b of c) { const d = dist(cur, b); if (d < bd) { bd = d; best = b; } } }, live);
+      if (best >= 0 && bd <= r * cs) break;
+    }
+    take(best); t[s] = cur = best;
+    if (s % 4000 === 0) await tick();
+  }
+  for (let i = 0; i < n; i++) pos[t[i]] = i;
+  // 2-opt
+  const nx = a => t[pos[a] + 1 === n ? 0 : pos[a] + 1], pv = a => t[pos[a] === 0 ? n - 1 : pos[a] - 1];
+  const rev = (i, j) => {
+    let len = ((j - i + n) % n) + 1;
+    if (len * 2 > n) { const ni = (j + 1) % n; j = (i - 1 + n) % n; i = ni; len = n - len; }
+    for (let s = 0; s < len >> 1; s++) {
+      const a = t[i], b = t[j]; t[i] = b; pos[b] = i; t[j] = a; pos[a] = j;
+      i = i + 1 === n ? 0 : i + 1; j = j === 0 ? n - 1 : j - 1;
+    }
+  };
+  const queue = Array.from(t), inQ = new Uint8Array(n).fill(1);
+  const push = (...v) => { for (const a of v) if (!inQ[a]) { inQ[a] = 1; queue.push(a); } };
+  const t0 = performance.now();
+  let qi = 0, iter = 0;
+  while (qi < queue.length) {
+    if (++iter % 3000 === 0) { if (performance.now() - t0 > budgetMs) break; await tick(); }
+    if (qi > 65536) { queue.splice(0, qi); qi = 0; }
+    const a = queue[qi++]; inQ[a] = 0;
+    let moved = false;
+    for (let dir = 0; dir < 2 && !moved; dir++) {
+      const b = dir ? pv(a) : nx(a), dab = dist(a, b);
+      for (let k = 0; k < K; k++) {
+        const c = nb[a * K + k]; if (c < 0) break;
+        const dac = dist(a, c); if (dac >= dab) break;
+        const d = dir ? pv(c) : nx(c); if (c === b || d === a) continue;
+        if (dab + dist(c, d) - dac - dist(b, d) > 1e-9) {
+          if (dir) rev(pos[c], pos[b]); else rev(pos[b], pos[c]);
+          push(a, b, c, d); moved = true; break;
+        }
+      }
+    }
+    if (moved) push(a);
+  }
+  // open the cycle at its longest edge
+  let cut = 0, cl = -1;
+  for (let i = 0; i < n; i++) { const d = dist(t[i], t[(i + 1) % n]); if (d > cl) { cl = d; cut = i; } }
+  const out = new Array(n);
+  for (let s = 0; s < n; s++) out[s] = t[(cut + 1 + s) % n];
+  return {order: out, local};
+}
+
+// Boundaries between differently-labelled cells of a label grid, chained into single polylines
+// (each shared edge drawn once). Returns paths in cell units, centred, Y up.
+function labelEdges(lab, gw, gh, minLen, smooth) {
+  const L = new Uint8Array(lab);   // 3×3 majority clean-up so speckles don't become tiny edge loops
+  for (let y = 1; y < gh - 1; y++) for (let x = 1; x < gw - 1; x++) {
+    const cnt = new Map(); let best = lab[y * gw + x], bc = 0;
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const v = lab[(y + j) * gw + x + i], c = (cnt.get(v) || 0) + 1; cnt.set(v, c); if (c > bc) { bc = c; best = v; } }
+    if (bc >= 5) L[y * gw + x] = best;
+  }
+  const VW = gw + 1, adj = new Map(), add = (a, b) => { (adj.get(a) || adj.set(a, []).get(a)).push(b); (adj.get(b) || adj.set(b, []).get(b)).push(a); };
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    const v = L[y * gw + x];
+    if (x + 1 < gw && L[y * gw + x + 1] !== v) add(y * VW + x + 1, (y + 1) * VW + x + 1);
+    if (y + 1 < gh && L[(y + 1) * gw + x] !== v) add((y + 1) * VW + x, (y + 1) * VW + x + 1);
+  }
+  const used = new Set(), key = (a, b) => a < b ? a * 1e7 + b : b * 1e7 + a, paths = [];
+  const walk = (a, b) => {
+    const p = [a, b]; used.add(key(a, b));
+    let prev = a, cur = b;
+    while (adj.get(cur).length === 2) {
+      const nx = adj.get(cur)[0] === prev ? adj.get(cur)[1] : adj.get(cur)[0];
+      if (used.has(key(cur, nx))) break;
+      used.add(key(cur, nx)); p.push(nx); prev = cur; cur = nx;
+    }
+    return p;
+  };
+  for (const [v, ns] of adj) if (ns.length !== 2) for (const n of ns) if (!used.has(key(v, n))) paths.push(walk(v, n));
+  for (const [v, ns] of adj) for (const n of ns) if (!used.has(key(v, n))) paths.push(walk(v, n));   // closed loops
+  const out = [];
+  for (const ids of paths) {
+    let q = ids.map(i => [i % VW - gw / 2, gh / 2 - Math.floor(i / VW)]);
+    if (pathLen(q) < minLen) continue;
+    if (smooth) { q = chaikin(chaikin(q)); }
+    out.push(rdp(q, 0.25));
+  }
+  return optimize(out, {order: true, merge: 1e-6, simplify: 0, minLen: 0}, [-gw / 2, gh / 2]);
+}
+// Dark line work of the source image (ink outlines etc.): pixels clearly darker than their
+// surroundings, thinned to centrelines. strength 0…1 picks up fainter lines. Cell units, centred.
+function inkLines(D, strength, smooth) {
+  const {gw, gh, g} = D, n = gw * gh, bg = boxBlur(g, gw, gh, Math.max(2, Math.round(Math.max(gw, gh) / 160))), m = new Float32Array(n);
+  const sv = clamp(strength, 0, 2), t = 0.24 * Math.pow(0.1, sv / 2), dmin = 0.25 - 0.1 * sv;   // 0 → only bold lines, 2 → very faint ones
+  for (let i = 0; i < n; i++) m[i] = g[i] - bg[i] > t && g[i] > dmin ? 1 : 0;
+  const L = maskSkeleton(m, gw, gh, 1, 1, gw, gh, smooth).filter(l => pathLen(l) > 4);
+  return optimize(L, {order: true, merge: 1.5, simplify: 0, minLen: 0}, [-gw / 2, gh / 2]);
+}
 const builders = {
   async vector(it) {
     const o = it.opts, out = new Map(), push = (pen, l) => { if (!pen || !penById(pen)) return; let a = out.get(pen); if (!a) out.set(pen, a = []); a.push(l); };
@@ -1146,10 +1311,20 @@ const builders = {
         for (const [x, y] of pts) { const c = []; for (let k = 0; k <= seg; k++) c.push([x + r * Math.cos(k / seg * TAU), y + r * Math.sin(k / seg * TAU)]); lines.push(c); }
         break;
       }
-      case 'tsp': {   // one continuous line through stipple points (nearest-neighbour tour)
+      case 'tsp': {   // one continuous line through stipple points (2-opt optimised tour, cached across resizes)
         const pts = stipplePoints(D, w, h, o.dots);
-        const tour = optimize(pts.map(p => [p, [p[0] + 1e-3, p[1]]]), {order: true, merge: Infinity, simplify: 0, minLen: 0}, [-w / 2, -h / 2]);
-        lines.push(...tour.map(t => rdp(t, 0.01)));
+        const tk = [D.key, o.dots, (w / h).toFixed(4), pts.length].join('|');
+        if (!it._tsp || it._tsp.key !== tk) it._tsp = {key: tk, ...(await tspOrder(pts))};
+        if (pts.length < 2) break;
+        const path = it._tsp.order.map(i => pts[i]);
+        if (o.jumpLift === undefined) o.jumpLift = 6;   // items saved before this option existed
+        if (!(o.jumpLift > 0)) { lines.push(path); break; }
+        // lift the pen only over the big, clearly visible jumps: longer than jumpLift % of the image diagonal
+        const lim = Math.hypot(w, h) * o.jumpLift / 100, jump = i => Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]) > lim;
+        let run = [path[0]];
+        const flush = () => { lines.push(run.length > 1 ? run : [run[0], [run[0][0] + 0.02, run[0][1]]]); };
+        for (let i = 1; i < path.length; i++) { if (jump(i)) { flush(); run = []; } run.push(path[i]); }
+        flush();
         break;
       }
       case 'halftone': {   // rotated grid of dots sized by tone; dark dots filled with rings
@@ -1205,24 +1380,47 @@ const builders = {
       }
       case 'colors': {
         if (!it.palette || it.palette.length !== o.colors) await updatePalette(it);
-        const n = D.gw * D.gh, lab = new Uint8Array(n), C = it.palette.map(p => hex2rgb(p.hex));
-        for (let i = 0; i < n; i++) {
-          let bi = 0, bd = Infinity;
-          for (let k = 0; k < C.length; k++) { const d = (D.rgb[i * 3] - C[k][0]) ** 2 + (D.rgb[i * 3 + 1] - C[k][1]) ** 2 + (D.rgb[i * 3 + 2] - C[k][2]) ** 2; if (d < bd) { bd = d; bi = k; } }
-          lab[i] = bi;
+        // Colour regions are traced in grid cells, which don't depend on the object's size (the grid
+        // is always ~detail cells across). Cache them so a resize only rescales and re-hatches —
+        // re-tracing every colour was too slow to keep up with a drag, hence the jump on release.
+        const C = it.palette.map(p => hex2rgb(p.hex)), ck = [D.key, it.palette.map(p => p.hex).join(), o.smooth].join('|');
+        if (!it._colorRings || it._colorRings.key !== ck) {
+          const n = D.gw * D.gh, lab = new Uint8Array(n), per = [];
+          for (let i = 0; i < n; i++) {
+            let bi = 0, bd = Infinity;
+            for (let k = 0; k < C.length; k++) { const d = (D.rgb[i * 3] - C[k][0]) ** 2 + (D.rgb[i * 3 + 1] - C[k][1]) ** 2 + (D.rgb[i * 3 + 2] - C[k][2]) ** 2; if (d < bd) { bd = d; bi = k; } }
+            lab[i] = bi;
+          }
+          for (let k = 0; k < C.length; k++) {
+            const m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = lab[i] === k ? 1 : 0;
+            per.push(maskRings(m, D.gw, D.gh, 1, 1, D.gw, D.gh, o.smooth));   // cell units, centred
+            await tick();
+          }
+          it._colorRings = {key: ck, per, lab, gw: D.gw, gh: D.gh};
         }
+        const accent = () => { if (!o.edgePen || !penById(o.edgePen)) o.edgePen = pens.reduce((a, b) => lightness(b.color) < lightness(a.color) ? b : a).id; return o.edgePen; };
         for (let k = 0; k < C.length; k++) {
-          const pid = it.palette[k].pen; if (!pid || !penById(pid)) continue;
-          const m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = lab[i] === k ? 1 : 0;
-          const rings = maskRings(m, D.gw, D.gh, D.cw, D.ch, w, h, o.smooth), L = [];
-          if (o.outline) L.push(...rings);
+          const pid = it.palette[k].pen, rings = () => it._colorRings.per[k].map(r => r.map(([x, y]) => [x * D.cw, y * D.ch]));
+          if (!pid || !penById(pid)) continue;   // skipped colour (its borders still get the edge line)
+          const L = [];
+          if (o.outline) L.push(...rings());
           if (o.fill) {
             const dark = 1 - lightness(it.palette[k].hex);
             const sp = o.tone ? o.spacing / clamp(dark * 1.3, 0.2, 1) : o.spacing;
-            L.push(...hatchFill(rings, {...o, spacing: sp}, k * 180 / C.length));
+            L.push(...hatchFill(rings(), {...o, spacing: sp}, k * 180 / C.length));
           }
           out.set(pid, (out.get(pid) || []).concat(L));
-          await tick();
+        }
+        if (o.edges) {   // edge line in its own pen: the image's own line work, or the colour borders
+          let E;
+          if (o.edgeSrc === 'borders') { const R = it._colorRings; E = R.edgeLines || (R.edgeLines = labelEdges(R.lab, R.gw, R.gh, 4, o.smooth)); }
+          else {
+            const ek = [D.key, o.edgeStrength, o.smooth].join('|');
+            if (!it._ink || it._ink.key !== ek) it._ink = {key: ek, lines: inkLines(D, o.edgeStrength ?? 0.5, o.smooth)};
+            E = it._ink.lines;
+          }
+          accent();
+          out.set(o.edgePen, (out.get(o.edgePen) || []).concat(E.map(r => r.map(([x, y]) => [x * D.cw, y * D.ch]))));
         }
         return out;
       }
@@ -1342,10 +1540,19 @@ function geomKey(it, w = it.w, aspect = it.aspect) {
 }
 let buildTimer = null, building = false, again = false;
 function schedule(delay = 150) { clearTimeout(buildTimer); buildTimer = setTimeout(runBuild, delay); }
+// While a resize handle is dragged, keep rebuilding at the new size (throttled, not debounced) so the
+// preview tracks the real result. Line spacing, dot pitch and wave frequency are physical mm, so a
+// stretched old build never matches the rebuild — that mismatch was the jump on release.
+let liveTimer = null;
+function scheduleLive() {
+  if (building) { again = true; return; }
+  if (liveTimer) return;
+  liveTimer = setTimeout(() => { liveTimer = null; runBuild(); }, 30);
+}
 async function runBuild() {
   if (building) { again = true; return; }
   building = true;
-  const slow = setTimeout(() => $('busy').classList.add('show'), 120);
+  const slow = setTimeout(() => { if (!drag) $('busy').classList.add('show'); }, 120);
   await tick();
   try {
     for (const it of items) {
@@ -1543,6 +1750,23 @@ function resize() {
 new ResizeObserver(resize).observe(wrap);
 
 let raf = 0;
+// hovering a colour in the Colours → pens list highlights that colour's areas on the drawing
+let palHi = null;   // {it, k}
+function palMask(it, k) {
+  const R = it._colorRings; if (!R || !R.lab) return null;
+  const c0 = it._palMask;
+  if (c0 && c0.lab === R.lab && c0.k === k) return c0.cv;
+  const cv = document.createElement('canvas'); cv.width = R.gw; cv.height = R.gh;
+  const x = cv.getContext('2d'), im = x.createImageData(R.gw, R.gh), d = im.data, [ar, ag, ab] = hex2rgb(css('--accent').trim() || '#5b47f5');
+  for (let i = 0; i < R.lab.length; i++) {
+    const on = R.lab[i] === k, o = i * 4;
+    if (on) { d[o] = ar; d[o + 1] = ag; d[o + 2] = ab; d[o + 3] = 150; }
+    else { d[o] = 255; d[o + 1] = 255; d[o + 2] = 255; d[o + 3] = 170; }   // fade everything else
+  }
+  x.putImageData(im, 0, 0);
+  it._palMask = {lab: R.lab, k, cv};
+  return cv;
+}
 function draw() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
 function p2dFor(it) {
   if (it._p2d) return it._p2d;
@@ -1592,6 +1816,15 @@ function render() {
         c.strokeStyle = pen.color; c.lineWidth = lw(pen) / f; c.stroke(p);
       }
       c.restore();
+      if (palHi && palHi.it === it) {
+        const cv = palMask(it, palHi.k);
+        if (cv) { c.save(); applyItem(c, it, fx, fy); c.scale(1, -1); c.imageSmoothingEnabled = false; c.drawImage(cv, -it.w / 2, -H(it) / 2, it.w, H(it)); c.restore(); }
+      }
+    }
+    if (servoPreview) {
+      c.strokeStyle = css('--accent'); c.lineWidth = Math.max(0.35, 1.2 / k); c.beginPath();
+      for (const p of servoPreview) { c.moveTo(p[0][0], p[0][1]); for (let i = 1; i < p.length; i++) c.lineTo(p[i][0], p[i][1]); if (p.length === 2 && Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) < 0.05) c.arc(p[0][0], p[0][1], 0.35, 0, TAU); }
+      c.stroke();
     }
     if (show.travel && plan) {
       c.strokeStyle = 'rgba(255,77,109,.55)'; c.lineWidth = 0.8 / k; c.setLineDash([3 / k, 3 / k]); c.beginPath();
@@ -1771,7 +2004,7 @@ cv.addEventListener('pointermove', e => {
     let nx = drag.cx + wx - drag.wx, ny = drag.cy + wy - drag.wy;
     if (e.shiftKey) { nx = Math.round(nx / 5) * 5; ny = Math.round(ny / 5) * 5; }
     it.cx = nx; it.cy = ny;
-  } else if (drag.mode === 'scale') scaleDrag(it, wx - drag.grab[0], wy - drag.grab[1], e.altKey, e.shiftKey); else if (drag.mode === 'rotate') {
+  } else if (drag.mode === 'scale') { scaleDrag(it, wx - drag.grab[0], wy - drag.grab[1], e.altKey, e.shiftKey); scheduleLive(); } else if (drag.mode === 'rotate') {
     let a = drag.rot + (Math.atan2(wy - it.cy, wx - it.cx) - drag.a0) / D2R;
     if (e.shiftKey) a = Math.round(a / 15) * 15;
     it.rot = ((a % 360) + 540) % 360 - 180;
@@ -1983,12 +2216,12 @@ function kindFields(it) {
     if (m === 'hatch' || m === 'cmyk') F.push(['range', 'levels', 'Tone layers (crosshatch)', {min: 1, max: 4, step: 1}]);
     if (m === 'halftone') F.push(['range', 'amplitude', 'Dot scale', {min: 0.3, max: 1.6, step: 0.05}], ['check', 'fill', 'Fill dots with rings (solid look)']);
     if (m === 'flow') F.push(['num', 'lineLen', 'Max line length', {unit: 'mm', step: 1, min: 1}]);
-    if (m === 'tsp') F.push(['num', 'dots', 'Points on the line', {step: 500, min: 100}]);
+    if (m === 'tsp') F.push(['num', 'dots', 'Points on the line', {step: 500, min: 100}], ['range', 'jumpLift', 'Lift pen on jumps over (% of image, 0 = never)', {min: 0, max: 25, step: 1}]);
     if (m === 'contour') F.push(['range', 'levels', 'Contour levels', {min: 1, max: 16, step: 1}]);
     if (m === 'squiggle' || m === 'spiral') F.push(['range', 'amplitude', 'Wave amplitude', {min: 0, max: 2.5, step: 0.05}], ['range', 'frequency', 'Wave frequency (per mm)', {min: 0.2, max: 4, step: 0.05}], ['check', 'skipWhite', 'Lift the pen over white areas']);
     if (m === 'stipple') F.push(['num', 'dots', 'Dots', {step: 500, min: 100}], ['num', 'dotSize', 'Dot size', {unit: 'mm', step: 0.05, min: 0.1}]);
     if (m === 'outline' || m === 'centerline') F.push(['range', 'threshold', 'Threshold', {min: 0.05, max: 0.95, step: 0.01}]);
-    if (m === 'colors') F.push(['range', 'colors', 'Number of colours', {min: 2, max: 8, step: 1}], ['check', 'tone', 'Lighter colours get sparser hatching']);
+    if (m === 'colors') F.push(['range', 'colors', 'Number of colours', {min: 2, max: 8, step: 1}], ['check', 'tone', 'Lighter colours get sparser hatching'], ['check', 'edges', 'Edge line (drawn over the fills, incl. skipped colours)'], ...(o.edges ? [['select', 'edgeSrc', 'Edges from', {options: [['lines', 'Lines in the image (ink outlines)'], ['borders', 'Borders between colours']]}], ...(o.edgeSrc !== 'borders' ? [['range', 'edgeStrength', 'Edge sensitivity', {min: 0, max: 2, step: 0.05}]] : []), ['pen', 'edgePen', 'Edge line pen']] : []));
     if (m === 'outline' || m === 'colors') F.push(['check', 'outline', 'Draw outlines', {half: true}], ['check', 'fill', 'Hatch fill', {half: true}]);
     if ((m === 'outline' || m === 'colors') && o.fill) F.push(['check', 'cross', 'Crosshatch']);
     if (['contour', 'outline', 'centerline', 'colors'].includes(m)) F.push(['check', 'smooth', 'Smooth curves']);
@@ -2051,12 +2284,13 @@ function mapHTML(it) {
       <select data-ink="${k}"><option value="">— skip —</option>${pens.map(p => `<option value="${p.id}" ${e.pen === p.id ? 'selected' : ''}>● ${esc(p.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
   }
   if (it.kind === 'image' && it.opts.mode === 'colors' && it.palette) {
-    return `<div class="sub">Colours → pens</div><div class="map">${it.palette.map((e, k) => `<div class="map-row"><span class="sw" style="background:${e.hex}"></span><span class="mono">${e.hex}</span>
+    return `<div class="sub">Colours → pens <small style="text-transform:none;letter-spacing:0;font-weight:500">· hover to see the areas</small></div><div class="map">${it.palette.map((e, k) => `<div class="map-row"><span class="sw" style="background:${e.hex}"></span><span class="mono">${e.hex}</span>
       <select data-pal="${k}"><option value="">— skip (paper) —</option>${pens.map(p => `<option value="${p.id}" ${e.pen === p.id ? 'selected' : ''}>● ${esc(p.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
   }
   return '';
 }
 function renderInspector() {
+  if (palHi) { palHi = null; draw(); }
   const I = $('inspector');
   if (!sel) {
     I.innerHTML = `<div class="empty"><b>Nothing selected</b>Click an object on the canvas or in the list to edit its conversion settings.<br><br>
@@ -2099,14 +2333,21 @@ function renderInspector() {
   $('iDup').onclick = () => duplicateSel();
   const kf = $('kf');
   bindForm(kf, it.opts, async (k, structural) => {
+    if (it.kind === 'image' && k === 'mode') it.opts.detail = IMG_DEF.detail;   // every conversion mode starts at full detail
     if (it.kind === 'image' && k === 'mode' && it.opts.mode === 'cmyk') { ensureInks(it); renderInspector(); }
     else if (it.kind === 'image' && (k === 'colors' || (k === 'mode' && it.opts.mode === 'colors' && !it.palette))) { await updatePalette(it); renderInspector(); }
     else if (structural) renderInspector();
     schedule(k === 'text' ? 350 : 150);
-  }, ['mode', 'fills', 'style', 'shape', 'fill', 'pattern', 'colors']);
+  }, ['mode', 'fills', 'style', 'shape', 'fill', 'pattern', 'colors', 'edges', 'edgeSrc']);
   kf.querySelectorAll('[data-map]').forEach(s => s.onchange = () => { it.map[s.dataset.map] = s.value; schedule(0); });
   kf.querySelectorAll('[data-ink]').forEach(s => s.onchange = () => { it.inks[+s.dataset.ink].pen = s.value; schedule(0); });
-  kf.querySelectorAll('[data-pal]').forEach(s => s.onchange = () => { it.palette[+s.dataset.pal].pen = s.value; schedule(0); });
+  kf.querySelectorAll('[data-pal]').forEach(s => {
+    s.onchange = () => { it.palette[+s.dataset.pal].pen = s.value; schedule(0); };
+    const row = s.closest('.map-row') || s, k = +s.dataset.pal;
+    const on = () => { palHi = {it, k}; draw(); }, off = () => { if (palHi && palHi.k === k && document.activeElement !== s) { palHi = null; draw(); } };
+    row.addEventListener('mouseenter', on); row.addEventListener('mouseleave', off);
+    s.addEventListener('focus', on); s.addEventListener('blur', () => { if (palHi && palHi.k === k) { palHi = null; draw(); } });
+  });
 }
 function syncTransformFields(skip) {
   if (!sel) return;
@@ -2142,23 +2383,71 @@ function renderDoc() {
       ${fieldHTML(['num', 'simplify', 'Simplify tolerance', {unit: 'mm', step: 0.01, min: 0}], O)}
       ${fieldHTML(['num', 'minLen', 'Drop lines shorter than', {unit: 'mm', step: 0.05, min: 0}], O)}
     </div><p class="note">Joining keeps the pen down across tiny gaps, saving a lift each time.</p></div>
-    <div class="card"><h3>Project</h3>
-      <div class="row"><button class="btn sm" id="pSave">Save project…</button><button class="btn sm" id="pLoad">Open project…</button><span class="grow"></span><button class="btn sm danger" id="pClear">Clear all</button></div>
-      <p class="note">A project file keeps every object, its settings and your pens.</p></div>`;
+`;
   bindForm($('pf'), P, (k, st) => {
     if (k === 'preset') { const p = PAPERS.find(p => p[0] === P.preset); if (p && p[2]) { P.w = p[2]; P.h = p[3]; } renderDoc(); }
     saveSettings(); computePlan(); renderStatus(); renderPens(); draw();
   });
   bindForm($('of'), O, () => { saveSettings(); computePlan(); renderStatus(); renderPens(); draw(); });
-  $('pSave').onclick = saveProject; $('pLoad').onclick = () => $('projFile').click();
-  let clearArmed = null;
-  $('pClear').onclick = () => {   // two-step: the viewer has no confirm() dialog
-    const b = $('pClear');
-    if (!clearArmed) { b.textContent = 'Tap again to clear'; clearArmed = setTimeout(() => { clearArmed = null; b.textContent = 'Clear all'; }, 3000); return; }
-    clearTimeout(clearArmed); clearArmed = null; b.textContent = 'Clear all';
-    items = []; sel = null; renderObjects(); renderInspector(); schedule(0);
-  };
 }
+
+// =====================================================================
+//  servo wait calibration test
+// =====================================================================
+// Rows of short dashes, each row plotted with a different servo wait. Long vertical guide lines
+// (plotted first, with a generous wait) mark where every dash must start and end:
+//  · gap between the left guide and the dash start → pen lands late  (wait too short going down)
+//  · ink bridging from a dash end towards the next guide → pen lifts late (wait too short going up)
+//  · missing dot → the pen never touched the paper
+const SEG7 = {0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg'};
+function segText(str, x, y, h) {   // tiny 7-segment stroke text, baseline-left at x,y (Y up)
+  const w = h * 0.55, out = [];
+  for (const ch of str) {
+    if (ch === '.') { out.push([[x + w * 0.1, y], [x + w * 0.1, y + 0.35]]); x += w * 0.55; continue; }
+    const sg = SEG7[ch]; if (!sg) { x += w * 1.4; continue; }
+    const P = {a: [[0, 1], [1, 1]], b: [[1, 1], [1, .5]], c: [[1, .5], [1, 0]], d: [[1, 0], [0, 0]], e: [[0, 0], [0, .5]], f: [[0, .5], [0, 1]], g: [[0, .5], [1, .5]]};
+    const sh = ch === '1' ? -0.5 : 0;   // centre the 1 instead of leaving a hole on its left
+    for (const k of sg) out.push(P[k].map(([u, v]) => [x + (u + sh) * w, y + v * h]));
+    x += w * 1.45;
+  }
+  return out;
+}
+function servoTestPlan(waits) {
+  const U = usable(), safe = Math.max(0.6, 2 * Math.max(...waits)), rowH = 8, dash = 6, gap = 3.5, nD = 6, nDots = 4;
+  const x0 = U.x + 4, xd = x0 + 16, top = U.y + U.h - 6, bottom = top - (waits.length - 1) * rowH - 2;
+  const strokes = [];   // [points, wait]
+  // guides: a vertical line at every dash start and end, drawn top→bottom / bottom→top alternately
+  for (let i = 0; i < nD; i++) for (const e of [0, 1]) {
+    const x = xd + i * (dash + gap) + e * dash, a = [x, top + 3], b = [x, bottom - 1];
+    strokes.push([(i * 2 + e) & 1 ? [b, a] : [a, b], safe]);
+  }
+  waits.forEach((wt, r) => {
+    const y = top - r * rowH;
+    for (const l of segText(wt.toFixed(2), x0, y - 2, 4)) strokes.push([l, safe]);
+    for (let i = 0; i < nD; i++) { const xa = xd + i * (dash + gap); strokes.push([[[xa, y], [xa + dash, y]], wt]); }
+    for (let i = 0; i < nDots; i++) { const xa = xd + nD * (dash + gap) + 2 + i * 4; strokes.push([[[xa, y], [xa + 0.01, y]], wt]); }
+  });
+  const fits = xd + nD * (dash + gap) + 2 + nDots * 4 <= U.x + U.w && bottom - 1 >= U.y;
+  return {strokes, fits, size: [Math.round(nD * (dash + gap) + nDots * 4 + 22), Math.round(top + 3 - bottom + 1)]};
+}
+function servoTestGcode(waits) {
+  const M = S.machine, P = paperRect(), cx = P.x + P.w / 2, f = v => v.toFixed(M.decimals), X = x => f(M.mirrorX ? 2 * cx - x : x);
+  const up = `M3 S${M.up}`, tv = M.travelG0 ? 'G0' : 'G1', tf = M.travelG0 ? '' : ` F${M.travel}`;
+  const L = ['; Plot Studio — servo wait test', `; rows top→bottom: servo wait ${waits.join(', ')} s · pen up S${M.up}, down S${M.down}`,
+    '; read it: dash must touch BOTH guide lines; no ink between dashes; every dot present. Pick the first row that is clean.',
+    'G21', 'G90', up, 'G4 P1'];
+  if (M.header.trim()) L.push(...M.header.trim().split('\n'));
+  for (const [pts, wt] of servoTestPlan(waits).strokes) {
+    L.push(`${tv} X${X(pts[0][0])} Y${f(pts[0][1])}${tf}`, `M3 S${M.down}`); if (wt > 0) L.push(`G4 P${wt}`);
+    for (let i = 1; i < pts.length; i++) L.push(`G1 X${X(pts[i][0])} Y${f(pts[i][1])}${i === 1 ? ` F${M.feed}` : ''}`);
+    L.push(up); if (wt > 0) L.push(`G4 P${wt}`);
+  }
+  if (M.park) L.push(`${tv} X${X(M.parkX)} Y${f(M.parkY)}${tf}`);
+  if (M.footer.trim()) L.push(...M.footer.trim().split('\n'));
+  return L.join('\n') + '\n';
+}
+let servoPreview = null;   // strokes shown on the paper while the test card is hovered
+const parseWaits = t => [...new Set(String(t).split(/[\s,;]+/).map(Number).filter(v => Number.isFinite(v) && v >= 0 && v <= 5))].slice(0, 14);
 function renderMach() {
   const M = S.machine;
   $('machPane').innerHTML = `
@@ -2177,9 +2466,47 @@ function renderMach() {
       ${fieldHTML(['check', 'mirrorX', 'Mirror X in output (if your plots come out mirrored)'], M)}
       ${fieldHTML(['num', 'decimals', 'Decimals', {step: 1, min: 1, max: 4}], M)}<div></div>
       ${fieldHTML(['area', 'header', 'Extra start G-code'], M)}${fieldHTML(['area', 'footer', 'Extra end G-code'], M)}
-    </div><div class="row" style="margin-top:10px"><button class="btn sm" id="mReset">Reset to defaults</button></div></div>`;
+    </div><div class="row" style="margin-top:10px"><button class="btn sm" id="mReset">Reset to defaults</button></div></div>
+    <div class="card" id="stCard"><h3>Servo wait test <small>calibration plot</small></h3>
+      <p class="note" style="margin-top:0">Plots one row of dashes per wait time, between guide lines drawn with a long, safe wait. Uses your pen up/down, speeds and paper position (top-left of the margin).</p>
+      <div class="fields" style="margin-top:10px">
+        <label class="field full"><span>Wait times to test <em>s</em></span><input id="stWaits" class="mono" value="${esc(S.servoTestWaits || '0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5')}"></label>
+      </div>
+      <div class="note" id="stInfo"></div>
+      <svg viewBox="0 0 300 92" style="width:100%;margin-top:10px;border:1px solid var(--line);border-radius:9px;background:var(--paper)" aria-label="How to read the test">
+        <g stroke="#1b1b1f" stroke-width="1.6" stroke-linecap="round" fill="none">
+          <line x1="20" y1="8" x2="20" y2="80" stroke="#9aa2b1"/><line x1="60" y1="8" x2="60" y2="80" stroke="#9aa2b1"/>
+          <line x1="80" y1="8" x2="80" y2="80" stroke="#9aa2b1"/><line x1="120" y1="8" x2="120" y2="80" stroke="#9aa2b1"/>
+          <line x1="34" y1="22" x2="60" y2="22"/><line x1="94" y1="22" x2="120" y2="22"/>
+          <line x1="20" y1="44" x2="60" y2="44"/><path d="M60 44 L74 44" stroke-width="0.8"/><line x1="80" y1="44" x2="120" y2="44"/>
+          <line x1="20" y1="66" x2="60" y2="66"/><line x1="80" y1="66" x2="120" y2="66"/><circle cx="134" cy="66" r="1.3" fill="#1b1b1f"/><circle cx="146" cy="66" r="1.3" fill="#1b1b1f"/>
+        </g>
+        <g font-family="Inter, sans-serif" font-size="12.5" fill="#5f6878">
+          <text x="158" y="26">gap → lands late</text><text x="158" y="48">tail → lifts late</text><text x="158" y="70" fill="#1a8f5a" font-weight="600">clean ✓</text>
+        </g>
+      </svg>
+      <p class="note">Pick the <b>first row that is clean</b> (both guides touched, no tails, all dots), add a small margin (≈ +0.05 s) and enter it as Servo wait above.</p>
+      <div class="row" style="margin-top:10px"><button class="btn sm primary" id="stPlot">Plot test</button><button class="btn sm" id="stDl">Download G-code</button></div>
+    </div>`;
   for (const id of ['mf1', 'mf2', 'mf3']) bindForm($(id), M, k => { saveSettings(); if (k === 'bedW' || k === 'bedH') fitView(); computePlan(); renderStatus(); renderPens(); draw(); });
   $('mReset').onclick = () => { S.machine = structuredClone(DEFAULTS.machine); saveSettings(); renderMach(); computePlan(); renderStatus(); draw(); };
+  const waits = () => parseWaits($('stWaits').value), info = () => {
+    const w = waits(), t = w.length ? servoTestPlan(w) : null;
+    $('stInfo').innerHTML = !t ? '<span style="color:var(--danger)">Enter one or more wait times, e.g. 0, 0.1, 0.2</span>'
+      : `${w.length} rows · about ${t.size[0]} × ${t.size[1]} mm` + (t.fits ? '' : ' · <span style="color:var(--danger)">does not fit inside the paper margin — use fewer rows or a bigger paper</span>');
+    if (servoPreview) { servoPreview = t ? t.strokes.map(s => s[0]) : null; draw(); }
+  };
+  $('stWaits').oninput = () => { S.servoTestWaits = $('stWaits').value; saveSettings(); info(); };
+  const card = $('stCard');
+  card.onmouseenter = () => { const w = waits(); servoPreview = w.length ? servoTestPlan(w).strokes.map(s => s[0]) : null; draw(); };
+  card.onmouseleave = () => { servoPreview = null; draw(); };
+  $('stDl').onclick = () => { const w = waits(); if (w.length) download('servo-wait-test.gcode', servoTestGcode(w)); };
+  $('stPlot').onclick = async () => {
+    const w = waits(); if (!w.length) return;
+    if (!(server.st && server.st.connected)) return toast('Connect the plotter first — or download the G-code', true);
+    try { await api('run', {gcode: servoTestGcode(w)}); toast('Servo wait test sent to the plotter'); } catch (e) { toast('Could not start the test: ' + e.message, true); }
+  };
+  info();
 }
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
@@ -2229,8 +2556,7 @@ function addKind(kind) {
   items.push(it); select(it); schedule(0);
 }
 $('file').onchange = async e => { for (const f of e.target.files) await importFile(f); e.target.value = ''; };
-$('projFile').onchange = async e => { const f = e.target.files[0]; if (f) loadProject(await f.text()); e.target.value = ''; };
-$('btnOpen').onclick = () => $('file').click();
+$('projFile').onchange = async e => { const f = e.target.files[0]; if (f) { try { await loadProject(await f.text()); projTitle = f.name.replace(/\.plotstudio\.json$|\.json$/i, ''); renderProjName(); } catch (err) { toast('Could not open project: ' + err.message, true); } } e.target.value = ''; };
 ['dragenter', 'dragover'].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.add('drop'); }));
 ['dragleave', 'drop'].forEach(t => wrap.addEventListener(t, () => wrap.classList.remove('drop')));
 wrap.addEventListener('drop', async e => { e.preventDefault(); for (const f of e.dataTransfer.files) await importFile(f); });
@@ -2249,6 +2575,27 @@ function openMenu(menu, anchor) {
   setTimeout(() => addEventListener('click', () => menu.classList.remove('show'), {once: true}));
 }
 $('btnAdd').onclick = () => openMenu($('addMenu'), $('btnAdd'));
+const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
+$('fileMenu').querySelectorAll('kbd[data-k]').forEach(k => k.textContent = MOD + k.dataset.k);
+let projTitle = '';   // name of the opened/saved project file (else derived from the first object)
+const projLabel = () => projTitle || (items.length ? projName() : 'Untitled');
+function renderProjName() { const el = $('projName'); if (el) el.innerHTML = `<b>${esc(projLabel())}</b>${items.length ? ` · ${items.length} object${items.length > 1 ? 's' : ''}` : ''}`; }
+function newProject() {
+  const go = () => { items = []; sel = null; projTitle = ''; closeModal(); renderObjects(); renderInspector(); schedule(0); renderProjName(); toast('New project'); };
+  if (!items.length) return go();
+  openModal(`${modalHead('New project')}<div class="body"><p style="margin:0">Remove ${items.length > 1 ? `all ${items.length} objects` : 'the object'} from the paper? Pens, paper and machine settings stay as they are. Save first if you want to keep this project.</p>
+    <div class="row"><span class="grow"></span><button class="btn" id="npSave">Save first…</button><button class="btn" onclick="closeModal()">Cancel</button><button class="btn" id="npGo" style="color:#fff;background:var(--danger);border-color:transparent">Discard &amp; start new</button></div></div>`);
+  $('npGo').onclick = go; $('npSave').onclick = () => { saveProject(); };
+}
+const fileAct = {new: newProject, open: () => $('projFile').click(), save: () => saveProject(), import: () => $('file').click(), example: () => loadExample(), export: () => $('btnExport').click()};
+$('btnFile').onclick = () => openMenu($('fileMenu'), $('btnFile'));
+$('fileMenu').querySelectorAll('[data-f]').forEach(b => b.onclick = () => fileAct[b.dataset.f]());
+addEventListener('keydown', e => {   // app shortcuts work even while a field has focus
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const a = {s: 'save', o: 'open', e: 'export', i: 'import'}[e.key.toLowerCase()];
+  if (a) { e.preventDefault(); e.stopImmediatePropagation(); fileAct[a](); }
+}, true);
+setInterval(renderProjName, 1000); setTimeout(renderProjName, 0);
 $('addMenu').querySelectorAll('[data-add]').forEach(b => b.onclick = () => { const k = b.dataset.add; if (k === 'file') $('file').click(); else addKind(k); });
 
 // keyboard
@@ -2269,7 +2616,8 @@ addEventListener('keydown', e => {
 function saveProject() {
   const data = {app: 'plot-studio', version: 1, settings: S, pens,
     items: items.map(it => { const o = {}; for (const k in it) if (k[0] !== '_') o[k] = it[k]; return o; })};
-  download(slug(projName()) + '.plotstudio.json', JSON.stringify(data), 'application/json');
+  if (!projTitle) projTitle = projName();
+  download(slug(projTitle) + '.plotstudio.json', JSON.stringify(data), 'application/json'); renderProjName();
 }
 async function loadProject(text) {
   const d = JSON.parse(text);
@@ -2420,7 +2768,7 @@ async function loadExample() {
     {id: 'ppink', name: 'Pink', color: '#d6a3b2', width: 0.4, on: true, down: '', feed: ''}];
   await addImage('Great Wave (example)', EXAMPLE_SRC);
   const it = items[items.length - 1];
-  Object.assign(it.opts, {mode: 'colors', colors: 7, detail: 450, outline: true, fill: true, tone: true, spacing: 0.7, smooth: true});
+  Object.assign(it.opts, {mode: 'colors', colors: 7, detail: 1500, outline: true, fill: true, tone: true, spacing: 0.7, smooth: true});
   await updatePalette(it);
   for (const e of it.palette) {   // keep the three ink colours; paper, foam and blended edges stay unplotted
     const near = pens.slice(0, 3).map(p => [p, colorDist(p.color, e.hex)]).sort((a, b) => a[1] - b[1])[0];
