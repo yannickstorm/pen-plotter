@@ -1,8 +1,9 @@
 name: Plot Studio site
 
 # Builds the hosted Plot Studio (studio.html with the Great Wave example embedded),
-# deploys it to GitHub Pages from main, and publishes a release with the single-file
-# page attached when a v* tag is pushed or the workflow is run with a release tag.
+# deploys it to GitHub Pages from main, and publishes a release when a v* tag is pushed
+# or the workflow is run with a release tag. The release carries the single-file page
+# and plotter-bridge.tar.gz, the bridge for the Raspberry Pi with studio.html included.
 
 on:
   push:
@@ -35,6 +36,17 @@ jobs:
           python3 build_artifact.py _site/index.html
           # the page's "Save offline copy" button fetches this file
           cp _site/index.html _site/plot-studio.html
+      - name: Package the bridge
+        env:
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          mkdir -p dist/plotter-bridge
+          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md studio.html dist/plotter-bridge/
+          if [[ "$TAG" == v* ]]; then
+            sed -i "s/^VERSION = .*/VERSION = '${TAG#v}'/" dist/plotter-bridge/bridge.py
+          fi
+          chmod +x dist/plotter-bridge/install.sh dist/plotter-bridge/bridge.py
+          tar -czf dist/plotter-bridge.tar.gz -C dist plotter-bridge
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
@@ -42,6 +54,10 @@ jobs:
         with:
           name: plot-studio
           path: _site/plot-studio.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plotter-bridge
+          path: dist/plotter-bridge.tar.gz
 
   deploy:
     if: github.ref == 'refs/heads/main'
@@ -62,11 +78,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: plot-studio
+      - uses: actions/download-artifact@v4
+        with:
+          name: plotter-bridge
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
-          gh release create "$TAG" plot-studio.html \
+          gh release create "$TAG" plot-studio.html plotter-bridge.tar.gz \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Plot Studio $TAG" --generate-notes
+            --title "Pen Plotter $TAG" --generate-notes

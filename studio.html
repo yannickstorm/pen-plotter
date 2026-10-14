@@ -169,6 +169,10 @@
   .sim { flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; }
   .sim input { flex: 1; margin: 0; }
   .busy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); display: none; }
+  .hud.mt { right: 12px; top: 52px; flex-direction: column; align-items: flex-end; }
+  #mKm { font-size: 11.5px; color: var(--fg); min-width: 52px; text-align: center; align-self: center; }
+  #mHint { max-width: 280px; white-space: normal; text-align: right; font: 11.5px/1.4 var(--sans); }
+  #mHint.warn { color: var(--warn); }
   .busy.show { display: block; }
   .busy .pill { color: var(--accent); }
 
@@ -349,6 +353,15 @@
         </div>
       </div>
       <div class="busy" id="busy"><div class="pill">Processing…</div></div>
+      <div class="hud mt" id="mapTools" hidden>
+        <div class="tools">
+          <button id="mEdit" title="Move and zoom the map inside its frame (or double-click the map)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg>Move map</button>
+          <button id="mOut" title="Show a larger area">−</button>
+          <span class="mono" id="mKm" title="Area across the map"></span>
+          <button id="mIn" title="Zoom into the map">+</button>
+        </div>
+        <div class="pill" id="mHint" hidden></div>
+      </div>
       <div class="hud bl">
         <div class="tools">
           <button id="tTravel" title="Show pen-up travel moves"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3"><path d="M4 18L20 6"/></svg>Travel</button>
@@ -1723,6 +1736,8 @@ const GEO_DEF = {
     coast: true, green: false, piers: true, ticks: false, compass: false, scale: false, grid: false, markerShape: 'heart', markerSize: 1, markerLat: null, markerLon: null},
 };
 const isGeoStyle = id => id === 'topo' || id === 'city';
+const GEO_MARGIN = 1.35;   // download this much more than the visible circle, so the map can be moved and zoomed out a little without reloading
+const GEO_KM = {topo: [0.5, 100], city: [0.25, 15]};   // limits for the area across
 const fmtLat = (lat, lon) => `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}  ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'W'}`;
 const M_PER_DEG_LAT = 110574;
 const mPerDegLon = lat => 111320 * Math.cos(lat * D2R);
@@ -1814,8 +1829,8 @@ async function loadTile(url, onBytes) {
   catch (e) { if (/cancelled/.test(e.message)) throw e; geoCheck(); b = await geoGet(url + '?retry=1', {}, {firstMs: 25000, stallMs: 20000, onBytes}); }   // one retry per tile
   return await createImageBitmap(new Blob([b], {type: 'image/png'}));
 }
-async function fetchElevation(lat, lon, km, n = 320) {
-  const R = km * 500, cosl = Math.cos(lat * D2R);
+async function fetchElevation(lat, lon, km, n = 400) {
+  const R = km * 500 * GEO_MARGIN, cosl = Math.cos(lat * D2R);
   let z = Math.floor(Math.log2(156543.03 * cosl * n / (2 * R))); z = clamp(z, 3, 14);
   const res = 156543.03 * cosl / 2 ** z, N = 2 ** z;
   const gx = (lon + 180) / 360 * N * 256, sy = Math.log(Math.tan(Math.PI / 4 + lat * D2R / 2)), gy = (1 - sy / Math.PI) / 2 * N * 256;
@@ -1903,7 +1918,7 @@ const isGreen = t => /^(park|garden)$/.test(t.leisure || '') || GREEN_LANDUSE.te
 async function fetchOSM(lat, lon, km, want) {
   // Query a bounding box and clip returned geometry to it (out geom(bbox)): without the clip a big lake,
   // river or coastline relation comes back with its whole outline, which can take the server minutes.
-  const ky = M_PER_DEG_LAT, kx = mPerDegLon(lat), Rm = km * 500 * 1.08;
+  const ky = M_PER_DEG_LAT, kx = mPerDegLon(lat), Rm = km * 500 * GEO_MARGIN;
   const bb = [lat - Rm / ky, lon - Rm / kx, lat + Rm / ky, lon + Rm / kx].map(v => v.toFixed(6)).join(','), parts = [];
   if (want.roads) parts.push(`way["highway"];`);
   else if (want.trails) parts.push(`way["highway"~"^(path|footway|track|bridleway)$"];`);
@@ -1919,7 +1934,7 @@ async function fetchOSM(lat, lon, km, want) {
   const pt = p => [Math.round((p.lon - lon) * kx * 10) / 10, Math.round((p.lat - lat) * ky * 10) / 10];
   // clipped geometry has null entries where the way leaves the box: split there into separate pieces
   const pieces = g => { const out = []; let cur = []; for (const p of g) { if (p && p.lat != null) cur.push(pt(p)); else { if (cur.length > 1) out.push(cur); cur = []; } } if (cur.length > 1) out.push(cur); return out; };
-  const out = {R: km * 500, major: [], minor: [], service: [], paths: [], rail: [], river: [], waterRings: [], buildings: [],
+  const out = {R: Rm, major: [], minor: [], service: [], paths: [], rail: [], river: [], waterRings: [], buildings: [],
     coast: [], piers: [], greenRings: [], trails: [], peaks: [], huts: [], counts: {}};
   const waterWays = [], greenWays = [];
   for (const e of d.elements || []) {
@@ -1995,13 +2010,21 @@ const niceStep = raw => { const c = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250
 function geoFrame(it) {
   const o = it.opts, k = it.w / 210, topo = o.style === 'topo', D = topo ? it.geo.topo : it.geo.city;
   const cx = 0, cy = (148.5 - (topo ? 126 : 124)) * k, r = (topo ? 76 : 80) * k;
-  const Rshow = Math.min(o.km * 500, D.R), s = r / Rshow;   // zooming in only crops the stored data
+  const Rshow = o.km * 500, s = r / Rshow;   // parts outside the downloaded data stay empty until the reload arrives
   const ky = M_PER_DEG_LAT, kx = mPerDegLon(it.geo.lat);
   const dx = o.lon != null ? (o.lon - it.geo.lon) * kx : 0, dy = o.lat != null ? (o.lat - it.geo.lat) * ky : 0;
   return {k, cx, cy, r, s, Rshow, R: D.R, kx, ky, dx, dy,
     at: (x, y) => [cx + (x - dx) * s, cy + (y - dy) * s],
     ll: (lat, lon) => [cx + ((lon - it.geo.lon) * kx - dx) * s, cy + ((lat - it.geo.lat) * ky - dy) * s],
     toLL: (x, y) => [it.geo.lat + ((y - cy) / s + dy) / ky, it.geo.lon + ((x - cx) / s + dx) / kx]};
+}
+// is the visible circle inside the downloaded square? (for terrain also: is the grid still fine enough)
+function geoCovered(it) {
+  if (!it.geo || it.geo.kind !== it.opts.style || it.opts.lat == null) return true;
+  const F = geoFrame(it), D = it.opts.style === 'topo' ? it.geo.topo : it.geo.city, lim = D.R * 1.001;
+  if (Math.abs(F.dx) + F.Rshow > lim || Math.abs(F.dy) + F.Rshow > lim) return false;
+  if (it.opts.style === 'topo' && F.Rshow < D.R / (GEO_MARGIN * 2.5)) return false;   // zoomed far in: fetch finer terrain
+  return true;
 }
 // sheet (world) point → the item's local mm (inverse of xform)
 function worldToLocal(it, wx, wy) {
@@ -2089,9 +2112,10 @@ function markerOutside(it) {
   return (x - F.cx) ** 2 + (y - F.cy) ** 2 > F.r * F.r;
 }
 function geoMovedNote(it) {
+  if (!geoCovered(it)) return it._geoBusy ? 'Loading the area around the new view…'
+    : `<b style="color:var(--warn)">Outside the downloaded area</b> · ${HOSTED ? 'reload in the bridge copy' : 'loads by itself'}`;
   const F = geoFrame(it), d = Math.hypot(F.dx, F.dy);
-  if (d < 1) return '';
-  return `Moved ${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} from the downloaded area${d > 0.04 * F.R ? ' · <b style="color:var(--warn)">reload to fill the edge</b>' : ''}`;
+  return d < 1 ? '' : `Moved ${fmtDist(d)} · still inside the downloaded area`;
 }
 // click-on-the-sheet picking for the map centre and the marker
 let geoPick = null;
@@ -2106,7 +2130,7 @@ function finishGeoPick(wx, wy) {
   if ((x - F.cx) ** 2 + (y - F.cy) ** 2 > (F.r * 1.02) ** 2) { toast('That point is outside the map circle.', true); return; }
   const [lat, lon] = F.toLL(x, y);
   if (what === 'marker') { Object.assign(it.opts, {markerLat: lat, markerLon: lon, markerPlace: ''}); toast('Marker placed'); }
-  else { it.opts.lat = lat; it.opts.lon = lon; relabel(it); toast('Centre moved'); }
+  else { it.opts.lat = lat; it.opts.lon = lon; relabel(it); toast('Centre moved'); geoAutoCheck(it, 300); }
   if (sel !== it) select(it);
   renderInspector(); schedule(0);
 }
@@ -2126,11 +2150,15 @@ function buildTopoReal(it) {
   }
   if (lo > hi) { lo = 0; hi = 1; }
   const iv = o.interval > 0 ? o.interval : niceStep((hi - lo) / 42), L = {main: [], index: [], water: [], accent: []};
-  const f = new Float32Array(G.grid);
+  // contours in grid units are cached per level, so moving or zooming the map only re-projects them
+  if (!it._iso || it._iso.G !== G || it._iso.smooth !== !!o.smooth) it._iso = {G, smooth: !!o.smooth, f: new Float32Array(G.grid), m: new Map()};
+  const IC = it._iso;
   for (let e = Math.ceil(lo / iv) * iv; e <= hi; e += iv) {
     if (Math.abs(e - lo) < 1e-6) continue;
-    let ls = isoLines(f, G.n, G.n, e).map(l => l.map(toLocal));
-    if (o.smooth) ls = ls.map(l => l.length > 3 ? chaikin(l) : l);
+    const key = Math.round(e * 1000) / 1000;
+    let gl = IC.m.get(key);
+    if (!gl) { gl = isoLines(IC.f, G.n, G.n, e); if (o.smooth) gl = gl.map(l => l.length > 3 ? chaikin(l) : l); IC.m.set(key, gl); }
+    const ls = gl.map(l => l.map(toLocal));
     const isIdx = Math.abs(Math.round(e / (iv * 5)) * iv * 5 - e) < 1e-6;
     (isIdx ? L.index : L.main).push(...circleClip(ls, cx, cy, r));
   }
@@ -2203,14 +2231,14 @@ function dashLine(l, on, off) {
 
 // load (or reload) the data for a place-based style object, then relabel its text
 async function loadGeo(it) {
-  const o = it.opts;
+  const o = it.opts, prevPlace = it.geo ? it.geo.place : undefined;
   if (o.lat == null) throw new Error('Choose a place first.');
   if (o.style === 'topo') {
     geoStep(0); const topo = await fetchElevation(o.lat, o.lon, o.km);
     let water = null;
     geoStep(1);
     if (o.waterOSM || o.peaks || o.huts || o.trails) {   // one request for all the OpenStreetMap extras, so toggling them later needs no reload
-      try { water = await fetchOSM(o.lat, o.lon, o.km, {water: true, peaks: true, huts: true, trails: true}); }
+      try { water = await fetchOSM(o.lat, o.lon, o.km, {water: true, peaks: true, huts: true, trails: o.km <= 20}); }
       catch (e) { if (/cancelled/.test(e.message)) throw e; geoJob.steps[1].state = 'fail'; geoSay(e.message); toast('Contours loaded; water could not be added (' + e.message + ')', true); }
     } else { geoJob.steps[1].state = 'skip'; geoSay('turned off'); }
     it.geo = {kind: 'topo', lat: o.lat, lon: o.lon, km: o.km, place: o.place, topo, water};
@@ -2219,17 +2247,137 @@ async function loadGeo(it) {
     it.geo = {kind: 'city', lat: o.lat, lon: o.lon, km: o.km, place: o.place, city, buildings: o.buildings};
   }
   o.dataId = Date.now();
-  relabel(it);
+  relabel(it, prevPlace === undefined || prevPlace !== o.place);
 }
-function relabel(it) {
+// highest point inside the visible circle (the download reaches further than what is shown)
+function topoViewPeak(it) {
+  const G = it.geo.topo, F = geoFrame(it), R2 = F.Rshow * F.Rshow; let hi = -1e9;
+  for (let j = 0; j < G.n; j++) {
+    const my = G.R - j * G.step - F.dy; if (Math.abs(my) > F.Rshow) continue;
+    for (let i = 0; i < G.n; i++) { const mx = -G.R + i * G.step - F.dx; if (mx * mx + my * my <= R2 && G.grid[j * G.n + i] > hi) hi = G.grid[j * G.n + i]; }
+  }
+  return hi > -1e9 ? hi : G.peak.e;
+}
+// Labels follow the map (coordinates, summit height). A label is only rewritten while it still shows
+// text written here, so a label the user edited is left alone; force = a new place was chosen.
+function relabel(it, force = false) {
   const o = it.opts, ids = it.labels || [], T = ids.map(id => items.find(x => x.id === id)).filter(Boolean);
-  if (!T.length || !it.geo) return;
-  const name = (o.place || '').split(',')[0].trim();
+  if (!T.length || !it.geo || it.geo.kind !== o.style || o.lat == null) return;
+  const name = (o.place || '').split(',')[0].trim(), auto = it.autoText || (it.autoText = {}), coord = /\d\.\d{4}° [NS]/;
+  const set = (t, text, looksAuto) => {
+    if (!t || !text) return;
+    if (!(force || (auto[t.id] !== undefined ? t.opts.text === auto[t.id] : looksAuto && looksAuto.test(t.opts.text || '')))) return;
+    auto[t.id] = text;
+    if (t.opts.text !== text) { t.opts.text = text; t._geom = null; }
+  };
   if (o.style === 'topo') {
-    if (T[0] && name) T[0].opts.text = name.toUpperCase();
-    if (T[1]) T[1].opts.text = `${Math.round(it.geo.topo.peak.e).toLocaleString('de-DE')} m  ·  ${fmtLat(o.lat, o.lon)}`;
-  } else if (T[1]) T[1].opts.text = `${name ? name + '  ·  ' : ''}${fmtLat(o.lat, o.lon)}`;
-  for (const t of T) t._geom = null;
+    if (force && name) set(T[0], name.toUpperCase());
+    set(T[1], `${Math.round(topoViewPeak(it)).toLocaleString('de-DE')} m  ·  ${fmtLat(o.lat, o.lon)}`, coord);
+  } else set(T[1], `${name ? name + '  ·  ' : ''}${fmtLat(o.lat, o.lon)}`, coord);
+}
+
+// ---------- loading, and reloading by itself when the map is moved or zoomed past the downloaded area ----------
+const inspectorFocused = () => !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('#inspector'));
+function softInspector(it) {   // refresh the inspector without taking focus from a field being typed in
+  if (sel !== it) return;
+  if (!inspectorFocused()) { renderInspector(); return; }
+  const m = $('geoMsg'); if (m && it._geoMsg) m.textContent = it._geoMsg;
+  const mv = $('geoMoved'); if (mv) mv.innerHTML = geoMovedNote(it);
+  geoRender();
+}
+const geoViewKey = it => [it.opts.lat, it.opts.lon, it.opts.km].map(v => (+v).toFixed(5)).join();
+async function geoReload(it, auto = false) {
+  if (it._geoBusy) {   // a reload is running: a new place wins (cancel and start over), an automatic one waits its turn
+    if (!auto && geoJob.ac) { it._geoQueued = true; geoJob.ac.abort(); }
+    return;
+  }
+  it._geoBusy = true; it._geoMsg = auto ? 'Loading the area around the new view…' : 'Downloading map data…';
+  geoBegin(it, it.opts.style === 'topo' ? ['Terrain (elevation tiles)', 'Water, summits and trails (OpenStreetMap)', 'Drawing contours'] : ['Streets, water, parks and piers (OpenStreetMap)', 'Drawing the map']);
+  softInspector(it);
+  if (!auto) { const gp = $('geoProg'); if (gp) gp.scrollIntoView({block: 'nearest', behavior: 'smooth'}); }
+  try {
+    await loadGeo(it); geoStep(geoJob.steps.length - 1); geoSay('…'); await new Promise(r => setTimeout(r, 30));
+    it._geoMsg = ''; it._geoFail = '';
+    if (!auto) { const pn = (it.opts.place || '').split(',')[0].trim(); it.name = styleDef(it.opts.style).name + (pn ? ' · ' + pn : ''); }
+    toast(auto ? 'Map data around the new view loaded' : 'Map data loaded');
+  } catch (e) {
+    it._geoMsg = e.message; it._geoFail = geoViewKey(it);
+    if (!/cancelled/.test(e.message)) toast(e.message, true);
+  } finally { it._geoBusy = false; geoEnd(); }
+  softInspector(it); renderObjects(); schedule(0); draw();
+  if (it._geoQueued) { it._geoQueued = false; it._geoFail = ''; return geoReload(it); }
+  geoAutoCheck(it, 0);   // the view may have moved on while this was loading
+}
+let geoAutoTimer = null;
+function geoAutoCheck(it, delay = 800) {
+  clearTimeout(geoAutoTimer);
+  geoAutoTimer = setTimeout(() => {
+    draw();
+    if (!items.includes(it) || !isMapItem(it) || it._geoBusy || (drag && drag.mode === 'mappan') || geoCovered(it) || HOSTED) return;
+    if (it._geoFail === geoViewKey(it)) return;   // this exact view failed already: wait for the next change or a manual reload
+    geoReload(it, true);
+  }, delay);
+}
+
+// ---------- moving and zooming the map inside its frame, on the sheet ----------
+let mapEdit = null, liveMap = false, mapLiveTimer = null;
+const isMapItem = it => !!(it && it.kind === 'style' && isGeoStyle(it.opts.style) && it.geo && it.geo.kind === it.opts.style && it.opts.lat != null);
+function inMapBox(it, wx, wy) { const [x, y] = worldToLocal(it, wx, wy); return Math.abs(x) <= it.w / 2 && Math.abs(y) <= H(it) / 2; }
+function mapZoom(it, f, anchorLocal) {   // f < 1 zooms in; the point under anchorLocal (item mm) stays put
+  const o = it.opts, [lo, hi] = GEO_KM[o.style], km = Math.round(clamp(o.km * f, lo, hi) * 1000) / 1000;
+  if (Math.abs(km - o.km) < 1e-9) return;
+  const F = geoFrame(it), g = km / o.km;
+  if (anchorLocal) {
+    const mx = (anchorLocal[0] - F.cx) / F.s, my = (anchorLocal[1] - F.cy) / F.s;   // metres from the current centre
+    o.lat += my * (1 - g) / F.ky; o.lon += mx * (1 - g) / F.kx;
+  }
+  o.km = km;
+  mapLive(it);
+}
+function mapLive(it) {   // rebuild while the map moves (throttled, plan skipped), settle shortly after the last change
+  liveMap = true; scheduleLive(); syncGeoFields(it); draw();
+  clearTimeout(mapLiveTimer);
+  mapLiveTimer = setTimeout(() => { if (!(drag && drag.mode === 'mappan') && !pinch) mapSettle(it); }, 250);
+}
+function mapSettle(it) {
+  clearTimeout(mapLiveTimer); liveMap = false;
+  relabel(it); schedule(0); syncGeoFields(it); draw(); geoAutoCheck(it, 500);
+}
+function syncGeoFields(it) {   // keep the inspector's centre and area fields in step without re-rendering it
+  if (sel !== it) return;
+  for (const [key, v] of [['lat', (+it.opts.lat).toFixed(5)], ['lon', (+it.opts.lon).toFixed(5)], ['km', String(it.opts.km)]]) {
+    const inp = document.querySelector(`#kf [data-key="${key}"]`); if (inp && document.activeElement !== inp) inp.value = v;
+  }
+  const mv = $('geoMoved'); if (mv) mv.innerHTML = geoMovedNote(it);
+}
+const fmtDist = m => m < 1000 ? Math.round(m) + ' m' : (Math.round(m / 100) / 10) + ' km';
+let mapToolsState = '';
+function renderMapTools() {
+  const box = $('mapTools'); if (!box) return;
+  const it = isMapItem(sel) ? sel : null;
+  if (mapEdit && mapEdit !== it) mapEdit = null;
+  const hint = !it ? '' : it._geoBusy ? 'Loading map data around the view…' : !geoCovered(it) ? (HOSTED ? 'Outside the downloaded area · reload in the bridge copy' : 'Outside the downloaded area · loading in a moment')
+    : mapEdit === it ? 'Drag to move · scroll or pinch to zoom · Esc when done' : '';
+  const st = it ? [mapEdit === it, it.opts.km, hint].join('|') : '';
+  if (st === mapToolsState) return; mapToolsState = st;
+  box.hidden = !it; if (!it) return;
+  $('mEdit').classList.toggle('on', mapEdit === it);
+  $('mKm').textContent = fmtDist(it.opts.km * 1000);
+  $('mHint').textContent = hint; $('mHint').hidden = !hint;
+  $('mHint').classList.toggle('warn', !geoCovered(it) && !it._geoBusy);
+}
+function drawMapEdit(c, it) {   // screen space: the map circle and the downloaded square around it
+  const F = geoFrame(it), t = xform(it), D = it.opts.style === 'topo' ? it.geo.topo : it.geo.city, ok = geoCovered(it);
+  const cen = toPx(...t([F.cx, F.cy])), sq = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => toPx(...t(F.at(a * D.R, b * D.R))));
+  c.save();
+  c.setLineDash([6, 4]); c.lineWidth = 1.2; c.strokeStyle = css('--accent'); c.globalAlpha = 0.75;
+  c.beginPath(); sq.forEach((q, i) => i ? c.lineTo(...q) : c.moveTo(...q)); c.closePath(); c.stroke();
+  c.setLineDash([]); c.globalAlpha = 1;
+  c.font = '600 11px ' + css('--sans'); c.fillStyle = css('--accent');
+  c.fillText('downloaded area', Math.min(...sq.map(q => q[0])) + 6, Math.min(...sq.map(q => q[1])) + 15);
+  c.lineWidth = 2; c.strokeStyle = ok ? css('--accent') : css('--warn');
+  c.beginPath(); c.arc(cen[0], cen[1], F.r * V.k, 0, TAU); c.stroke();
+  c.restore();
 }
 
 
@@ -2874,7 +3022,8 @@ function scheduleLive() {
 async function runBuild() {
   if (building) { again = true; return; }
   building = true;
-  const slow = setTimeout(() => { if (!drag) $('busy').classList.add('show'); }, 120);
+  const slow = setTimeout(() => { if (!drag && !liveMap) $('busy').classList.add('show'); }, 120);
+  const quick = liveMap;   // the map is being moved: skip the plot plan until it settles
   await tick();
   try {
     for (const it of items) {
@@ -2894,13 +3043,14 @@ async function runBuild() {
       if (geomKey(it) !== it._geom.key) again = true;
       it._p2d = null;
     }
-    computePlan();
+    if (!quick) computePlan();
   } finally {
     clearTimeout(slow); $('busy').classList.remove('show'); building = false;
   }
-  renderObjects(); renderPens(); renderStatus(); draw();
+  if (!quick) { renderObjects(); renderPens(); renderStatus(); }
+  draw();
   if (sel && sel.kind === 'text') syncTransformFields();
-  if (sel && sel.kind === 'style' && sel._contour !== sel._contourShown && !(document.activeElement && document.activeElement.closest && document.activeElement.closest('#inspector'))) { sel._contourShown = sel._contour; renderInspector(); }
+  if (!quick && sel && sel.kind === 'style' && sel._contour !== sel._contourShown && !(document.activeElement && document.activeElement.closest && document.activeElement.closest('#inspector'))) { sel._contourShown = sel._contour; renderInspector(); }
   if (again) { again = false; schedule(0); }
 }
 
@@ -3206,7 +3356,8 @@ function render() {
   c.fillStyle = css('--accent'); c.beginPath(); c.arc(0, 0, 3 / k, 0, TAU); c.fill();
   // selection
   screenTransform();
-  if (sel && items.includes(sel)) {
+  if (sel && items.includes(sel) && mapEdit === sel && isMapItem(sel)) drawMapEdit(c, sel);
+  else if (sel && items.includes(sel)) {
     const cs = itemCorners(sel).map(p => toPx(...p));
     c.strokeStyle = css('--accent'); c.lineWidth = 1.2; c.setLineDash([5, 4]); c.beginPath(); cs.forEach((p, i) => i ? c.lineTo(...p) : c.moveTo(...p)); c.closePath(); c.stroke(); c.setLineDash([]);
     c.fillStyle = css('--panel'); c.lineWidth = 1.5;
@@ -3238,6 +3389,7 @@ function render() {
     c.restore();
   }
   $('zPct').textContent = Math.round(V.k / 2 * 100) + '%';
+  renderMapTools();
 }
 function applyItem(c, it, fx, fy = fx) {
   const a = it.rot * D2R;
@@ -3338,6 +3490,16 @@ cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
   V.auto = false; lastPtr = e.pointerType || 'mouse';
   if (geoPick && e.button === 0) { finishGeoPick(wx, wy); return; }
+  if (mapEdit && e.button === 0 && !(e.pointerType === 'touch' && touches.size)) {
+    if (mapEdit === sel && inMapBox(mapEdit, wx, wy)) {   // map mode: dragging moves the map inside its frame
+      if (e.pointerType === 'touch') touches.set(e.pointerId, [px, py]);
+      drag = {mode: 'mappan', it: mapEdit, wx, wy, px, py, lat: mapEdit.opts.lat, lon: mapEdit.opts.lon, moved: false};
+      cv.style.cursor = 'grabbing';
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+      return;
+    }
+    mapEdit = null; draw();   // clicked outside the map: leave map mode and handle the click as usual
+  }
   const ind = offMarks.find(m => Math.hypot(px - m.x, py - m.y) < 16);   // arrow to an object outside the view
   if (ind && e.button === 0) { select(ind.it); centreOn(ind.it); return; }
   if (e.pointerType === 'touch') {
@@ -3346,6 +3508,10 @@ cv.addEventListener('pointerdown', e => {
       if (drag && drag.moved && drag.mode !== 'pan') endDrag();
       const [a, b] = [...touches.values()];
       pinch = {d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], k: V.k, ox: V.ox, oy: V.oy};
+      if (mapEdit && mapEdit === sel) {
+        const it = mapEdit; if (drag && drag.mode === 'mappan') Object.assign(it.opts, {lat: drag.lat, lon: drag.lon});
+        pinch.map = {it, km: it.opts.km, lat: it.opts.lat, lon: it.opts.lon, mid: worldToLocal(it, ...toW(...pinch.m))};
+      }
       drag = null; draw(); return;
     }
   }
@@ -3376,11 +3542,13 @@ cv.addEventListener('pointermove', e => {
   if (touches.has(e.pointerId)) touches.set(e.pointerId, [px, py]);
   if (pinch && touches.size === 2) {
     const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (pinch.map) { const P = pinch.map; Object.assign(P.it.opts, {km: P.km, lat: P.lat, lon: P.lon}); mapZoom(P.it, pinch.d / Math.max(d, 1), P.mid); return; }
     const k = clamp(pinch.k * d / pinch.d, 0.3, 200), w = [(pinch.m[0] - pinch.ox) / pinch.k, (pinch.oy - pinch.m[1]) / pinch.k];
     V.k = k; V.ox = m[0] - w[0] * k; V.oy = m[1] + w[1] * k; V.auto = false; draw(); return;
   }
   if (!drag) {
     if (geoPick) { cv.style.cursor = 'crosshair'; return; }
+    if (mapEdit) { cv.style.cursor = mapEdit === sel && inMapBox(mapEdit, wx, wy) ? 'grab' : 'default'; return; }
     let cur = 'grab';
     if (offMarks.some(m => Math.hypot(px - m.x, py - m.y) < 16)) { cv.style.cursor = 'pointer'; return; }
     if (sel) {
@@ -3393,6 +3561,11 @@ cv.addEventListener('pointermove', e => {
   }
   drag.moved = true;
   const it = drag.it;
+  if (drag.mode === 'mappan') {   // the point under the pointer stays under it
+    const [x0, y0] = worldToLocal(it, drag.wx, drag.wy), [x1, y1] = worldToLocal(it, wx, wy), F = geoFrame(it);
+    it.opts.lat = drag.lat - (y1 - y0) / F.s / F.ky; it.opts.lon = drag.lon - (x1 - x0) / F.s / F.kx;
+    mapLive(it); return;
+  }
   if (drag.mode === 'pan') { V.ox = drag.ox + px - drag.px; V.oy = drag.oy + py - drag.py; V.auto = false; }
   else if (drag.mode === 'move') {
     let nx = drag.cx + wx - drag.wx, ny = drag.cy + wy - drag.wy;
@@ -3426,7 +3599,8 @@ function scaleDrag(it, wx, wy, fromCentre, snap) {
   }
 }
 function endDrag(e) {
-  if (e && touches.delete(e.pointerId) && pinch) { if (touches.size < 2) pinch = null; drag = null; return; }
+  if (e && touches.delete(e.pointerId) && pinch) { if (touches.size < 2) { if (pinch.map) mapSettle(pinch.map.it); pinch = null; } drag = null; return; }
+  if (drag && drag.mode === 'mappan') { const it = drag.it, moved = drag.moved; drag = null; cv.style.cursor = 'grab'; if (moved) mapSettle(it); return; }
   if (e && e.type === 'pointercancel' && drag && !drag.moved) { drag = null; return; }
   if (drag && drag.moved && drag.mode !== 'pan') {
     if (drag.mode === 'scale') { renderObjects(); schedule(0); } else { computePlan(); renderStatus(); renderPens(); draw(); renderObjects(); }
@@ -3440,10 +3614,22 @@ cv.addEventListener('pointercancel', endDrag);
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
+  if (mapEdit && mapEdit === sel && inMapBox(mapEdit, wx, wy)) {   // map mode: the wheel zooms the map, around the pointer
+    const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+    mapZoom(mapEdit, Math.exp(clamp(dy, -300, 300) * 0.0015), worldToLocal(mapEdit, wx, wy)); return;
+  }
   V.k = clamp(V.k * Math.exp(-e.deltaY * 0.0015), 0.3, 200);
   V.ox = px - wx * V.k; V.oy = py + wy * V.k; V.auto = false; draw();
 }, {passive: false});
-cv.addEventListener('dblclick', e => { const r = cv.getBoundingClientRect(); if (!hitItem(...toW(e.clientX - r.left, e.clientY - r.top))) fitView(); });
+cv.addEventListener('dblclick', e => {
+  const r = cv.getBoundingClientRect(), w = toW(e.clientX - r.left, e.clientY - r.top);
+  if (mapEdit) return;
+  const h = isMapItem(sel) && inMapBox(sel, ...w) ? sel : hitItem(...w);
+  if (!h) fitView(); else if (isMapItem(h)) { if (sel !== h) select(h); mapEdit = h; draw(); }
+});
+$('mEdit').onclick = () => { mapEdit = mapEdit ? null : (isMapItem(sel) ? sel : null); draw(); };
+$('mIn').onclick = () => { if (isMapItem(sel)) mapZoom(sel, 0.8); };
+$('mOut').onclick = () => { if (isMapItem(sel)) mapZoom(sel, 1.25); };
 const zoomBy = f => { const cx = V.W / 2, cy = V.H / 2, [wx, wy] = toW(cx, cy); V.k = clamp(V.k * f, 0.3, 200); V.ox = cx - wx * V.k; V.oy = cy + wy * V.k; V.auto = false; draw(); };
 $('zIn').onclick = () => zoomBy(1.25); $('zOut').onclick = () => zoomBy(0.8); $('zFit').onclick = fitView;
 for (const [id, key] of [['tTravel', 'travel'], ['tSource', 'source'], ['tWidth', 'width']]) $(id).onclick = () => { show[key] = !show[key]; $(id).classList.toggle('on', show[key]); draw(); };
@@ -3695,7 +3881,7 @@ function mapHTML(it) {
       <div class="row" style="grid-column:1/-1"><input class="input grow" id="geoQ" style="flex:1;min-width:0" placeholder="${st.id === 'topo' ? 'Zugspitze, or 47.4211, 10.9853' : 'Hamburg Altona, or 53.55, 9.93'}" value="${esc(o.place || '')}"><button type="button" class="btn sm" id="geoFind">Find</button></div>
       <div class="list" id="geoRes" style="grid-column:1/-1"></div>
       <div class="row" style="grid-column:1/-1"><button type="button" class="btn sm primary" id="geoLoad" ${o.lat == null || it._geoBusy ? 'disabled' : ''}>${has ? 'Reload map data' : 'Load map data'}</button>
-        <span class="note" id="geoMsg" style="margin:0;flex:1;min-width:0">${it._geoMsg ? esc(it._geoMsg) : has ? `${esc((it.geo.place || '').split(',')[0])} · ${it.geo.km} km loaded${st.id === 'topo' && it._contour ? ` · contours every ${it._contour} m` : ''}${o.km > it.geo.km + 1e-9 ? ' · reload to fill the larger area' : ''}` : o.lat != null ? fmtLat(o.lat, o.lon) : 'Showing sample data until a place is loaded.'}</span></div>
+        <span class="note" id="geoMsg" style="margin:0;flex:1;min-width:0">${it._geoMsg ? esc(it._geoMsg) : has ? `${esc((it.geo.place || '').split(',')[0])} · ${it.geo.km} km loaded${st.id === 'topo' && it._contour ? ` · contours every ${it._contour} m` : ''}${!geoCovered(it) ? (it._geoBusy ? ' · loading the new area…' : ' · outside the downloaded area') : ''}` : o.lat != null ? fmtLat(o.lat, o.lon) : 'Showing sample data until a place is loaded.'}</span></div>
       <div class="geoprog" id="geoProg" style="grid-column:1/-1" hidden></div>
       ${o.lat != null ? `<label class="field"><span>Centre latitude</span><input type="number" data-key="lat" value="${(+o.lat).toFixed(5)}" step="0.0005"></label>
       <label class="field"><span>Centre longitude</span><input type="number" data-key="lon" value="${(+o.lon).toFixed(5)}" step="0.0005"></label>
@@ -3789,23 +3975,16 @@ function renderInspector() {
       if (JSON.stringify(it.opts.roles) !== before) renderPens();
       if (k === 'markerShape') renderInspector();
     }
-    else if (it.kind === 'style' && (k === 'lat' || k === 'lon')) { relabel(it); const m = $('geoMoved'); if (m && it.geo && it.geo.kind === it.opts.style) m.innerHTML = geoMovedNote(it); }
+    else if (it.kind === 'style' && (k === 'lat' || k === 'lon' || k === 'km')) {
+      relabel(it); const m = $('geoMoved'); if (m && isMapItem(it)) m.innerHTML = geoMovedNote(it);
+      if (isMapItem(it)) geoAutoCheck(it);
+    }
     else if (structural) renderInspector();
     schedule(k === 'text' ? 350 : 150);
   }, ['mode', 'fills', 'style', 'shape', 'fill', 'pattern', 'colors', 'edges', 'edgeSrc', 'palette']);
   kf.querySelectorAll('[data-role]').forEach(s => s.onchange = () => { it.opts.roles[s.dataset.role] = s.value; schedule(0); });
   if ($('geoQ')) {
-    const load = async () => {
-      if (it._geoBusy) return;
-      it._geoBusy = true; it._geoMsg = 'Downloading map data…';
-      geoBegin(it, it.opts.style === 'topo' ? ['Terrain (elevation tiles)', 'Water, summits and trails (OpenStreetMap)', 'Drawing contours'] : ['Streets, water, parks and piers (OpenStreetMap)', 'Drawing the map']);
-      renderInspector();
-      { const gp = $('geoProg'); if (gp) gp.scrollIntoView({block: 'nearest', behavior: 'smooth'}); }
-      try { await loadGeo(it); geoStep(geoJob.steps.length - 1); geoSay('…'); await new Promise(r => setTimeout(r, 30)); it._geoMsg = ''; { const pn = (it.opts.place || '').split(',')[0].trim(); it.name = styleDef(it.opts.style).name + (pn ? ' · ' + pn : ''); } toast('Map data loaded'); }
-      catch (e) { it._geoMsg = e.message; toast(e.message, true); }
-      finally { it._geoBusy = false; geoEnd(); }
-      renderInspector(); renderObjects(); schedule(0);
-    };
+    const load = () => geoReload(it);
     const find = async () => {
       const v = $('geoQ').value.trim(); if (!v) return;
       const ll = parseLatLon(v);
@@ -4137,6 +4316,7 @@ function openMenu(menu, anchor) {
 }
 addEventListener('pointerdown', e => { if (openMenuEl && !openMenuEl.contains(e.target) && !openMenuAnchor.contains(e.target)) closeMenu(); }, true);
 addEventListener('keydown', e => { if (e.key === 'Escape' && openMenuEl) { closeMenu(); e.stopImmediatePropagation(); } }, true);
+addEventListener('keydown', e => { if (e.key === 'Escape' && mapEdit && !geoPick) { mapEdit = null; draw(); e.stopImmediatePropagation(); } }, true);
 addEventListener('keydown', e => { if (e.key === 'Escape' && geoPick) { geoPick = null; cv.style.cursor = ''; toast('Picking cancelled'); e.stopImmediatePropagation(); } }, true);
 addEventListener('resize', closeMenu);
 addEventListener('scroll', e => { if (openMenuEl && !openMenuEl.contains(e.target)) closeMenu(); }, true);
