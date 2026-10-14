@@ -10,16 +10,22 @@ Only Python 3 is needed on Linux and macOS (no packages). On Windows, run `pip i
 
 ## Raspberry Pi setup
 
-1. Get the repo onto the Pi: `git clone https://github.com/yannickstorm/pen-plotter` (or copy it over with `scp -r`).
+1. Download the latest release onto the Pi (it contains the bridge and `studio.html`):
+
+   ```
+   curl -L https://github.com/yannickstorm/pen-plotter/releases/latest/download/plotter-bridge.tar.gz | tar xz
+   ```
+
+   Or use the repo: `git clone https://github.com/yannickstorm/pen-plotter` and work in `pen-plotter/bridge`.
 2. Plug the plotter into the Pi's USB port.
 3. Install it as a service that starts on boot:
 
    ```
-   cd pen-plotter/bridge
+   cd plotter-bridge          # pen-plotter/bridge for a clone
    sudo ./install.sh
    ```
 
-   This copies `bridge.py`, `monitor.html` and the repo's `studio.html` to `/opt/plotter-bridge`. To update later: `git pull`, then run `sudo ./install.sh` again.
+   This copies `bridge.py`, `monitor.html` and `studio.html` to `/opt/plotter-bridge`. To update later: download the new release (or `git pull`), then run `sudo ./install.sh` again.
 
    Add options at the end, e.g. `sudo ./install.sh --token s3cret --baud 115200`.
 4. Open `http://raspberrypi.local:8080/` (use the Pi's IP address if `.local` names don't work on your network).
