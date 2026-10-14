@@ -66,6 +66,7 @@ jobs:
           ls -R _site | head -40
       - name: Build the release page
         run: |
+          mkdir -p dist
           python3 build_artifact.py dist/plot-studio.html
           sed -i '1i <!doctype html>\n<meta charset="utf-8">' dist/plot-studio.html
       - name: Package the bridge
