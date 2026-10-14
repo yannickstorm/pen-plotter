@@ -4,6 +4,7 @@
 Run:  python3 tests/test_studio.py        (needs google-chrome and the `websockets` package)
 """
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -261,9 +262,179 @@ async def phone():
         await b.close()
 
 
+# ---------- plotting on the demo plotter: live view, crash, recovery, resume ----------
+WAIT = """(async (cond, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (eval(cond)) return true; await new Promise(r => setTimeout(r, 40)); } return false; })"""
+# every pen-down move of the job must be on the demo plotter's paper (it lays ink where the pen physically went)
+INK_COVERS = """(async () => {
+  const T = __studio, d = (await T.usb().api('job')).job, I = T.demo().ink, key = (a, b, c, e) => [a, b, c, e].map(v => v.toFixed(2)).join();
+  const have = new Set(); for (let i = 0; i < I.length; i += 4) have.add(key(I[i], I[i + 1], I[i + 2], I[i + 3]));
+  let miss = 0, n = 0; const M = d.moves;
+  for (let i = 1; i < M.length; i++) if (M[i][3]) { n++; if (!have.has(key(M[i - 1][1], M[i - 1][2], M[i][1], M[i][2]))) miss++; }
+  return {n, miss};
+})()"""
+
+
+async def wait(b, cond, ms=20000):
+    return await b.js(f"{WAIT}({cond!r}, {ms})")
+
+
+async def click(b, sel):
+    """Click an element the way a person does (real mouse events at its centre), once it is there and enabled."""
+    await wait(b, f"(e => e && !e.disabled)(document.querySelector({sel!r}))", 8000)
+    r = await b.js(f"(() => {{ const e = document.querySelector({sel!r}); if (!e) return null; e.scrollIntoView({{block: 'center'}}); const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }})()")
+    if not r:
+        raise RuntimeError(f"nothing to click: {sel}")
+    await b.mouse("mouseMoved", *r)
+    await b.mouse("mousePressed", *r, buttons=1)
+    await b.mouse("mouseReleased", *r)
+    await asyncio.sleep(0.15)
+
+
+async def plot_until_crash(b, frac):
+    await wait(b, f"__studio.curJob() && __studio.curJob().running && __studio.curJob().progress > {frac}")
+    # crash with the pen down, part-way through a stroke
+    await wait(b, "__studio.demo().cur && __studio.demo().cur.down && __studio.demo().cur.t > 0.3")
+
+
+async def plotting():
+    print("plotting on the demo plotter")
+    b = await Browser(1400, 900).start()
+    base = serve()
+    try:
+        await b.goto(base + "/studio.html")
+        # the studio's resume rules match the bridge's
+        sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+        sys.path.insert(0, str(Path(__file__).parent))
+        import bridge as B
+        from test_bridge import make_job
+        g, _ = make_job(12, 4, seed=3)
+        lines = B.clean_lines(g)
+        js = await b.js(f"""(() => {{ const L = __studio.cleanLines({json.dumps(g)});
+          return {{lines: L, starts: __studio.strokeStarts(L, 0), points: L.map((_, d) => __studio.resumePoint(L, d, 0)), pre: __studio.resumePreamble(L, 30, 0)}}; }})()""")
+        check(js["lines"] == lines, "cleaned lines match the bridge")
+        check(js["starts"] == B.stroke_starts(lines, 0), "stroke starts match the bridge")
+        check(js["points"] == [B.resume_point(lines, d, 0) for d in range(len(lines))], "resume points match the bridge for every line")
+        check(js["pre"] == B.resume_preamble(lines, 30, 0), f"resume preamble matches the bridge {js['pre']}")
+
+        await b.js("__studio.addKind('pattern')")
+        await b.js(SETTLE)
+        # workspaces: each shows its own panels; the design can't be edited from Plot
+        await click(b, "#wsSeg [data-ws=machine]")
+        vis = await b.js("[...document.querySelectorAll('.app > [data-ws]')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.dataset.ws)")
+        check(vis == ["machine", "machine"], f"Machine shows only machine panels {vis}")
+        check(await b.js("getComputedStyle(document.getElementById('btnExport')).display === 'none'"), "design-only buttons are hidden outside Design")
+        await click(b, "[data-c=demo]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo plotter connects")
+        await click(b, "[data-c=speed][data-v='50']")
+        await click(b, "#wsSeg [data-ws=plot]")
+        check(await b.js("__studio.ws()") == "plot", "Plot workspace")
+        await click(b, "[data-p=go]")
+        await plot_until_crash(b, 0.3)
+        before = await b.js("__studio.curJob().done")
+        await b.js("__studio.demo().crash()")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().state === 'interrupted'", 5000), "power glitch mid-plot → interrupted")
+        j = await b.js("__studio.curJob()")
+        check(j["resumable"] and j["done"] >= before, f"saved progress kept ({j['done']} of {j['total']} lines)")
+        await wait(b, "__studio.live.strokes && document.getElementById('recCard').textContent.includes('stopped at')", 5000)
+        rec = await b.js("""(() => { const c = document.getElementById('recCard'); return {shown: !c.hidden, text: c.textContent,
+          start: __studio.live.strokes.includes(__studio.curJob().resume_at) || __studio.curJob().resume_at === __studio.curJob().done}; })()""")
+        check(rec["shown"] and "controller reset" in rec["text"], "recovery card explains what happened")
+        check("stopped at" in rec["text"], f"and warns that the controller lost its position: {rec['text'][:400]!r}")
+        check(rec["start"] and j["resume_at"] <= j["done"], f"resumes at the start of the interrupted stroke (line {j['resume_at']}, done {j['done']})")
+        await click(b, "[data-p=rhome]")
+        check(await wait(b, "Math.hypot(...__studio.server().st.pos.slice(0, 2)) < 1e-6 && __studio.demo().offset[0] === 0", 5000), "Home puts it back at 0,0")
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "[data-p=rgo]")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed plot finishes")
+        ink = await b.js(INK_COVERS)
+        check(ink["n"] > 50 and ink["miss"] == 0, f"every line of the plan is on the paper ({ink['n']} moves, {ink['miss']} missing)")
+        check(await b.js("__studio.session().done.size === 1"), "the pen is marked done")
+
+        # the tab closes mid-plot: the design and the plot come back
+        await click(b, "[data-p=redo]")
+        await b.js("__studio.demo().newSheet()")
+        await click(b, "[data-p=go]")
+        await plot_until_crash(b, 0.25)
+        await b.js("__studio.usb().pause()")     # hold still while the demo plotter's paper is saved
+        await asyncio.sleep(3.5)
+        done = await b.js("__studio.curJob().done")
+        await b.goto(base + "/studio.html")
+        check(await wait(b, "__studio.booted()", 10000), "reloaded")
+        check(await b.js("__studio.items().length === 1 && __studio.items()[0].kind === 'pattern'"), "the design is restored")
+        j = await b.js("__studio.curJob()")
+        check(j and j["offline"] and j["resumable"] and j["done"] >= done - 5, f"the unfinished plot is found in this browser ({j and j['done']} lines)")
+        check(await b.js("__studio.ws()") == "plot", "and opens in Plot")
+        await click(b, "[data-p=cdemo]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected && __studio.curJob().resumable && !__studio.curJob().offline", 8000), "reconnecting adopts it")
+        await wait(b, "__studio.live.strokes", 5000)
+        await click(b, "[data-p=rhome]")
+        await wait(b, "__studio.demo().offset[0] === 0", 5000)
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "[data-p=rgo]")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed after the reload, and finished")
+        ink = await b.js(INK_COVERS)
+        check(ink["miss"] == 0, f"every line on the paper after the reload ({ink['miss']} missing)")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def on_bridge():
+    """The studio served by a Plotter Bridge (running here on a simulated GRBL): plot, crash, recover, resume."""
+    print("plotting through the Plotter Bridge")
+    import tempfile
+    import threading
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import FakeGrbl, new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.12)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
+        check(await wait(b, "__studio.conn().kind === 'bridge' && __studio.server().st && __studio.server().st.connected", 8000), "the studio on the bridge connects to it by itself")
+        await b.js("__studio.addKind('star')")
+        await b.js(SETTLE)
+        await click(b, "#wsSeg [data-ws=plot]")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().running && __studio.curJob().progress > 0.25"), "plotting through the bridge, progress shows live")
+        check(await wait(b, "__studio.live.moves && __studio.live.moves.length > 10", 5000), "the live view has the job's moves from the bridge")
+        fake = FakeGrbl.instances[-1]
+        for _ in range(400):   # crash while the star is being drawn
+            if fake.cur and fake.cur[3] and len(fake.ink) >= 3:
+                break
+            await asyncio.sleep(0.01)
+        drawn = len(fake.ink)
+        fake.crash()
+        check(await wait(b, "__studio.curJob().state === 'interrupted' && document.getElementById('recCard').textContent.includes('stopped at')", 8000),
+              "controller reset → the recovery card, with the position warning")
+        await click(b, "[data-p=rhome]")
+        await wait(b, "Math.hypot(...__studio.server().st.pos.slice(0, 2)) < 1e-6", 5000)
+        await click(b, "[data-p=rgo]")
+        j = await b.js("__studio.curJob()")
+        check(j["resume_from"] < j["total"] and drawn >= 3, f"crashed mid-stroke ({drawn} segments drawn), resumed from the stroke's start (line {j['resume_from'] + 1})")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed through the bridge and finished")
+        M = P.job["moves"]
+        have = {tuple(round(v, 2) for v in seg) for seg in fake.ink}
+        miss = [i for i in range(1, len(M)) if M[i][3] and (round(M[i - 1][1], 2), round(M[i - 1][2], 2), round(M[i][1], 2), round(M[i][2], 2)) not in have]
+        check(not miss, f"every line is on the paper ({len(miss)} missing)")
+        check(await b.js("__studio.session().done.size === 1"), "the pen is marked done")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+        srv.shutdown()
+        P.disconnect()
+
+
 async def main():
-    await desktop()
-    await phone()
+    only = sys.argv[1:]
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge)):
+        if not only or name in only:
+            await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
     sys.exit(1 if failures else 0)
 

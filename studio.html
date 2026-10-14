@@ -65,7 +65,6 @@
   .topbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .topbar .spacer { flex: 1; }
-  .topbar:has(#btnPlot[hidden]) #btnExport { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }   /* export is the final step when no plotter is connected */
   .filebar { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding-left: 14px; border-left: 1px solid var(--line); min-width: 0; }
   .filebar .btn svg.chev { width: 12px; height: 12px; opacity: .6; }
   .projname { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
@@ -112,6 +111,54 @@
   .btn.icon { width: 28px; padding: 0; }
   .btn.block { width: 100%; }
   .btn svg { width: 15px; height: 15px; flex: none; }
+
+  /* ---------- workspaces: Design (make the drawing) · Machine (set up and drive the plotter) · Plot (run and watch) ---------- */
+  .wsseg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--panel-2); border: 1px solid var(--line); margin-left: 6px; }
+  .wsseg button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; font-size: 12.5px; font-weight: 600; }
+  .wsseg button:hover { color: var(--fg); }
+  .wsseg button.on { background: var(--panel); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+  .wsseg button svg { width: 15px; height: 15px; }
+  .wsseg button i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: none; }
+  .wsseg button.live i { display: block; animation: pulse 1s infinite; }
+  .wsseg button.warn i { display: block; background: var(--warn); }
+  body:not([data-ws=design]) .app > [data-ws=design], body:not([data-ws=machine]) .app > [data-ws=machine], body:not([data-ws=plot]) .app > [data-ws=plot],
+  body:not([data-ws=design]) [data-only=design] { display: none !important; }
+  .app > .left { grid-column: 1; grid-row: 1; } .app > .stage { grid-column: 2; grid-row: 1; } .app > .right { grid-column: 3; grid-row: 1; }
+  body:not([data-ws=design]) .app { grid-template-columns: 320px minmax(0, 1fr) 330px; }
+  .left[data-ws], .right[data-ws] { overflow: auto; }
+  .ws-panes { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+  .kv { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .kv > div { padding: 7px 9px; border-radius: 9px; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
+  .kv span { display: block; font-size: 10.5px; color: var(--muted); }
+  .kv b { font: 500 13px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .bigbar { height: 9px; border-radius: 999px; background: var(--raise); overflow: hidden; margin: 10px 0; }
+  .bigbar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #ff7ab6); transition: width .35s; }
+  .bigbar.bad > div { background: var(--danger); } .bigbar.ok > div { background: var(--ok); }
+  .livehead { display: flex; align-items: baseline; gap: 10px; }
+  .livehead b { font-size: 26px; font-weight: 650; letter-spacing: -.02em; font-family: var(--mono); }
+  .livehead span { color: var(--muted); font-size: 12px; }
+  .jog { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 5px; }
+  .jog .btn { height: 100%; padding: 0; border-radius: 10px; font-size: 15px; }
+  .jog .btn.mid { font-size: 10.5px; color: var(--muted); }
+  .console { height: 210px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; font: 11.5px/1.55 var(--mono); }
+  .console div { white-space: pre-wrap; word-break: break-word; color: var(--muted); }
+  .console .tx { color: var(--accent); } .console .err { color: var(--danger); } .console .sys { color: var(--fg); }
+  .console.short { height: 150px; }
+  .card.recover { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 12%, transparent); }
+  .rsteps { margin: 10px 0 0; padding: 0; list-style: none; counter-reset: st; display: flex; flex-direction: column; gap: 10px; }
+  .rsteps li { counter-increment: st; display: grid; grid-template-columns: 20px 1fr; gap: 8px; font-size: 12.5px; }
+  .rsteps li::before { content: counter(st); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--sans); background: var(--raise); color: var(--muted); }
+  .rsteps .row { margin-top: 6px; }
+  .rsub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .rsub b { font: 500 12px var(--mono); color: var(--fg); }
+  .ok-t { color: var(--ok); } .warn-t { color: var(--warn); } .bad-t { color: var(--danger); }
+  .picker { display: inline-flex; align-items: center; gap: 6px; }
+  .picker .btn { width: 30px; padding: 0; }
+  .picker span { font: 500 12px var(--mono); min-width: 104px; text-align: center; }
+  .step .st { font: 500 11px var(--mono); color: var(--muted); white-space: nowrap; }
+  .step.int { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+  .step.skip { opacity: .5; }
+  .demo-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
   /* ---------- layout ---------- */
   .app { display: grid; grid-template-columns: 270px minmax(0, 1fr) 330px; min-height: 0; }
@@ -283,7 +330,10 @@
   @media (max-width: 1100px) {
     html, body { height: auto; }
     body { min-height: 100%; overflow: visible; grid-template-rows: auto auto; }
-    .app { grid-template-columns: 1fr; min-height: auto; }
+    .app, body:not([data-ws=design]) .app { grid-template-columns: 1fr; min-height: auto; }
+    .app > .left, .app > .stage, .app > .right { grid-column: 1; grid-row: auto; }
+    .left[data-ws], .right[data-ws] { overflow: visible; }
+    body:not([data-ws=design]) .stage { height: 52vh; height: 52svh; min-height: 300px; }
     .left > .sect { flex: none; }
     .stage { height: 70vh; height: 70svh; min-height: 380px; order: -1; }
     .left, .right { border: 0; border-top: 1px solid var(--line); overflow: visible; }
@@ -295,13 +345,15 @@
   }
   @media (max-width: 560px) {
     .topbar { flex-wrap: wrap; padding: 10px 16px; }
+    .wsseg { order: 10; width: 100%; margin: 0; } .wsseg button { flex: 1; justify-content: center; }
+    #themeSeg { display: none; }
     #mchip { padding: 6px 10px; }
     .projname { display: none; }
     .filebar { margin-left: 4px; padding-left: 8px; }
   }
 </style>
 </head>
-<body>
+<body data-ws="design">
 <header class="topbar">
   <div class="brand">
     <div class="brand-mark">
@@ -309,22 +361,25 @@
     </div>
     <div><h1>Plot Studio</h1><small>Images &amp; vectors → pen-plotter G-code</small></div>
   </div>
-  <div class="filebar">
+  <nav class="wsseg" id="wsSeg" aria-label="Workspace">
+    <button type="button" data-ws="design" class="on" title="Make the drawing: objects, pens, paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>Design</button>
+    <button type="button" data-ws="machine" title="Connect, move and set up the plotter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Machine</button>
+    <button type="button" data-ws="plot" title="Plot pen by pen and watch it live"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>Plot<i></i></button>
+  </nav>
+  <div class="filebar" data-only="design">
     <button class="btn ghost" id="btnFile" aria-haspopup="menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>File<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <span class="histbtns"><button class="btn ghost icon" id="btnUndo" disabled title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button><button class="btn ghost icon" id="btnRedo" disabled title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button></span>
     <span class="projname" id="projName" title="Current project"></span>
   </div>
   <span class="spacer"></span>
   <div class="themeseg" id="themeSeg" role="radiogroup" aria-label="Colour theme"><button type="button" data-th="light" title="Light theme" aria-label="Light theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><button type="button" data-th="auto" title="Follow system" aria-label="Follow system theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><button type="button" data-th="dark" title="Dark theme" aria-label="Dark theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div>
-  <a href="/" class="btn ghost" id="lnkCtl" target="_blank" rel="noopener" hidden>Monitor</a>
-  <button class="chip" id="mchip" type="button" title="Plotter connection"><i></i><span id="mstate">Connect plotter</span></button>
-  <button class="btn" id="btnExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Export</button>
-  <button class="btn primary" id="btnPlot" hidden><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>Plot</button>
+  <button class="chip" id="mchip" type="button" title="Plotter status"><i></i><span id="mstate">Connect plotter</span></button>
+  <button class="btn" id="btnExport" data-only="design"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Export</button>
 </header>
 
 <div class="app">
   <!-- ================= left: objects + pens ================= -->
-  <aside class="left">
+  <aside class="left" data-ws="design">
     <div class="sect">
       <div class="sect-h"><span class="grow">Objects</span>
         <button class="btn sm" id="btnAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add</button>
@@ -339,6 +394,18 @@
       <p class="note">Each pen is plotted as its own pass. Swap pens between passes.</p>
     </div>
   </aside>
+  <!-- machine: connection, manual control, console -->
+  <aside class="left" data-ws="machine"><div class="ws-panes">
+    <div class="card" id="connCard"></div>
+    <div class="card" id="moveCard"></div>
+    <div class="card"><h3>Console <small id="conInfo"></small></h3><div class="console" id="conLog"></div>
+      <form class="row" id="conForm" style="margin-top:8px;flex-wrap:nowrap"><input class="input mono grow" id="conIn" placeholder="G-code or $ command" autocomplete="off" spellcheck="false"><button class="btn sm">Send</button></form></div>
+  </div></aside>
+  <!-- plot: recovery + pen queue -->
+  <aside class="left" data-ws="plot"><div class="ws-panes" id="plotLeft">
+    <div class="card recover" id="recCard" hidden></div>
+    <div class="card" id="queueCard"></div>
+  </div></aside>
 
   <!-- ================= stage ================= -->
   <section class="stage">
@@ -353,7 +420,7 @@
         </div>
       </div>
       <div class="busy" id="busy"><div class="pill">Processing…</div></div>
-      <div class="hud mt" id="mapTools" hidden>
+      <div class="hud mt" id="mapTools" data-only="design" hidden>
         <div class="tools">
           <button id="mEdit" title="Move and zoom the map inside its frame (or double-click the map)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg>Move map</button>
           <button id="mOut" title="Show a larger area">−</button>
@@ -362,7 +429,7 @@
         </div>
         <div class="pill" id="mHint" hidden></div>
       </div>
-      <div class="hud bl">
+      <div class="hud bl" data-only="design">
         <div class="tools">
           <button id="tTravel" title="Show pen-up travel moves"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3"><path d="M4 18L20 6"/></svg>Travel</button>
           <button id="tSource" title="Show the source image under its lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>Source</button>
@@ -379,18 +446,23 @@
   </section>
 
   <!-- ================= right: inspector ================= -->
-  <aside class="right">
-    <nav class="tabs">
+  <aside class="right" data-ws="design">
+    <nav class="tabs" style="grid-template-columns:repeat(2,1fr)">
       <button class="tab on" data-tab="obj">Object</button>
       <button class="tab" data-tab="doc">Paper</button>
-      <button class="tab" data-tab="mach">Machine</button>
     </nav>
     <div class="panes">
       <div class="pane on" data-pane="obj" id="inspector"></div>
       <div class="pane" data-pane="doc" id="docPane"></div>
-      <div class="pane" data-pane="mach" id="machPane"></div>
     </div>
   </aside>
+  <!-- machine settings -->
+  <aside class="right" data-ws="machine"><div class="panes"><div class="pane on" id="machPane"></div></div></aside>
+  <!-- plot: live status + log -->
+  <aside class="right" data-ws="plot"><div class="ws-panes">
+    <div class="card" id="liveCard"></div>
+    <div class="card"><h3>Log <small id="plotLogInfo"></small></h3><div class="console short" id="plotLog"></div></div>
+  </div></aside>
 </div>
 
 <!-- menus -->
@@ -3284,6 +3356,7 @@ function worldTransform() { const d = devicePixelRatio || 1; ctx.setTransform(d 
 function screenTransform() { const d = devicePixelRatio || 1; ctx.setTransform(d, 0, 0, d, 0, 0); }
 function render() {
   if (!V.W) return;
+  if (ws !== 'design') return renderLive();
   const c = ctx, k = V.k, M = S.machine, P = paperRect(), U = usable();
   screenTransform(); c.clearRect(0, 0, V.W, V.H);
   worldTransform();
@@ -3489,6 +3562,15 @@ let pinch = null;
 cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
   V.auto = false; lastPtr = e.pointerType || 'mouse';
+  if (ws !== 'design') {
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, [px, py]);
+      if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = {d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], k: V.k, ox: V.ox, oy: V.oy}; drag = null; return; }
+    }
+    drag = {mode: 'pan', live: true, px, py, wx, wy, ox: V.ox, oy: V.oy, moved: false};
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+    return;
+  }
   if (geoPick && e.button === 0) { finishGeoPick(wx, wy); return; }
   if (mapEdit && e.button === 0 && !(e.pointerType === 'touch' && touches.size)) {
     if (mapEdit === sel && inMapBox(mapEdit, wx, wy)) {   // map mode: dragging moves the map inside its frame
@@ -3546,6 +3628,16 @@ cv.addEventListener('pointermove', e => {
     const k = clamp(pinch.k * d / pinch.d, 0.3, 200), w = [(pinch.m[0] - pinch.ox) / pinch.k, (pinch.oy - pinch.m[1]) / pinch.k];
     V.k = k; V.ox = m[0] - w[0] * k; V.oy = m[1] + w[1] * k; V.auto = false; draw(); return;
   }
+  if (drag && drag.live) {
+    if (Math.hypot(px - drag.px, py - drag.py) > 4) drag.moved = true;
+    if (drag.moved) { V.ox = drag.ox + px - drag.px; V.oy = drag.oy + py - drag.py; V.auto = false; draw(); }
+    return;
+  }
+  if (!drag && ws !== 'design') {
+    hover = [wx, wy]; cv.style.cursor = ws === 'machine' && canTravel() ? 'crosshair' : 'grab';
+    if (ws === 'machine') draw();
+    return;
+  }
   if (!drag) {
     if (geoPick) { cv.style.cursor = 'crosshair'; return; }
     if (mapEdit) { cv.style.cursor = mapEdit === sel && inMapBox(mapEdit, wx, wy) ? 'grab' : 'default'; return; }
@@ -3599,6 +3691,11 @@ function scaleDrag(it, wx, wy, fromCentre, snap) {
   }
 }
 function endDrag(e) {
+  if (drag && drag.live) {
+    const d = drag; drag = null; if (e) touches.delete(e.pointerId);
+    if (!d.moved && ws === 'machine' && e && e.type === 'pointerup') clickTravel(d.wx, d.wy);
+    return;
+  }
   if (e && touches.delete(e.pointerId) && pinch) { if (touches.size < 2) { if (pinch.map) mapSettle(pinch.map.it); pinch = null; } drag = null; return; }
   if (drag && drag.mode === 'mappan') { const it = drag.it, moved = drag.moved; drag = null; cv.style.cursor = 'grab'; if (moved) mapSettle(it); return; }
   if (e && e.type === 'pointercancel' && drag && !drag.moved) { drag = null; return; }
@@ -3611,6 +3708,13 @@ function endDrag(e) {
 }
 cv.addEventListener('pointerup', endDrag);
 cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', () => { if (hover) { hover = null; draw(); } });
+const canTravel = () => !!(server.st && server.st.connected && !(server.st.job && server.st.job.running) && server.st.state !== 'Alarm');
+function clickTravel(x, y) {   // Machine view: a click on the bed sends the pen there, lifted
+  if (!canTravel()) return;
+  if (x < 0 || y < 0 || x > S.machine.bedW || y > S.machine.bedH) return;
+  travelTo(x, y); toast(`Moving to X ${x.toFixed(1)} Y ${y.toFixed(1)}`);
+}
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
@@ -3623,6 +3727,7 @@ cv.addEventListener('wheel', e => {
 }, {passive: false});
 cv.addEventListener('dblclick', e => {
   const r = cv.getBoundingClientRect(), w = toW(e.clientX - r.left, e.clientY - r.top);
+  if (ws !== 'design') return fitView();
   if (mapEdit) return;
   const h = isMapItem(sel) && inMapBox(sel, ...w) ? sel : hitItem(...w);
   if (!h) fitView(); else if (isMapItem(h)) { if (sel !== h) select(h); mapEdit = h; draw(); }
@@ -3733,6 +3838,7 @@ $('btnAddPen').onclick = () => {
   addPen(colorName(c), c); renderPens(); if (sel) renderInspector();
 };
 function renderStatus() {
+  if (ws !== 'design') return liveStatusbar();
   const sb = $('statusbar');
   if (!items.length) { sb.innerHTML = 'Drop an SVG, PNG, JPG, DXF or G-code file here to start'; return; }
   const a = activePens(), draw_ = a.reduce((s, p) => s + p.draw, 0), tr = a.reduce((s, p) => s + p.travel, 0), lifts = a.reduce((s, p) => s + p.paths.length, 0), t = a.reduce((s, p) => s + p.time, 0);
@@ -4211,13 +4317,13 @@ function renderMach() {
   $('stPlot').onclick = async () => {
     const w = waits(); if (!w.length) return;
     if (!(server.st && server.st.connected)) return toast('Connect the plotter first — or download the G-code', true);
-    try { await api('run', {gcode: servoTestGcode(w), name: 'Servo wait test', penUp: S.machine.up}); toast('Servo wait test sent to the plotter'); } catch (e) { toast('Could not start the test: ' + e.message, true); }
+    try { await api('run', {gcode: servoTestGcode(w), name: 'Servo wait test', penUp: S.machine.up, dwell: Math.max(...w)}); toast('Servo wait test sent to the plotter'); setWs('plot'); } catch (e) { toast('Could not start the test: ' + e.message, true); }
   };
   info();
 }
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
-  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === t.dataset.tab));
+  document.querySelectorAll('.pane[data-pane]').forEach(p => p.classList.toggle('on', p.dataset.pane === t.dataset.tab));
 });
 
 // =====================================================================
@@ -4225,6 +4331,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 // =====================================================================
 const readAs = (f, how) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r[how](f); });
 async function importFile(f) {
+  if (ws !== 'design') setWs('design');
   const ext = (f.name.split('.').pop() || '').toLowerCase();
   try {
     if (ext === 'json') return loadProject(await f.text());
@@ -4350,6 +4457,8 @@ addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if (e.key === 'Escape') { closeModal(); select(null); return; }
   if (e.key === 'f' || e.key === 'F') { fitView(); return; }
+  if (ws === 'machine') { const d = {ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]}[e.key]; if (d && canTravel()) { e.preventDefault(); jog(...d); } return; }
+  if (ws !== 'design') return;
   if (!sel) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSel(); return; }
@@ -4366,7 +4475,7 @@ addEventListener('keydown', e => {
 // sources, imported vector shapes) is shared between snapshots by reference, not copied.
 const History = (() => {
   const undo = [], redo = [], LIMIT = 120, heavy = new WeakMap(), objs = new Map();
-  let last = null, timer = null, restoring = false, hid = 0;
+  let last = null, timer = null, restoring = false, hid = 0, ver = 0;
   const refId = v => { let r = heavy.get(v); if (r === true || r === undefined) { r = 'ref' + (++hid); heavy.set(v, r); } return r; };
   function packItem(it) {
     const o = {}, keyParts = [];
@@ -4422,7 +4531,7 @@ const History = (() => {
     if (!last) { last = s; return ui(); }
     if (s.key === last.key) { last.sel = s.sel; return; }
     undo.push({s: last, label: label || describe(last, s)}); if (undo.length > LIMIT) undo.shift();
-    redo.length = 0; last = s; ui();
+    redo.length = 0; last = s; ver++; ui();
   }
   const soon = (ms = 350) => { clearTimeout(timer); timer = setTimeout(() => check(), ms); };
   function apply(s) {
@@ -4442,7 +4551,7 @@ const History = (() => {
       saveSettings(); renderDoc(); renderMach(); renderPens(); renderObjects(); renderInspector(); schedule(0); draw();
       if (typeof renderProjName === 'function') renderProjName();
     } finally { restoring = false; }
-    last = snap();
+    last = snap(); ver++;
   }
   function undoOne() {
     check();   // fold in anything not recorded yet
@@ -4459,7 +4568,7 @@ const History = (() => {
     u.disabled = !U; r.disabled = !R;
     u.title = U ? `Undo “${U.label}” (${MOD}Z)` : 'Nothing to undo'; r.title = R ? `Redo “${R.label}” (${MOD}${MOD === '⌘' ? '⇧Z' : 'Y'})` : 'Nothing to redo';
   }
-  return {check, soon, undo: undoOne, redo: redoOne, ui};
+  return {check, soon, undo: undoOne, redo: redoOne, ui, get version() { return ver; }};
 })();
 $('btnUndo').onclick = () => History.undo(); $('btnRedo').onclick = () => History.redo();
 for (const ev of ['pointerup', 'change', 'keyup', 'drop', 'paste', 'click']) addEventListener(ev, () => History.soon(ev === 'drop' || ev === 'paste' ? 1200 : 350), true);
@@ -4478,27 +4587,29 @@ addEventListener('keydown', e => {
 // =====================================================================
 //  project save / load
 // =====================================================================
+const projectData = () => ({app: 'plot-studio', version: 1, settings: S, pens, title: projTitle,
+  items: items.map(it => { const o = {}; for (const k in it) if (k[0] !== '_') o[k] = it[k]; return o; })});
 function saveProject() {
-  const data = {app: 'plot-studio', version: 1, settings: S, pens,
-    items: items.map(it => { const o = {}; for (const k in it) if (k[0] !== '_') o[k] = it[k]; return o; })};
   if (!projTitle) projTitle = projName();
-  download(slug(projTitle) + '.plotstudio.json', JSON.stringify(data), 'application/json'); renderProjName();
+  download(slug(projTitle) + '.plotstudio.json', JSON.stringify(projectData()), 'application/json'); renderProjName();
 }
-async function loadProject(text) {
-  const d = JSON.parse(text);
+async function loadProject(text) { await applyProject(JSON.parse(text)); toast('Project opened'); }
+async function applyProject(d) {
   if (d.app !== 'plot-studio') throw new Error('not a Plot Studio project');
   for (const k of Object.keys(DEFAULTS)) S[k] = Object.assign(structuredClone(DEFAULTS[k]), d.settings[k] || {});
   pens = d.pens; items = [];
   for (const it of d.items) { if (it.kind === 'image' || (it.kind === 'style' && it.src)) it._img = await loadImage(it.src); items.push(it); }
   sel = null; saveSettings(); renderDoc(); renderMach(); renderInspector(); renderPens(); fitView(); schedule(0);
-  toast('Project opened');
 }
+// autosave: the project is kept in this browser as you work, so a crash or a closed tab loses nothing
+let autosaved = -1;
+setInterval(() => { if (History.version !== autosaved && !drag && booted) { autosaved = History.version; IDB.set('autosave', items.length ? projectData() : null); } }, 2000);
 
 // =====================================================================
-//  modals: export + plot
+//  modals: export
 // =====================================================================
 function openModal(html) { $('modal').innerHTML = html; $('modalBg').classList.add('show'); }
-function closeModal() { if (plotRun && plotRun.busy) return; $('modalBg').classList.remove('show'); plotRun = null; }
+function closeModal() { $('modalBg').classList.remove('show'); }
 $('modalBg').addEventListener('pointerdown', e => { if (e.target === $('modalBg')) closeModal(); });
 const modalHead = t => `<header><h2>${t}</h2><button class="btn ghost icon" onclick="closeModal()">✕</button></header>`;
 const penRow = (pp, i, right = '') => `<div class="step" data-i="${i}"><span class="sw" style="background:${pp.pen.color}"></span><div><b>${i + 1}. ${esc(pp.pen.name)}</b><span>${fmtLen(pp.draw)} · ${pp.paths.length} lifts · ~${fmtTime(pp.time)}${pp.pen.down !== '' ? ` · down S${pp.pen.down}` : ''}</span><div class="bar" hidden><div></div></div></div><div class="row">${right}</div></div>`;
@@ -4542,31 +4653,129 @@ function planSVG(a) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${P.w}mm" height="${P.h}mm" viewBox="0 0 ${P.w} ${P.h}">\n<rect id="paper" width="${P.w}" height="${P.h}" fill="${paperColor()}"/>\n${groups}\n</svg>\n`;
 }
 
-// ---------- plotter connection: USB (Web Serial) or Plotter Bridge ----------
-// Both speak the same small API (status / run / pause / resume / stop / send / unlock / home),
-// so the plot dialog does not care how the plotter is reached.
+// =====================================================================
+//  plotter: connection (USB / Plotter Bridge / demo), checkpoints, resume
+// =====================================================================
+// All three speak the same small API (status / run / pause / resume / stop / send / unlock / home / jog / origin /
+// job / job/resume / job/discard), so the Machine and Plot views don't care how the plotter is reached.
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const SERIAL_OK = !HOSTED && window.isSecureContext && 'serial' in navigator
   && !(document.featurePolicy && document.featurePolicy.allowsFeature && !document.featurePolicy.allowsFeature('serial'));
 const BRIDGE_OK = !HOSTED;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-class GrblSerial {   // streams G-code to GRBL from this tab, with GRBL's character-counting flow control
-  constructor() { this.reset(); this.port = null; this.seq = 0; this.log = []; }
-  reset() { this.state = 'Disconnected'; this.full = ''; this.alarm = null; this.mpos = [0, 0, 0]; this.wco = [0, 0, 0]; this.settings = {}; this.inflight = []; this.manual = []; this.banner = 0; }
-  say(k, m) { this.log.push({k, m, t: Date.now()}); if (this.log.length > 200) this.log.shift(); if (k === 'err') console.warn('[plotter]', m); }
+// small key/value store in IndexedDB: plot checkpoints, the autosaved project, the demo plotter's paper
+const IDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('plotstudio', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => { const t = db.transaction('kv', mode), r = fn(t.objectStore('kv')); t.oncomplete = () => res(r.result); t.onerror = t.onabort = () => rej(t.error); });
+  };
+  return {get: k => tx('readonly', s => s.get(k)).catch(() => null), set: (k, v) => tx('readwrite', s => s.put(v, k)).catch(() => null), del: k => tx('readwrite', s => s.delete(k)).catch(() => null)};
+})();
+
+// ---------- G-code bookkeeping: the same rules as the bridge (bridge/bridge.py) ----------
+// A job's progress is the number of lines known to be drawn ("done"). Lines go out numbered (N…), so GRBL's status
+// says which line it is executing (Ln:); a G4 dwell is only answered once every earlier move has finished; and GRBL
+// can't queue more moves than its planner holds. Resuming starts at the pen-down of the stroke that was being drawn.
+const gcWords = l => { const w = {}; for (const [, k, v] of l.matchAll(/([A-Z])\s*([-+]?\d*\.?\d+)/g)) (w[k] || (w[k] = [])).push(+v); return w; };
+const cleanLines = text => text.replace(/\r/g, '').split('\n').map(l => l.replace(/\(.*?\)|;.*$/g, '').trim()).filter(Boolean)
+  .map(l => l[0] === '$' ? l : l.toUpperCase().replace(/^N\d+\s*/, '')).filter(Boolean);
+const numbered = (i, l) => { if (l[0] === '$') return l; const s = `N${i + 1} ${l}`; return s.length <= 64 ? s : l; };   // GRBL's line buffer is 80 (0.9: 70) characters
+function lineKinds(lines) {   // 1 = move, 2 = G4 dwell, 0 = other
+  const k = new Uint8Array(lines.length);
+  lines.forEach((l, i) => {
+    if (l[0] === '$') return;
+    const w = gcWords(l), g = w.G || [];
+    if (g.includes(4)) k[i] = 2; else if (['X', 'Y', 'Z', 'I', 'J'].some(c => w[c]) && !g.includes(10) && !g.includes(92)) k[i] = 1;
+  });
+  return k;
+}
+function jobDwell(lines) { for (const l of lines) { if (l[0] === '$') continue; const w = gcWords(l); if ((w.G || []).includes(4) && w.P) return w.P[0]; } return 0.3; }
+function gcWalk(lines, penUp, upto, fn) {   // modal state after each line: position, feed, mode, units, pen down and where it went down
+  const st = {x: 0, y: 0, feed: null, mode: null, units: 21, absolute: true, down: false, downAt: null, ref: penUp ?? null};
+  const n = upto == null ? lines.length : Math.min(upto, lines.length);
+  for (let i = 0; i < n; i++) {
+    const l = lines[i];
+    if (l[0] !== '$') {
+      const w = gcWords(l), g = (w.G || []).map(Math.trunc), m = (w.M || []).map(Math.trunc);
+      for (const c of g) { if (c >= 0 && c <= 3) st.mode = c; else if (c === 20 || c === 21) st.units = c; else if (c === 90 || c === 91) st.absolute = c === 90; }
+      if (w.F) st.feed = w.F[0];
+      let down = st.down;
+      if (w.S && (m.includes(3) || m.includes(4) || !m.length)) { const s = w.S[0]; if (st.ref == null) st.ref = s; down = Math.abs(s - st.ref) > 1e-6; }
+      if (m.includes(5)) down = false;
+      if (down && !st.down) st.downAt = i;
+      st.down = down;
+      if ((w.X || w.Y) && !g.some(c => [4, 10, 28, 30, 53, 92].includes(c))) {
+        if (st.absolute) { if (w.X) st.x = w.X[0]; if (w.Y) st.y = w.Y[0]; } else { if (w.X) st.x += w.X[0]; if (w.Y) st.y += w.Y[0]; }
+      }
+    }
+    if (fn) fn(i, st);
+  }
+  return st;
+}
+const resumePoint = (lines, done, penUp) => { if (done >= lines.length) return lines.length; const st = gcWalk(lines, penUp, done); return st.down && st.downAt != null ? st.downAt : done; };
+function strokeStarts(lines, penUp) { const out = []; let was = false; gcWalk(lines, penUp, null, (i, st) => { if (st.down && !was) out.push(i); was = st.down; }); return out; }
+function resumePreamble(lines, start, penUp, dwell) {   // pen up, travel to where lines[start] begins, restore units, feed and mode
+  const st = gcWalk(lines, penUp, start), pre = [`G${st.units}`, 'G90', st.ref != null ? `M3 S${st.ref}` : 'M5'];
+  dwell = dwell ?? jobDwell(lines);
+  if (dwell > 0) pre.push(`G4 P${dwell}`);
+  pre.push(`G0 X${st.x.toFixed(3)} Y${st.y.toFixed(3)}`);
+  if (st.feed) pre.push(`G1 F${st.feed}`);
+  if (st.mode === 0) pre.push('G0');
+  if (!st.absolute) pre.push('G91');
+  return pre;
+}
+function gcAnalyse(lines, penUp) {   // moves [line, x, y, down] for the live view, and drawn+travel length per line for progress
+  const moves = [], cum = new Float64Array(lines.length), r3 = v => Math.round(v * 1000) / 1000;
+  let px = 0, py = 0, total = 0;
+  gcWalk(lines, penUp, null, (i, st) => {
+    if (st.x !== px || st.y !== py) {
+      total += Math.hypot(st.x - px, st.y - py);
+      const last = moves[moves.length - 1];
+      if (!last || last[1] !== r3(px) || last[2] !== r3(py)) moves.push([i, r3(px), r3(py), 0]);
+      moves.push([i, r3(st.x), r3(st.y), st.down ? 1 : 0]); px = st.x; py = st.y;
+    }
+    cum[i] = total;
+  });
+  return {moves, cum, length: total};
+}
+
+const RESUMABLE = ['stopped', 'failed', 'interrupted'];
+const nowS = () => Date.now() / 1000;
+const isLine = i => typeof i === 'number' && i >= 0;
+function jobView(j) {   // the job as the status API reports it (same fields as the bridge)
+  const n = j.lines.length, at = d => (j.length && d ? j.cum[d - 1] / j.length : d / n);
+  const frac = j.state === 'finished' ? 1 : at(j.done), ran = nowS() - j.tRun, gained = frac - at(j.done0);
+  return {id: j.id, name: j.name, meta: j.meta, running: j.running, paused: j.paused, stopping: j.stopping, state: j.state, error: j.error,
+    total: n, done: j.done, sent: j.done, acked: j.acked, progress: frac, elapsed: j.runTime + (j.running ? ran : 0),
+    eta: j.running && ran > 5 && gained > 0.005 ? ran * (1 - frac) / gained : null, started: j.started, ended: j.ended, pos: j.pos,
+    resume_from: j.resumeFrom, resumable: !j.running && RESUMABLE.includes(j.state) && (j.resumeAt ?? 0) < n, resume_at: j.resumeAt};
+}
+
+class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's character-counting flow control; checkpoints to IndexedDB
+  constructor(kind = 'usb') { this.kind = kind; this.key = 'job:' + kind; this.reset(); this.port = null; this.seq = 0; this.log = []; this.logSeq = 0; this.job = null; }
+  reset() { this.state = 'Disconnected'; this.full = ''; this.alarm = null; this.mpos = [0, 0, 0]; this.wco = [0, 0, 0]; this.settings = {}; this.inflight = []; this.manual = []; this.banner = 0; this.blocks = 15; this.rx = 127; }
+  say(k, m) { this.log.push({seq: ++this.logSeq, k, m, t: nowS()}); if (this.log.length > 300) this.log.shift(); if (k === 'err') console.warn('[plotter]', m); }
   async open(port, baud) {
     await port.open({baudRate: baud, bufferSize: 4096});
     this.reset(); this.port = port; this.baud = baud; this.state = 'Connecting';
     this.writer = port.writable.getWriter(); this.wq = Promise.resolve();
     this.readLoop(port);
     this.timer = setInterval(() => this.raw('?'), 250);
+    this.saver = setInterval(() => { if (this.job && this.job.dirty) this.save(); }, 2000);
     const info = port.getInfo ? port.getInfo() : {};
-    this.name = info.usbVendorId ? `USB ${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId || 0).toString(16).padStart(4, '0')}` : 'USB serial';
+    this.name = port.label || (info.usbVendorId ? `USB ${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId || 0).toString(16).padStart(4, '0')}` : 'USB serial');
     this.say('sys', `Opened ${this.name} at ${baud} baud`);
     await this.waitFor(() => this.banner, 2500);
     if (!this.banner) { this.raw('\r\n\r\n'); await sleep(300); }
-    this.inflight = []; this.queue('$$');
+    this.inflight = []; this.queue('$$'); this.queue('$I');
   }
   waitFor(fn, ms) { return new Promise(res => { const t0 = Date.now(), tick = () => fn() || Date.now() - t0 > ms ? res() : setTimeout(tick, 30); tick(); }); }
   raw(s) {
@@ -4595,7 +4804,8 @@ class GrblSerial {   // streams G-code to GRBL from this tab, with GRBL's charac
     this.close();
   }
   async close() {
-    const port = this.port; this.port = null; clearInterval(this.timer);
+    const port = this.port; this.port = null; clearInterval(this.timer); clearInterval(this.saver);
+    if (this.job && this.job.dirty) this.save();
     try { if (this.reader) await this.reader.cancel(); } catch {}
     try { if (this.writer) { this.writer.releaseLock(); } } catch {}
     this.writer = null;
@@ -4607,13 +4817,13 @@ class GrblSerial {   // streams G-code to GRBL from this tab, with GRBL's charac
     if (t === 'ok' || t.startsWith('error')) {
       const f = this.inflight.shift() || {}, j = this.job;
       if (t.startsWith('error')) {
-        const msg = `${t} on "${(f.line || '').trim()}"${f.idx != null ? ` (line ${f.idx + 1})` : ''}`; this.say('err', msg);
-        if (f.idx != null && j && j.running) this.stop('GRBL rejected a line: ' + msg);
-      } else if (f.idx != null && j) { j.acked = f.idx + 1; if (j.acked >= j.lines.length) j.allAcked = Date.now(); }
+        const msg = `${t} on "${(f.line || '').trim()}"${isLine(f.idx) ? ` (line ${f.idx + 1})` : ''}`; this.say('err', msg);
+        if (f.idx != null && j && j.running) this.stop('GRBL rejected a line: ' + msg, null, 'failed');
+      } else if (isLine(f.idx) && j) this.acked(j, f.idx);
       return this.pump();
     }
     if (/^(Grbl|grblHAL)/.test(t)) {
-      this.banner = Date.now(); this.inflight = []; this.state = 'Idle'; this.say('rx', t);
+      this.banner = this.resetAt = Date.now(); this.inflight = []; this.state = 'Idle'; this.say('rx', t);   // the position is unknown until the next report
       if (this.job && this.job.running && !this.job.stopping) this.endJob('The controller reset during the plot');
       return this.pump();
     }
@@ -4623,59 +4833,127 @@ class GrblSerial {   // streams G-code to GRBL from this tab, with GRBL's charac
       return;
     }
     const m = t.match(/^\$(\d+)=([-\d.]+)/); if (m) { this.settings[+m[1]] = +m[2]; return; }
+    const o = t.match(/^\[OPT:[^,]*,(\d+),(\d+)/); if (o) { this.blocks = +o[1]; this.rx = Math.max(64, Math.min(+o[2], 1024) - 1); }
     this.say('rx', t);
   }
+  acked(j, idx) {
+    j.acked = idx + 1; j.lastAck = Date.now();
+    if (j.kinds[idx] === 2) { j.recent.length = 0; this.advance(j, idx + 1); }   // a dwell is answered once everything before it ran
+    else if (j.kinds[idx] === 1) { j.recent.push(idx); if (j.recent.length > this.blocks) this.advance(j, j.recent.shift() + 1); }
+    if (j.acked >= j.lines.length) j.allAcked = Date.now();
+  }
+  advance(j, done) { if (done > j.done) { j.done = done; j.dirty = true; } }
   status(body) {
     const parts = body.includes('|') ? body.split('|') : body.split(/,(?=[A-Za-z])/);
     this.full = parts[0]; this.state = parts[0].split(':')[0]; if (this.state !== 'Alarm') this.alarm = null;
-    let w = null;
+    this.posAt = Date.now();
+    let w = null, ln = null;
     for (const p of parts.slice(1)) {
       const [k, v] = p.split(':'), n = (v || '').split(',').map(Number);
-      if (k === 'MPos') this.mpos = n; else if (k === 'WPos') w = n; else if (k === 'WCO') this.wco = n;
+      if (k === 'MPos') this.mpos = n; else if (k === 'WPos') w = n; else if (k === 'WCO') this.wco = n; else if (k === 'Ln') ln = n[0];
     }
     if (w) this.mpos = w.map((a, i) => a + (this.wco[i] || 0));
     const j = this.job;
-    if (j && j.running && j.allAcked && this.state === 'Idle' && Date.now() - j.allAcked > 300) this.endJob(null);
+    if (j && j.running) {
+      j.pos = [round(this.mpos[0] - (this.wco[0] || 0), 3), round(this.mpos[1] - (this.wco[1] || 0), 3)];
+      if (ln && j.preNext >= j.pre.length && ln - 1 <= j.acked) this.advance(j, ln - 1);   // Ln = the line being executed
+      if (j.allAcked && this.state === 'Idle' && Date.now() - j.allAcked > 300) this.endJob(null);
+      else if (this.state === 'Idle' && this.inflight.length && Date.now() - j.lastAck > 15000) this.endJob('The plotter stopped answering mid-plot (it may have reset)');
+    }
   }
   pump() {
     for (;;) {
-      const used = this.inflight.reduce((a, f) => a + f.len, 0), j = this.job;
+      const used = this.inflight.reduce((a, f) => a + f.len, 0), j = this.job, go = j && j.running && !j.stopping;
       let line, idx = null;
       if (this.manual.length) line = this.manual[0];
-      else if (j && j.running && !j.stopping && j.next < j.lines.length) { line = j.lines[j.next]; idx = j.next; }
+      else if (go && j.preNext < j.pre.length) { line = j.pre[j.preNext]; idx = -1; }
+      else if (go && j.next < j.lines.length) { line = numbered(j.next, j.lines[j.next]); idx = j.next; }
       else return;
       const len = line.length + 1;
-      if (used + len > 127 && this.inflight.length) return;
-      if (idx == null) this.manual.shift(); else j.next++;
+      if (used + len > this.rx && this.inflight.length) return;
+      if (idx == null) this.manual.shift(); else if (idx < 0) j.preNext++; else j.next++;
       this.inflight.push({len, idx, line}); this.raw(line + '\n');
     }
   }
-  endJob(error) {
+  newJob(lines, name, penUp, meta, dwell, id) {
+    const a = gcAnalyse(lines, penUp), t = nowS();
+    return {id, name: name || 'Plot', meta: meta || {}, lines, kinds: lineKinds(lines), penUp: penUp ?? null, dwell: dwell ?? jobDwell(lines),
+      pre: [], preNext: 0, next: 0, acked: 0, done: 0, done0: 0, recent: [], running: true, stopping: false, paused: false, state: 'running', error: null,
+      started: t, ended: null, runTime: 0, tRun: t, allAcked: null, lastAck: Date.now(), moves: a.moves, cum: a.cum, length: a.length, pos: null, resumeAt: null, resumeFrom: 0, strokes: null, dirty: false};
+  }
+  endJob(error, state) {
     const j = this.job; if (!j || !j.running) return;
-    Object.assign(j, {running: false, paused: false, error, ended: Date.now()});
-    if (!error) j.acked = j.lines.length;
-    this.say(error ? 'err' : 'sys', error ? `"${j.name}" stopped: ${error}` : `Finished "${j.name}"`);
+    const t = nowS(); j.runTime += t - j.tRun;
+    Object.assign(j, {running: false, paused: false, error, ended: t});
+    if (error) {
+      j.state = state || 'interrupted'; j.resumeAt = resumePoint(j.lines, j.done, j.penUp);
+      this.say('err', `"${j.name}" stopped: ${error} — ${j.done} of ${j.lines.length} lines drawn; it can resume from line ${j.resumeAt + 1}`);
+    } else {
+      Object.assign(j, {state: 'finished', acked: j.lines.length, done: j.lines.length, resumeAt: null});
+      this.say('sys', `Finished "${j.name}" in ${fmtTime(j.runTime)}`);
+    }
+    this.save();
+  }
+  // --- checkpoint ---
+  meta(j) {
+    return {id: j.id, name: j.name, meta: j.meta, penUp: j.penUp, dwell: j.dwell, total: j.lines.length, done: j.done, state: j.state, error: j.error,
+      started: j.started, ended: j.ended, runTime: j.runTime + (j.running ? nowS() - j.tRun : 0), pos: j.pos, resumeAt: j.resumeAt, resumeFrom: j.resumeFrom, saved: nowS()};
+  }
+  save() { const j = this.job; if (!j) return; j.dirty = false; const m = this.meta(j); offline[this.kind] = m; IDB.set(this.key, m); }
+  static async saved(kind) {   // the job last streamed from this browser, as it was saved; a job still marked running was cut off
+    const [m, lines] = await Promise.all([IDB.get('job:' + kind), IDB.get('job:' + kind + ':lines')]);
+    if (!m || !lines || lines.length !== m.total) return null;
+    if (m.state === 'running') Object.assign(m, {state: 'interrupted', error: 'The page was closed or crashed while plotting'});
+    return {m, lines};
+  }
+  adopt(saved) {   // take over a saved job after connecting, so it can be resumed
+    if (!saved || (this.job && this.job.running)) return;
+    const {m, lines} = saved, j = this.newJob(lines, m.name, m.penUp, m.meta, m.dwell, m.id);
+    Object.assign(j, {running: false, state: m.state, error: m.error, done: Math.min(m.done, lines.length), acked: Math.min(m.done, lines.length), started: m.started,
+      ended: m.ended || m.saved, runTime: m.runTime || 0, pos: m.pos, resumeFrom: m.resumeFrom || 0});
+    if (RESUMABLE.includes(j.state)) j.resumeAt = resumePoint(lines, j.done, j.penUp);
+    this.job = j; this.seq = Math.max(this.seq, m.id || 0);
   }
   // --- the API ---
-  run({gcode, name, penUp}) {
+  run({gcode, name, penUp, meta, dwell}) {
     if (!this.port) throw new Error('The plotter is not connected');
     if (this.job && this.job.running) throw new Error('A plot is already running');
     if (this.state === 'Alarm') throw new Error('The plotter is in alarm — unlock or home it first');
-    const lines = gcode.replace(/\r/g, '').split('\n').map(l => l.replace(/\(.*?\)|;.*$/g, '').trim()).filter(Boolean).map(l => l[0] === '$' ? l : l.toUpperCase());
+    const lines = cleanLines(gcode);
     if (!lines.length) throw new Error('The G-code is empty');
-    this.job = {id: ++this.seq, name: name || 'Plot', lines, next: 0, acked: 0, running: true, stopping: false, paused: false, error: null, started: Date.now(), penUp};
+    this.job = this.newJob(lines, name, penUp, meta, dwell, ++this.seq);
+    IDB.set(this.key + ':lines', lines); this.save();
+    this.say('sys', `Started "${this.job.name}" — ${lines.length} lines`);
     this.pump(); return {ok: true, id: this.job.id};
+  }
+  resumeJob(from) {
+    const j = this.job;
+    if (!j) throw new Error('There is no plot to resume');
+    if (j.running) throw new Error('The plot is already running');
+    if (j.state === 'finished') throw new Error('That plot has already finished');
+    if (!this.port) throw new Error('The plotter is not connected');
+    if (this.state === 'Alarm') throw new Error('The plotter is in alarm — unlock or home it first');
+    const n = j.lines.length, start = clamp(Math.trunc(from ?? j.resumeAt ?? j.done), 0, n - 1);
+    j.pre = resumePreamble(j.lines, start, j.penUp, j.dwell);
+    Object.assign(j, {preNext: 0, next: start, acked: start, done: start, done0: start, resumeFrom: start, running: true, stopping: false, paused: false,
+      error: null, state: 'running', allAcked: null, ended: null, tRun: nowS(), recent: [], lastAck: Date.now()});
+    this.save(); this.say('sys', `Resuming "${j.name}" from line ${start + 1} of ${n}`);
+    this.pump(); return {ok: true, id: j.id};
+  }
+  discard() {
+    if (this.job && this.job.running) throw new Error('The plot is running — stop it first');
+    this.job = null; offline[this.kind] = null; IDB.del(this.key); IDB.del(this.key + ':lines');
   }
   pause() { this.raw('!'); if (this.job && this.job.running) this.job.paused = true; }
   resume() { this.raw('~'); if (this.job) this.job.paused = false; }
-  async stop(reason = 'Stopped by user', penUp) {
+  async stop(reason = 'Stopped by user', penUp, state = 'stopped') {
     const j = this.job; if (j && j.running) j.stopping = true;
     penUp = penUp || (j && j.penUp != null ? `M3 S${j.penUp}` : null);
     this.raw('!');
     const t0 = Date.now();
     await this.waitFor(() => ['Idle', 'Alarm', 'Disconnected'].includes(this.state) || this.full === 'Hold:0' || (this.full === 'Hold' && Date.now() - t0 > 600), 4000);
     await sleep(150);
-    this.manual = []; this.endJob(reason); this.banner = 0;
+    this.manual = []; this.endJob(reason, state); this.banner = 0;
     this.raw('\x18');
     await this.waitFor(() => this.banner, 3000);
     this.inflight = [];
@@ -4683,44 +4961,164 @@ class GrblSerial {   // streams G-code to GRBL from this tab, with GRBL's charac
   }
   queue(line) {
     if (!this.port) throw new Error('The plotter is not connected');
-    if (this.job && this.job.running) throw new Error('A plot is running — wait for it to finish or stop it');
-    for (const l of String(line).split('\n').map(s => s.trim()).filter(Boolean)) { this.manual.push(l); if (l !== '$$') this.say('tx', l); }
+    const lines = String(line).split('\n').map(s => s.trim()).filter(Boolean);
+    if (this.job && this.job.running && !lines.every(l => l.startsWith('$J='))) throw new Error('A plot is running — wait for it to finish or stop it');
+    for (const l of lines) { this.manual.push(l); if (l !== '$$' && l !== '$I') this.say('tx', l); }
     this.pump();
   }
   snapshot() {
-    const j = this.job, s = {connected: !!this.port, state: this.port ? this.state : 'Disconnected', alarm: this.alarm,
-      pos: this.mpos.map((v, i) => v - (this.wco[i] || 0)), port: this.name, baud: this.baud, via: 'usb'};
+    const s = {connected: !!this.port, state: this.port ? this.state : 'Disconnected', alarm: this.alarm,
+      pos: this.mpos.map((v, i) => v - (this.wco[i] || 0)), pos_fresh: (this.posAt || 0) > (this.resetAt || 0), port: this.name, baud: this.baud, via: this.kind,
+      homing: this.settings[22] === 1, resume: true, seq: this.logSeq};
     if (this.settings[130] && this.settings[131]) s.work = [this.settings[130], this.settings[131]];
-    if (j) {
-      const frac = j.running || j.error ? j.acked / j.lines.length : 1, el = ((j.ended || Date.now()) - j.started) / 1000;
-      s.job = {id: j.id, name: j.name, running: j.running, paused: j.paused, error: j.error, total: j.lines.length, sent: j.acked,
-        progress: frac, elapsed: el, eta: j.running && frac > 0.02 ? el * (1 - frac) / frac : null};
-    }
+    s.job = this.job ? jobView(this.job) : null;
     return s;
+  }
+  detail() {
+    const j = this.job; if (!j) return {job: null};
+    if (!j.strokes) j.strokes = strokeStarts(j.lines, j.penUp);
+    return {job: {id: j.id, name: j.name, total: j.lines.length, moves: j.moves, strokes: j.strokes, done: j.done, state: j.state, resume_at: j.resumeAt, pen_up: j.penUp, meta: j.meta}};
   }
   async api(path, body = {}) {
     switch (path) {
       case 'status': return this.snapshot();
       case 'run': return this.run(body);
+      case 'job': return this.detail();
+      case 'job/resume': return this.resumeJob(body.from);
+      case 'job/discard': this.discard(); break;
       case 'pause': this.pause(); break;
       case 'resume': this.resume(); break;
       case 'stop': await this.stop('Stopped by user', body.penUp); break;
       case 'send': this.queue(body.line); break;
       case 'unlock': this.queue('$X'); break;
       case 'home': this.queue('$H'); break;
+      case 'origin': if (this.job && this.job.running) throw new Error('A plot is running'); this.queue(`G10 L20 P1 X${(+body.x || 0).toFixed(3)} Y${(+body.y || 0).toFixed(3)}`); break;
+      case 'jog': if (this.job && this.job.running) throw new Error('A plot is running'); this.queue(`$J=G21G91X${+body.x || 0}Y${+body.y || 0}F${+body.feed || 3000}`); break;
+      case 'jogcancel': this.raw('\x85'); break;
       case 'disconnect': await this.close(); break;
-      case 'connect': if (!this.port) throw new Error('Choose the plotter in the Plotter dialog'); break;
+      case 'connect': if (!this.port) throw new Error('Choose the plotter in the Machine view'); break;
       default: throw new Error('Unknown command ' + path);
     }
     return {ok: true};
   }
 }
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// conn.kind: null | 'usb' | 'bridge'.  For the bridge, base '' means "the bridge that served this page".
-let conn = {kind: null, base: '', token: ''}, usb = null;
-let server = {up: false, st: null}, plotRun = null, pollTimer = null;
-const bridgeUrl = p => (conn.base || '') + '/api/' + p;
+// ---------- demo plotter: a pretend GRBL 1.1 behind a Web-Serial-like port ----------
+// It runs moves at (sped-up) feed rate with a 15-move planner, reports Ln like real GRBL, and lays ink on its own
+// sheet of paper where the pen really was — so a crash and a resume can be tried, and checked, without hardware.
+class SimGrbl {
+  constructor() {
+    this.label = 'Demo plotter'; this.speed = 50;
+    this.mpos = [0, 0]; this.offset = [0, 0];   // where the pen physically is = machine position + offset (a reset zeroes the machine position)
+    this.wco = [0, 0]; this.ink = []; this.runs = []; this.inkColor = '#1b1b1f'; this.inkVer = 0;
+    this.readable = this.writable = this.ctl = null; this.reset();
+  }
+  getInfo() { return {}; }
+  reset() { this.planner = []; this.cur = null; this.waiting = []; this.rxbuf = ''; this.hold = false; this.dwell = 0; this.s = 0; this.abs = true; this.mode = null; this.feed = 0; }
+  async open() {
+    if (this.readable) throw new Error('The port is already open');
+    this.readable = new ReadableStream({start: c => { this.ctl = c; }});
+    this.writable = new WritableStream({write: chunk => this.input(chunk)});
+    this.boot();   // opening the port resets the board, like most Arduinos
+    this.last = performance.now(); this.timer = setInterval(() => this.tick(), 15);
+    this.saver = setInterval(() => this.save(), 3000);
+  }
+  async close() { clearInterval(this.timer); clearInterval(this.saver); const c = this.ctl; this.readable = this.writable = this.ctl = null; try { if (c) c.close(); } catch {} this.save(); }
+  unplug() { const c = this.ctl; clearInterval(this.timer); clearInterval(this.saver); this.readable = this.writable = this.ctl = null; this.save(); try { c.error(new Error('The device has been lost.')); } catch {} }
+  crash() { this.boot(); }   // power glitch
+  boot() {   // hardware reset: the controller forgets where it is; the pen stays where it physically is, lifted
+    this.offset = this.phys(this.mpos); this.mpos = [0, 0]; this.reset();
+    this.booting = true; clearTimeout(this.bootTimer);
+    this.bootTimer = setTimeout(() => { this.booting = false; this.emit("Grbl 1.1h ['$' for help]"); }, 300);
+  }
+  phys(p) { return [p[0] + this.offset[0], p[1] + this.offset[1]]; }
+  emit(t) { try { if (this.ctl) this.ctl.enqueue(new TextEncoder().encode(t + '\r\n')); } catch {} }
+  penDown(s) { return Math.abs(s - S.machine.down) < Math.abs(s - S.machine.up); }
+  input(chunk) {
+    if (this.booting) return;   // a rebooting board ignores what arrives until it announces itself
+    for (const code of chunk) {
+      const ch = String.fromCharCode(code);
+      if (ch === '?') this.emit(this.report());
+      else if (ch === '!') this.hold = true;
+      else if (ch === '~') this.hold = false;
+      else if (code === 0x18) { this.reset(); setTimeout(() => this.emit("Grbl 1.1h ['$' for help]"), 40); }
+      else if (code === 0x85) { if (this.cur && this.cur.jog) { this.cur = null; this.planner = this.planner.filter(b => !b.jog); } }
+      else if (ch === '\n') { this.waiting.push(this.rxbuf.trim()); this.rxbuf = ''; }
+      else if (ch !== '\r') this.rxbuf += ch;
+    }
+  }
+  report() {
+    const busy = this.cur || this.planner.length || this.dwell > 0, f = v => v.toFixed(3);
+    const st = this.hold ? 'Hold:0' : busy ? (this.cur && this.cur.jog ? 'Jog' : 'Run') : 'Idle';
+    return `<${st}|MPos:${f(this.mpos[0])},${f(this.mpos[1])},0.000|FS:${this.cur ? Math.round(this.cur.feed) : 0},${this.s}${this.cur && this.cur.n ? `|Ln:${this.cur.n}` : ''}|WCO:${f(this.wco[0])},${f(this.wco[1])},0.000>`;
+  }
+  addInk(a, b, fresh) {
+    const P = this.phys(a), Q = this.phys(b), I = this.ink, n = I.length;
+    if (!fresh && n && I[n - 2] === P[0] && I[n - 1] === P[1]) { I[n - 2] = Q[0]; I[n - 1] = Q[1]; }   // the same move, further along
+    else { const r = this.runs[this.runs.length - 1]; if (!r || r[1] !== this.inkColor) this.runs.push([n, this.inkColor]); I.push(P[0], P[1], Q[0], Q[1]); }
+    this.inkVer++;
+  }
+  tick() {
+    const t = performance.now(); let budget = Math.min(0.1, (t - this.last) / 1000) * this.speed; this.last = t;
+    while (budget > 0 && !this.hold) {
+      if (this.dwell > 0) { const d = Math.min(this.dwell, budget); this.dwell -= d; budget -= d; if (this.dwell > 0) break; }
+      if (!this.cur) {
+        this.cur = this.planner.shift() || null; if (!this.cur) break;
+        const c = this.cur; c.from = [...this.mpos]; c.len = Math.hypot(c.to[0] - c.from[0], c.to[1] - c.from[1]); c.t = 0; c.fresh = true;
+      }
+      const c = this.cur, v = Math.max(c.feed, 1) / 60, d = Math.min(c.len - c.t, v * budget);
+      c.t += d; budget -= d / v;
+      const k = c.len ? c.t / c.len : 1, prev = this.mpos;
+      this.mpos = [c.from[0] + (c.to[0] - c.from[0]) * k, c.from[1] + (c.to[1] - c.from[1]) * k];
+      if (c.down && (d > 0 || c.len === 0)) { this.addInk(prev, this.mpos, c.fresh); c.fresh = false; }
+      if (c.t >= c.len - 1e-9) { this.mpos = [...c.to]; this.cur = null; }
+    }
+    while (this.waiting.length && this.take(this.waiting[0])) this.waiting.shift();
+  }
+  take(line) {   // false = not yet (planner full, or a command that waits for the moves to finish)
+    const m = line.match(/^N(\d+)\s*/), n = m ? +m[1] : 0, body = m ? line.slice(m[0].length) : line;
+    const idle = !this.cur && !this.planner.length && this.dwell <= 0, last = this.planner.length ? this.planner[this.planner.length - 1].to : this.cur ? this.cur.to : this.mpos;
+    const block = (wx, wy, feed, jog) => { if (this.planner.length >= 15) return false; this.planner.push({to: [wx + this.wco[0], wy + this.wco[1]], feed, n, jog, down: this.penDown(this.s)}); return true; };
+    if (body === '$$') { for (const [k, v] of [[130, 310], [131, 210], [22, 1], [110, 8000], [111, 8000]]) this.emit(`$${k}=${v}`); }
+    else if (body === '$I') { this.emit('[VER:1.1h.20190825:Demo plotter]'); this.emit('[OPT:V,15,128]'); }
+    else if (body === '$H') { if (!idle) return false; this.mpos = [0, 0]; this.offset = [0, 0]; }
+    else if (body.startsWith('$J=')) {
+      const w = gcWords(body.slice(3).toUpperCase()), rel = /G91/i.test(body), lw = [last[0] - this.wco[0], last[1] - this.wco[1]];
+      const x = clamp(w.X ? (rel ? lw[0] + w.X[0] : w.X[0]) : lw[0], -this.wco[0], 310 - this.wco[0]), y = clamp(w.Y ? (rel ? lw[1] + w.Y[0] : w.Y[0]) : lw[1], -this.wco[1], 210 - this.wco[1]);
+      if (!block(x, y, w.F ? w.F[0] : 3000, true)) return false;
+    } else if (body[0] !== '$') {
+      const w = gcWords(body), g = (w.G || []).map(Math.trunc), mm = (w.M || []).map(Math.trunc);
+      if ((g.includes(4) || g.includes(10) || g.includes(92) || mm.length) && !idle) return false;   // GRBL finishes the moves first
+      const mode = g.find(c => c >= 0 && c <= 3), abs = g.includes(91) ? false : g.includes(90) ? true : this.abs;
+      if ((w.X || w.Y) && !g.includes(10) && !g.includes(92) && !g.includes(4)) {
+        const lw = [last[0] - this.wco[0], last[1] - this.wco[1]], x = w.X ? (abs ? w.X[0] : lw[0] + w.X[0]) : lw[0], y = w.Y ? (abs ? w.Y[0] : lw[1] + w.Y[0]) : lw[1];
+        const md = mode ?? this.mode, f = w.F ? w.F[0] : this.feed;
+        if (!block(x, y, md === 0 ? 8000 : f || 1000, false)) return false;
+      }
+      this.abs = abs; if (mode != null) this.mode = mode; if (w.F) this.feed = w.F[0];
+      if (g.includes(10)) this.wco = [this.mpos[0] - (w.X ? w.X[0] : this.mpos[0] - this.wco[0]), this.mpos[1] - (w.Y ? w.Y[0] : this.mpos[1] - this.wco[1])];
+      if (g.includes(4)) this.dwell = w.P ? w.P[0] : 0;
+      if (w.S && (mm.includes(3) || mm.includes(4) || !mm.length)) this.s = w.S[0];
+      if (mm.includes(5)) this.s = 0;
+      if (mm.includes(0)) this.hold = true;
+    }
+    this.emit('ok'); return true;
+  }
+  newSheet() { this.ink = []; this.runs = []; this.inkVer++; this.save(); }
+  save() { IDB.set('demo:machine', {pos: this.phys(this.mpos), wco: this.wco, ink: this.ink, runs: this.runs, speed: this.speed}); }
+  static async restore() {   // the demo machine keeps its pen position and its paper across page reloads
+    const s = new SimGrbl(), d = await IDB.get('demo:machine');
+    if (d) { s.offset = d.pos || [0, 0]; s.wco = d.wco || [0, 0]; s.ink = d.ink || []; s.runs = d.runs || []; s.speed = d.speed || 50; s.inkVer++; }
+    return s;
+  }
+}
+
+// ---------- connection state ----------
+// conn.kind: null | 'usb' | 'demo' | 'bridge'.  For the bridge, base '' means "the bridge that served this page".
+let conn = {kind: null, base: '', token: ''}, usb = null, demo = null;
+let server = {up: false, st: null}, pollTimer = null;
+const offline = {usb: null, demo: null};   // checkpoints of jobs streamed from this browser, shown while not connected
+const isLocal = () => conn.kind === 'usb' || conn.kind === 'demo';
 async function bridgeFetch(base, token, p, body) {
   const opt = {headers: {'X-Bridge-Token': token || ''}};
   if (body !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
@@ -4729,60 +5127,85 @@ async function bridgeFetch(base, token, p, body) {
   const j = await r.json(); if (j.error) throw new Error(j.error); return j;
 }
 async function api(path, body) {
-  if (conn.kind === 'usb') return usb.api(path, body || {});
+  if (isLocal()) return usb.api(path, body || {});
   if (conn.kind === 'bridge') return bridgeFetch(conn.base, conn.token, path, body || {});
-  throw new Error('Connect the plotter first');
+  throw new Error('Connect the plotter first (Machine)');
 }
+const act = (path, body) => api(path, body).catch(e => { toast(e.message, true); return null; });
+let devLog = [], logSeen = 0;
 function setConn(c) {
-  conn = c; server = {up: !!c.kind, st: null};
+  conn = c; server = {up: !!c.kind, st: null}; devLog = []; logSeen = 0;
+  for (const id of ['conLog', 'plotLog']) $(id).innerHTML = '';
   if (c.kind === 'bridge' && c.base) lsSet('plotBridge', {base: c.base, token: c.token});
-  renderConn(); clearTimeout(pollTimer); pollServer();
+  live.key = null; afterStatus(); clearTimeout(pollTimer); pollServer();
 }
 async function pollServer() {
   clearTimeout(pollTimer);
   if (conn.kind) {
     try {
-      const st = conn.kind === 'usb' ? usb.snapshot() : await bridgeFetch(conn.base, conn.token, 'status');
+      const st = isLocal() ? usb.snapshot() : await bridgeFetch(conn.base, conn.token, 'status?since=' + logSeen);
+      if (st.job && st.job.done == null) {   // a bridge from before resume support: no done/state, no recovery
+        const j = st.job; j.done = j.sent || 0; j.state = j.running ? 'running' : j.error ? 'stopped' : 'finished'; j.resumable = false;
+      }
       const first = !server.st;
       server = {up: true, seen: true, st};
       if (first && st.work && (st.work[0] !== S.machine.bedW || st.work[1] !== S.machine.bedH)) {   // adopt the machine's work area
         S.machine.bedW = st.work[0]; S.machine.bedH = st.work[1]; saveSettings(); renderMach(); fitView(); computePlan();
         toast(`Bed size set from the plotter: ${st.work[0]} × ${st.work[1]} mm`);
       }
-      if (conn.kind === 'usb' && !st.connected) { conn = {kind: null}; server = {up: false, st: null}; }
+      const fresh = isLocal() ? usb.log.filter(e => e.seq > logSeen) : st.log || [];
+      if (st.seq < logSeen) logSeen = 0;
+      if (fresh.length) { devLog.push(...fresh); devLog = devLog.slice(-300); addLog(fresh); }
+      logSeen = st.seq ?? logSeen;
+      if (isLocal() && !st.connected) { conn = {kind: null}; server = {up: false, st: null}; live.key = null; }
     } catch (e) {
       server.up = false; server.st = null; server.err = e.message;
     }
-    renderConn();
-    if (plotRun) updatePlotModal();
-    if ($('connModal')) renderConnModal(true);
+    afterStatus();
   }
-  const running = server.st && server.st.job && server.st.job.running;
-  pollTimer = setTimeout(pollServer, plotRun || running ? 400 : 1500);
+  const busy = server.st && server.st.job && server.st.job.running;
+  pollTimer = setTimeout(pollServer, busy || ws !== 'design' ? 250 : 1500);
+}
+// the job to show: the plotter's, else (not connected) the last one this browser streamed
+function curJob() {
+  if (server.st) return server.st.job;
+  const saved = [offline.usb, offline.demo].filter(Boolean).sort((a, b) => (b.saved || 0) - (a.saved || 0))[0];
+  return saved ? {...saved, offline: true, via: saved === offline.demo ? 'demo' : 'usb', progress: saved.done / saved.total, total: saved.total,
+    resumable: RESUMABLE.includes(saved.state) && saved.done < saved.total, resume_at: saved.resumeAt, running: false} : null;
 }
 function renderConn() {
-  const st = server.st, on = !!(st && st.connected), via = conn.kind === 'usb' ? 'USB' : 'Bridge';
-  const s = !conn.kind ? 'Connect plotter' : !server.up ? 'Bridge offline' : !on ? `${via} · plotter off` : st.job && st.job.running ? `${st.state} · ${Math.round((st.job.progress ?? st.job.sent / st.job.total) * 100)}%` : `${via} · ${st.state}`;
-  $('mstate').textContent = s;
-  $('mchip').className = 'chip' + (!conn.kind ? '' : ' ' + (!server.up || !on ? 'alarm' : {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm', Connecting: 'busy'}[st.state] || ''));
-  $('btnPlot').hidden = !conn.kind;
-  $('lnkCtl').hidden = conn.kind !== 'bridge';
-  $('lnkCtl').href = (conn.base || '') + '/';
+  const st = server.st, on = !!(st && st.connected), via = {usb: 'USB', demo: 'Demo', bridge: 'Bridge'}[conn.kind];
+  const j = st && st.job, pct = j ? Math.round(j.progress * 100) + '%' : '';
+  $('mstate').textContent = !conn.kind ? (curJob() && curJob().resumable ? 'Unfinished plot' : 'Connect plotter') : !server.up ? 'Bridge offline' : !on ? `${via} · plotter off`
+    : j && j.running ? `${st.state} · ${pct}` : j && j.resumable ? `${via} · ${pct} · unfinished` : `${via} · ${st.state}`;
+  $('mchip').className = 'chip' + (!conn.kind ? (curJob() && curJob().resumable ? ' hold' : '') : ' ' + (!server.up || !on ? 'alarm' : j && j.resumable && !j.running ? 'hold' : {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm', Connecting: 'busy'}[st.state] || ''));
+  const pb = document.querySelector('#wsSeg [data-ws=plot]'), cj = curJob();
+  pb.classList.toggle('live', !!(j && j.running)); pb.classList.toggle('warn', !!(cj && cj.resumable && !(j && j.running)));
 }
-$('mchip').onclick = () => openConnModal();
-addEventListener('beforeunload', e => { if (conn.kind === 'usb' && server.st && server.st.job && server.st.job.running) { e.preventDefault(); e.returnValue = ''; } });
+$('mchip').onclick = () => { const j = curJob(); setWs(conn.kind && server.st && server.st.connected || (j && j.resumable) ? 'plot' : 'machine'); };
+addEventListener('beforeunload', e => { if (isLocal() && server.st && server.st.job && server.st.job.running) { usb.save(); e.preventDefault(); e.returnValue = ''; } });
+addEventListener('pagehide', () => { if (usb && usb.job && usb.job.dirty) usb.save(); if (demo) demo.save(); });
 
 async function connectUsb(baud, pick) {
   if (!SERIAL_OK) throw new Error('This browser cannot reach USB serial devices');
   let port;
   if (!pick) { const ports = await navigator.serial.getPorts(); port = ports[0]; }
   if (!port) port = await navigator.serial.requestPort();
-  if (conn.kind === 'usb' && usb) await usb.close();
-  usb = usb || new GrblSerial();
+  if (isLocal() && usb) await usb.close();
+  usb = new GrblSerial('usb');
   try { await usb.open(port, baud); }
   catch (e) { throw new Error(/already open/i.test(e.message) ? 'That port is busy — close other programs using it (Arduino IDE, another tab) and try again' : 'Could not open the port: ' + e.message); }
+  usb.adopt(await GrblSerial.saved('usb'));
   lsSet('plotUsb', {baud});
   setConn({kind: 'usb'});
+}
+async function connectDemo() {
+  if (isLocal() && usb) await usb.close();
+  demo = demo || await SimGrbl.restore();
+  usb = new GrblSerial('demo');
+  await usb.open(demo, 115200);
+  usb.adopt(await GrblSerial.saved('demo'));
+  setConn({kind: 'demo'});
 }
 async function connectBridge(base, token) {
   base = base.trim().replace(/\/+$/, '');
@@ -4792,78 +5215,14 @@ async function connectBridge(base, token) {
     throw new Error('This page is served over https, so the browser blocks an http bridge. Open the studio from the bridge instead (link below).');
   try { await bridgeFetch(base, token, 'status'); }
   catch (e) { throw new Error(e.message === 'Failed to fetch' ? `No bridge answered at ${base || 'this address'} — is it running and on the same network?` : e.message); }
-  if (conn.kind === 'usb' && usb) await usb.close();
+  if (isLocal() && usb) await usb.close();
   setConn({kind: 'bridge', base, token});
 }
-
-function openConnModal() { renderConnModal(false); }
-function renderConnModal(refresh) {
-  const st = server.st, on = conn.kind && server.up;
-  const saved = lsGet('plotBridge') || {}, usbSaved = lsGet('plotUsb') || {};
-  const status = !conn.kind ? '' : `<div class="conn-now"><span class="chip ${on && st && st.connected ? 'idle' : 'alarm'}"><i></i>${conn.kind === 'usb' ? 'USB' : 'Bridge'}</span>
-      <div class="grow"><b>${conn.kind === 'usb' ? esc((st && st.port) || 'USB serial') : esc(conn.base || location.host)}</b>
-      <span>${!server.up ? 'not answering' : st && st.connected ? `${esc(st.state)}${st.pos ? ` · X ${(+st.pos[0]).toFixed(1)} Y ${(+st.pos[1]).toFixed(1)}` : ''}` : 'bridge is up, plotter not connected'}</span></div>
-      ${conn.kind === 'bridge' && server.up && st && !st.connected ? '<button class="btn sm" id="cnPlug">Connect plotter</button>' : ''}
-      ${st && st.state === 'Alarm' ? '<button class="btn sm" id="cnUnlock">Unlock</button>' : ''}
-      <button class="btn sm" id="cnOff">Disconnect</button></div>`;
-  if (refresh) { const n = $('connNow'); if (n) { n.innerHTML = status; wireConnNow(); } return; }
-  const hostedNote = HOSTED ? `<div class="callout">This copy of Plot Studio runs inside claude.ai, which keeps pages away from USB devices and your local network. To plot, download Plot Studio and open the file in Chrome or Edge, or open the studio on your bridge (below).
-      <div class="row" style="margin-top:8px"><button class="btn sm primary" id="cnSave">Download Plot Studio</button></div></div>` : '';
-  openModal(`${modalHead('Plotter')}<div class="body" id="connModal">
-    ${hostedNote}
-    <div id="connNow">${status}</div>
-    <div id="cnErr"></div>
-    <section class="conn-opt${SERIAL_OK ? '' : ' off'}">
-      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M8 7l4-4 4 4M7 12v3l5 3 5-3v-3"/><circle cx="12" cy="19" r="2"/></svg><b>USB cable</b><small>this computer</small></div>
-      <p>Plot Studio streams the drawing to the plotter itself. Keep this tab open until the plot finishes.</p>
-      ${SERIAL_OK ? `<div class="row"><label class="field" style="width:120px"><span>Baud rate</span><select id="cnBaud">${[115200, 250000, 57600, 38400, 9600].map(b => `<option ${b === (usbSaved.baud || 115200) ? 'selected' : ''}>${b}</option>`).join('')}</select></label>
-        <span class="grow"></span><button class="btn primary" id="cnUsb">Choose port…</button></div>`
-        : `<p class="note">${HOSTED ? 'Not available inside claude.ai.' : !window.isSecureContext ? 'USB needs a secure page (https, localhost or a downloaded file).' : 'USB plotting needs Chrome or Edge on a desktop computer.'}</p>`}
-    </section>
-    <section class="conn-opt">
-      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="10" rx="2"/><path d="M8 18h8M12 14v4M8 9h.01M12 9h4"/></svg><b>Plotter Bridge</b><small>Raspberry Pi or another computer</small></div>
-      <p>A small app next to the plotter streams the job. The plot keeps going when you close this tab, and you can watch it from your phone.</p>
-      <div class="fields">
-        <label class="field full"><span>Bridge address</span><input id="cnUrl" placeholder="raspberrypi.local:8080" value="${esc(saved.base || '')}" spellcheck="false" autocapitalize="off"></label>
-        <label class="field full"><span>Access token <em style="color:var(--faint)">if set</em></span><input id="cnTok" type="password" value="${esc(saved.token || '')}" autocomplete="off"></label>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <a class="btn sm" id="cnOpen" target="_blank" rel="noopener">Open studio on the bridge ↗</a><span class="grow"></span>
-        ${BRIDGE_OK ? '<button class="btn primary" id="cnBridge">Connect</button>' : ''}
-      </div>
-      ${BRIDGE_OK ? '' : '<p class="note">From claude.ai, open the studio on the bridge: it runs the same Plot Studio and plots straight away. Save your project first (File → Save project) and open it there.</p>'}
-    </section>
-  </div>`);
-  const err = m => $('cnErr').innerHTML = m ? `<div class="callout bad">${esc(m)}</div>` : '';
-  const openLink = () => { let b = $('cnUrl').value.trim().replace(/\/+$/, ''); if (!b) { $('cnOpen').removeAttribute('href'); return; } if (!/^https?:\/\//.test(b)) b = 'http://' + b; if (!/:\d+$/.test(b.replace(/^https?:\/\//, '')) && b.startsWith('http://')) b += ':8080'; $('cnOpen').href = b + '/studio'; };
-  $('cnUrl').oninput = openLink; openLink();
-  if ($('cnUsb')) $('cnUsb').onclick = async () => {
-    $('cnUsb').disabled = true; err('');
-    try { await connectUsb(+$('cnBaud').value, true); toast('Plotter connected over USB'); renderConnModal(false); }
-    catch (e) { if (e.name !== 'NotFoundError') err(e.message); }
-    if ($('cnUsb')) $('cnUsb').disabled = false;
-  };
-  if ($('cnBridge')) $('cnBridge').onclick = async () => {
-    $('cnBridge').disabled = true; err('');
-    try { await connectBridge($('cnUrl').value, $('cnTok').value); toast('Connected to the bridge'); renderConnModal(false); }
-    catch (e) { err(e.message); }
-    if ($('cnBridge')) $('cnBridge').disabled = false;
-  };
-  if ($('cnSave')) $('cnSave').onclick = async () => {
-    try { const r = await fetch('plot-studio.html'); if (!r.ok) throw new Error(r.status); await download('plot-studio.html', await r.text(), 'text/html'); }
-    catch (e) { toast('Could not fetch the offline copy (' + e.message + ')', true); }
-  };
-  wireConnNow();
-}
-function wireConnNow() {
-  if ($('cnOff')) $('cnOff').onclick = async () => {
-    if (server.st && server.st.job && server.st.job.running && conn.kind === 'usb') return toast('Stop the plot before disconnecting', true);
-    if (conn.kind === 'usb') await usb.close();
-    if (conn.kind === 'bridge') lsSet('plotBridge', {...(lsGet('plotBridge') || {}), auto: false});
-    setConn({kind: null}); renderConnModal(false);
-  };
-  if ($('cnPlug')) $('cnPlug').onclick = async () => { try { await api('connect'); toast('Plotter connected'); } catch (e) { toast(e.message, true); } };
-  if ($('cnUnlock')) $('cnUnlock').onclick = async () => { try { await api('unlock'); } catch (e) { toast(e.message, true); } };
+async function disconnect() {
+  if (server.st && server.st.job && server.st.job.running && isLocal()) return toast('Stop the plot before disconnecting', true);
+  if (isLocal()) await usb.close();
+  if (conn.kind === 'bridge') lsSet('plotBridge', {...(lsGet('plotBridge') || {}), auto: false});
+  setConn({kind: null});
 }
 async function autoConnect() {
   if (HOSTED) return;
@@ -4871,88 +5230,467 @@ async function autoConnect() {
     try { const r = await fetch('/api/info'); const j = await r.json(); if (j.name === 'plotter-bridge') {
       const tok = (lsGet('plotBridge') || {}).token || '';
       try { await bridgeFetch('', tok, 'status'); setConn({kind: 'bridge', base: '', token: tok}); }
-      catch (e) { if (/token/.test(e.message)) { conn = {kind: 'bridge', base: '', token: ''}; renderConn(); openConnModal(); $('cnErr').innerHTML = '<div class="callout">Enter the bridge\'s access token below, then Connect.</div>'; $('cnUrl').value = location.origin; } }
+      catch (e) { if (/token/.test(e.message)) { connUi.err = 'Enter the bridge’s access token below, then Connect.'; connUi.url = location.origin; setWs('machine'); renderConnCard(true); } }
       return; } } catch {}
   }
   const saved = lsGet('plotBridge');
   if (saved && saved.base && saved.auto !== false) { try { await connectBridge(saved.base, saved.token); } catch {} }
 }
-$('btnPlot').onclick = () => {
-  if (building) return toast('Still processing — try again in a moment', true);
-  const a = activePens();
-  if (!a.length) return toast('Nothing to plot yet', true);
-  plotRun = {list: a, i: 0, busy: false, started: false, jobId: null, error: null, done: new Set()};
-  renderPlotModal();
-};
-function renderPlotModal() {
-  const R = plotRun, st = server.st || {}, connected = st.connected;
-  openModal(`${modalHead('Plot')}<div class="body">
-    ${!connected ? `<div class="callout">The plotter is not connected. <button class="btn sm" id="plConnect" style="margin-left:6px">Connect</button></div>` : ''}
-    ${S.machine.mirrorX ? '<div class="callout">X is mirrored in the output (Machine tab).</div>' : ''}
-    <div id="plErr"></div>
-    ${R.list.map((pp, i) => penRow(pp, i, `<span class="mono" style="font-size:11px;color:var(--muted)" data-stat="${i}"></span>`)).join('')}
-    <div class="callout" id="plPrompt" style="background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)"></div>
-    <div class="row"><button class="btn primary grow" id="plGo">Plot</button><button class="btn" id="plPause" hidden>Pause</button><button class="btn" id="plSkip">Skip pen</button><button class="btn danger" id="plStop">Stop</button></div>
-    <p class="note" id="plNote"></p>
-  </div>`);
-  if ($('plConnect')) $('plConnect').onclick = () => { closeModal(true); openConnModal(); };
-  $('plGo').onclick = startPen; $('plSkip').onclick = () => { R.done.add(R.i); R.i++; updatePlotModal(); };
-  $('plPause').onclick = async () => { const held = server.st && server.st.state === 'Hold'; try { await api(held ? 'resume' : 'pause'); } catch (e) { toast(e.message, true); } };
-  $('plStop').onclick = async () => {
-    if (!$('plStop').dataset.sure) { $('plStop').dataset.sure = 1; $('plStop').textContent = 'Stop — sure?'; setTimeout(() => { if ($('plStop')) { delete $('plStop').dataset.sure; $('plStop').textContent = 'Stop'; } }, 3000); return; }
-    try { await api('stop', {penUp: `M3 S${S.machine.up}`}); } catch (e) { toast(e.message, true); }
-    R.busy = false; R.error = 'Stopped. The pen was lifted and the plotter reset — check the origin before plotting again.'; updatePlotModal();
-  };
-  updatePlotModal();
+
+// =====================================================================
+//  workspaces
+// =====================================================================
+let ws = 'design';
+function setWs(w) {
+  if (w === ws) return;
+  ws = w; document.body.dataset.ws = w;
+  document.querySelectorAll('#wsSeg [data-ws]').forEach(b => b.classList.toggle('on', b.dataset.ws === w));
+  closeMenu();
+  if (w !== 'design') { mapEdit = null; geoPick = null; }
+  if (w === 'plot') ensureSession();
+  hover = null; afterStatus(); renderStatus(); clearTimeout(pollTimer); pollServer(); draw();
+}
+document.querySelectorAll('#wsSeg [data-ws]').forEach(b => b.onclick = () => setWs(b.dataset.ws));
+function setHTML(el, html) { if (el._html === html) return false; el._html = html; el.innerHTML = html; return true; }
+function afterStatus() {
+  renderConn();
+  if (ws === 'machine') { renderConnCard(); renderMoveCard(); }
+  if (ws === 'plot') { trackSession(); renderRecover(); renderQueue(); renderLiveCard(); }
+  else trackSession();
+  if (ws !== 'design') { renderStatus(); syncLive(); draw(); }
+}
+function addLog(entries) {
+  for (const id of ['conLog', 'plotLog']) {
+    const L = $(id), stick = L.scrollTop + L.clientHeight >= L.scrollHeight - 4;
+    for (const e of entries) {
+      if (id === 'plotLog' && (e.k === 'rx' || e.k === 'tx')) continue;   // the plot log keeps the story, the console everything
+      const d = document.createElement('div'); d.className = e.k;
+      d.textContent = (e.k === 'tx' ? '› ' : '') + e.m; L.append(d);
+    }
+    while (L.childElementCount > 300) L.firstElementChild.remove();
+    if (stick) L.scrollTop = L.scrollHeight;
+  }
+}
+
+// ---------- Machine: connection ----------
+const connUi = {err: '', url: null, more: false};
+function renderConnCard(force) {
+  const st = server.st, on = !!(conn.kind && server.up), saved = lsGet('plotBridge') || {}, usbSaved = lsGet('plotUsb') || {};
+  const sig = [conn.kind, conn.base, server.up, st && st.connected, st && st.state === 'Alarm', connUi.err, connUi.more, demo && demo.speed, HOSTED].join('|');
+  const el = $('connCard'); if (!force && el._sig === sig) return; el._sig = sig;
+  const nowRow = !conn.kind ? '' : `<div class="conn-now"><span class="chip ${on && st && st.connected ? 'idle' : 'alarm'}"><i></i>${{usb: 'USB', demo: 'Demo', bridge: 'Bridge'}[conn.kind]}</span>
+      <div class="grow"><b>${conn.kind === 'bridge' ? esc(conn.base || location.host) : esc((st && st.port) || 'USB serial')}</b>
+      <span>${!server.up ? 'not answering' : st && st.connected ? 'connected' : 'bridge is up, plotter not connected'}</span></div>
+      ${conn.kind === 'bridge' && server.up && st && !st.connected ? '<button class="btn sm" data-c="plug">Connect plotter</button>' : ''}
+      ${conn.kind === 'bridge' ? `<a class="btn sm" href="${esc((conn.base || '') + '/')}" target="_blank" rel="noopener">Monitor ↗</a>` : ''}
+      <button class="btn sm" data-c="off">Disconnect</button></div>
+      ${conn.kind === 'demo' ? `<div class="demo-tools" style="margin-top:8px"><span class="note" style="margin:0">Speed</span><div class="seg" style="width:180px">${[1, 10, 50, 200].map(v => `<button data-c="speed" data-v="${v}" class="${demo && demo.speed === v ? 'on' : ''}">×${v}</button>`).join('')}</div>
+        <button class="btn sm" data-c="sheet" title="Take the plotted sheet off the demo plotter">New sheet</button></div>
+        <div class="demo-tools" style="margin-top:8px"><span class="note" style="margin:0">Try a crash:</span><button class="btn sm" data-c="glitch" title="The controller reboots mid-plot, as with a brown-out">Power glitch</button><button class="btn sm" data-c="unplug" title="The USB cable comes out">Pull the cable</button><span class="note" style="margin:0">or reload this page</span></div>` : ''}`;
+  const hostedNote = HOSTED ? `<div class="callout">This copy runs inside claude.ai, which keeps pages away from USB devices and your network. Try the demo plotter, or download Plot Studio and open it in Chrome or Edge.
+      <div class="row" style="margin-top:8px"><button class="btn sm primary" data-c="save">Download Plot Studio</button></div></div>` : '';
+  const options = `
+    <section class="conn-opt">
+      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14l3-4 3 3 4-5"/></svg><b>Demo plotter</b><small>no hardware</small></div>
+      <p>A simulated GRBL plotter in this page, with its own sheet of paper. Plot, watch, crash and resume without a machine.</p>
+      <div class="row"><span class="grow"></span><button class="btn ${conn.kind ? '' : 'primary'}" data-c="demo">Use the demo plotter</button></div>
+    </section>
+    <section class="conn-opt${SERIAL_OK ? '' : ' off'}">
+      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M8 7l4-4 4 4M7 12v3l5 3 5-3v-3"/><circle cx="12" cy="19" r="2"/></svg><b>USB cable</b><small>this computer</small></div>
+      <p>This tab streams the drawing to the plotter and saves its progress as it goes, so a plot cut short by a crash or a closed tab can be resumed.</p>
+      ${SERIAL_OK ? `<div class="row"><label class="field" style="width:120px"><span>Baud rate</span><select id="cnBaud">${[115200, 250000, 57600, 38400, 9600].map(b => `<option ${b === (usbSaved.baud || 115200) ? 'selected' : ''}>${b}</option>`).join('')}</select></label>
+        <span class="grow"></span><button class="btn primary" data-c="usb">Choose port…</button></div>`
+        : `<p class="note">${HOSTED ? 'Not available inside claude.ai.' : !window.isSecureContext ? 'USB needs a secure page (https, localhost or a downloaded file).' : 'USB plotting needs Chrome or Edge on a desktop computer.'}</p>`}
+    </section>
+    <section class="conn-opt">
+      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="10" rx="2"/><path d="M8 18h8M12 14v4M8 9h.01M12 9h4"/></svg><b>Plotter Bridge</b><small>Raspberry Pi or another computer</small></div>
+      <p>A small app next to the plotter streams the job and keeps its progress on disk. The plot keeps going when you close this tab, and you can watch it from your phone.</p>
+      <div class="fields">
+        <label class="field full"><span>Bridge address</span><input id="cnUrl" placeholder="raspberrypi.local:8080" value="${esc(connUi.url ?? saved.base ?? '')}" spellcheck="false" autocapitalize="off"></label>
+        <label class="field full"><span>Access token <em style="color:var(--faint)">if set</em></span><input id="cnTok" type="password" value="${esc(saved.token || '')}" autocomplete="off"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <a class="btn sm" id="cnOpen" target="_blank" rel="noopener">Open studio on the bridge ↗</a><span class="grow"></span>
+        ${BRIDGE_OK ? '<button class="btn primary" data-c="bridge">Connect</button>' : ''}
+      </div>
+    </section>`;
+  el.innerHTML = `<h3>Plotter <small>${conn.kind ? '' : 'not connected'}</small></h3><div style="display:flex;flex-direction:column;gap:10px">${hostedNote}${nowRow}
+    ${connUi.err ? `<div class="callout bad">${esc(connUi.err)}</div>` : ''}
+    ${conn.kind ? `<button class="btn sm ghost" data-c="more" style="align-self:flex-start">${connUi.more ? 'Hide other connections' : 'Other connections…'}</button>` : ''}
+    ${!conn.kind || connUi.more ? options : ''}</div>`;
+  const openLink = () => { const u = $('cnUrl'); if (!u) return; let b = u.value.trim().replace(/\/+$/, ''); if (!b) { $('cnOpen').removeAttribute('href'); return; } if (!/^https?:\/\//.test(b)) b = 'http://' + b; if (!/:\d+$/.test(b.replace(/^https?:\/\//, '')) && b.startsWith('http://')) b += ':8080'; $('cnOpen').href = b + '/studio'; };
+  if ($('cnUrl')) { $('cnUrl').oninput = () => { connUi.url = $('cnUrl').value; openLink(); }; openLink(); }
+}
+$('connCard').addEventListener('click', async e => {
+  const b = e.target.closest('[data-c]'); if (!b || b.disabled) return;
+  const c = b.dataset.c, err = m => { connUi.err = m || ''; renderConnCard(true); };
+  b.disabled = true;
+  try {
+    if (c === 'demo') { err(''); await connectDemo(); connUi.more = false; toast('Demo plotter connected'); }
+    else if (c === 'usb') { err(''); try { await connectUsb(+$('cnBaud').value, true); connUi.more = false; toast('Plotter connected over USB'); } catch (x) { if (x.name !== 'NotFoundError') err(x.message); } }
+    else if (c === 'bridge') { err(''); await connectBridge($('cnUrl').value, $('cnTok').value); connUi.more = false; toast('Connected to the bridge'); }
+    else if (c === 'off') await disconnect();
+    else if (c === 'plug') { await api('connect'); toast('Plotter connected'); }
+    else if (c === 'more') connUi.more = !connUi.more;
+    else if (c === 'speed') { demo.speed = +b.dataset.v; demo.save(); }
+    else if (c === 'sheet') { demo.newSheet(); draw(); }
+    else if (c === 'glitch') { demo.crash(); toast('Power glitch: the demo controller rebooted'); }
+    else if (c === 'unplug') { demo.unplug(); toast('Cable pulled'); }
+    else if (c === 'save') { const r = await fetch('plot-studio.html'); if (!r.ok) throw new Error(r.status); await download('plot-studio.html', await r.text(), 'text/html'); }
+  } catch (x) { err(x.message); }
+  b.disabled = false; renderConnCard(true);
+});
+
+// ---------- Machine: manual control ----------
+let jogStep = 10;
+function renderMoveCard() {
+  const st = server.st, on = !!(st && st.connected), running = !!(st && st.job && st.job.running), busy = !on || running, M = S.machine;
+  const sig = [on, running, st && st.state === 'Alarm', st && st.homing, jogStep].join('|'), el = $('moveCard');
+  if (el._sig !== sig) {
+    el._sig = sig;
+    el.innerHTML = `<h3>Move <small id="mvState"></small></h3>
+      <div class="kv" style="margin-bottom:10px"><div><span>X</span><b id="mvX">—</b></div><div><span>Y</span><b id="mvY">—</b></div></div>
+      ${st && st.state === 'Alarm' ? `<div class="callout bad" style="margin-bottom:10px">The plotter is in alarm${st.alarm ? ` (${esc(st.alarm)})` : ''}. Check it, then unlock or home it.</div>` : ''}
+      <div class="row" style="align-items:flex-start;gap:14px;flex-wrap:nowrap">
+        <div class="jog">
+          <span></span><button class="btn" data-m="jog" data-d="0,1" aria-label="Y+" ${busy ? 'disabled' : ''}>↑</button><span></span>
+          <button class="btn" data-m="jog" data-d="-1,0" aria-label="X−" ${busy ? 'disabled' : ''}>←</button><button class="btn mid" data-m="zero0" title="Move to X0 Y0 with the pen up" ${busy ? 'disabled' : ''}>0,0</button><button class="btn" data-m="jog" data-d="1,0" aria-label="X+" ${busy ? 'disabled' : ''}>→</button>
+          <span></span><button class="btn" data-m="jog" data-d="0,-1" aria-label="Y−" ${busy ? 'disabled' : ''}>↓</button><span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0;flex:1">
+          <div class="field"><span>Step (mm)</span><div class="seg">${[1, 10, 50].map(v => `<button data-m="step" data-v="${v}" class="${jogStep === v ? 'on' : ''}">${v}</button>`).join('')}</div></div>
+          <div class="field"><span>Pen</span><div class="row"><button class="btn sm" data-m="up" ${busy ? 'disabled' : ''}>Up · S${M.up}</button><button class="btn sm" data-m="down" ${busy ? 'disabled' : ''}>Down · S${M.down}</button></div></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm" data-m="origin" title="This position becomes X0 Y0 (G10 L20 — kept through resets)" ${busy ? 'disabled' : ''}>Set 0,0 here</button>
+        ${st && st.homing ? `<button class="btn sm" data-m="home" ${!on || running ? 'disabled' : ''}>Home</button>` : ''}
+        ${st && st.state === 'Alarm' ? '<button class="btn sm" data-m="unlock">Unlock</button>' : ''}
+      </div>
+      <p class="note">${!on ? 'Connect a plotter above to move it.' : running ? 'A plot is running — see Plot.' : 'Click the bed to travel there with the pen up. Arrow keys jog.'}</p>`;
+  }
+  $('mvX').textContent = on ? (+st.pos[0]).toFixed(2) : '—'; $('mvY').textContent = on ? (+st.pos[1]).toFixed(2) : '—';
+  $('mvState').textContent = on ? st.state : '';
+  $('conInfo').textContent = on ? `${st.port || ''}${st.baud ? ' · ' + st.baud : ''}` : 'not connected';
+}
+const jog = (dx, dy) => act('jog', {x: dx * jogStep, y: dy * jogStep, feed: S.machine.travel});
+const travelTo = (x, y) => { const M = S.machine; return act('send', {line: [`M3 S${M.up}`, M.dwell > 0 ? `G4 P${M.dwell}` : '', `G90 G1 X${x.toFixed(2)} Y${y.toFixed(2)} F${M.travel}`].filter(Boolean).join('\n')}); };
+$('moveCard').addEventListener('click', e => {
+  const b = e.target.closest('[data-m]'); if (!b || b.disabled) return;
+  const m = b.dataset.m, M = S.machine;
+  if (m === 'jog') { const [x, y] = b.dataset.d.split(',').map(Number); jog(x, y); }
+  else if (m === 'step') { jogStep = +b.dataset.v; renderMoveCard(); }
+  else if (m === 'up') act('send', {line: `M3 S${M.up}`});
+  else if (m === 'down') act('send', {line: `M3 S${M.down}`});
+  else if (m === 'zero0') travelTo(0, 0);
+  else if (m === 'origin') act('origin', {x: 0, y: 0}).then(r => r && toast('This position is now X0 Y0'));
+  else if (m === 'home') act('home');
+  else if (m === 'unlock') act('unlock');
+});
+$('conForm').onsubmit = e => { e.preventDefault(); const v = $('conIn').value.trim(); if (!v) return; act('send', {line: v}); $('conIn').value = ''; };
+
+// ---------- Plot: pen queue ----------
+// A plot session is the active pens of the design, plotted one job per pen with a pen swap in between.
+// Which pens are done is remembered (per browser), and each job carries its pen in `meta`, so it survives a reload.
+let session = null;
+function ensureSession() {
+  const a = activePens(), key = a.map(pp => pp.pen.id).join();
+  if (!session || session.key !== key) {
+    const sv = lsGet('plotstudio.session'), same = sv && sv.key === key;
+    session = {key, done: new Set(same ? sv.done : []), skipped: new Set(same ? sv.skipped : []), job: null};
+  }
+  return a;
+}
+const saveSession = () => session && lsSet('plotstudio.session', {key: session.key, done: [...session.done], skipped: [...session.skipped]});
+let lastJobKey = null;
+function trackSession() {   // a finished job of one of our pens marks that pen done
+  const j = server.st && server.st.job; if (!j) return;
+  const key = `${conn.kind}:${j.id}:${j.state}`; if (key === lastJobKey) return; lastJobKey = key;
+  const pid = j.meta && j.meta.penId; if (!pid) return;
+  ensureSession();
+  if (j.state === 'finished' && !session.done.has(pid)) {
+    session.done.add(pid); saveSession();
+    const nx = nextPen();
+    toast(nx ? `${(penById(pid) || {}).name || 'Pen'} finished — load the ${nx.pen.name} pen next` : 'All pens plotted');
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+}
+function nextPen() { const a = ensureSession(); return a.find(pp => !session.done.has(pp.pen.id) && !session.skipped.has(pp.pen.id)) || null; }
+function renderQueue() {
+  const a = ensureSession(), st = server.st || {}, on = !!st.connected, j = curJob(), running = !!(j && j.running), held = st.state === 'Hold';
+  const nx = nextPen(), jp = j && j.meta && j.meta.penId;
+  const steps = a.map((pp, i) => {
+    const id = pp.pen.id, mine = jp === id, d = session.done.has(id), sk = session.skipped.has(id);
+    return `<div class="step ${nx && nx.pen.id === id && !running ? 'cur' : ''} ${d ? 'done' : ''} ${sk ? 'skip' : ''} ${mine && j.resumable ? 'int' : ''}">
+      <span class="sw" style="background:${pp.pen.color}"></span>
+      <div><b>${i + 1}. ${esc(pp.pen.name)}</b><span>${fmtLen(pp.draw)} · ${pp.paths.length} lifts · ~${fmtTime(pp.time)}${pp.pen.down !== '' ? ` · down S${pp.pen.down}` : ''}</span>
+        ${mine && (running || j.resumable) ? `<div class="bigbar ${j.resumable ? 'bad' : ''}" style="margin:6px 0 0;height:5px"><div data-q="bar"></div></div>` : ''}</div>
+      <div class="row"><span class="st" ${mine && !d ? 'data-q="st"' : ''}>${d ? '✓ done' : sk ? 'skipped' : ''}</span>${d || sk ? `<button class="btn ghost sm" data-p="redo" data-id="${id}" title="Plot this pen again">↺</button>` : ''}</div></div>`;
+  }).join('');
+  const prompt = !a.length ? 'Nothing to plot yet — make something in Design.'
+    : running ? (held ? `Paused — press Resume to continue.` : jp ? `Plotting with <b>${esc((penById(jp) || {}).name || j.name)}</b>…` : `Plotting <b>${esc(j.name)}</b>…`)
+    : j && j.resumable ? 'An unfinished plot is waiting — resume it above, or discard it.'
+    : !nx ? '<b>All done.</b> The pen is up and parked.' : `${session.done.size ? 'Swap to' : 'Load'} the <b style="color:${nx.pen.color}">●</b> <b>${esc(nx.pen.name)}</b> pen, then press Plot.`;
+  setHTML($('queueCard'), `<h3>Plot <small>${a.length} pen${a.length === 1 ? '' : 's'}<span data-q="left"></span></small></h3>
+    ${!conn.kind ? '<div class="callout" style="margin-bottom:10px">No plotter connected. <button class="btn sm" data-p="machine" style="margin-left:6px">Connect…</button></div>' : ''}
+    ${S.machine.mirrorX ? '<div class="callout" style="margin-bottom:10px">X is mirrored in the output (Machine settings).</div>' : ''}
+    <div style="display:flex;flex-direction:column;gap:8px">${steps}</div>
+    <div class="callout" style="margin-top:10px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)">${prompt}</div>
+    <div class="row" style="margin-top:10px">
+      ${running ? `<button class="btn grow" data-p="pause">${held ? 'Resume' : 'Pause'}</button><button class="btn danger" data-p="stop">Stop</button>`
+        : `<button class="btn primary grow" data-p="go" ${!nx || !on || building || (j && j.resumable) ? 'disabled' : ''}>${nx ? `Plot ${esc(nx.pen.name)}` : 'Finished'}</button>
+           <button class="btn" data-p="skip" ${!nx ? 'disabled' : ''}>Skip</button>`}
+    </div>
+    ${!running && (session.done.size || session.skipped.size) ? '<div class="row" style="margin-top:8px"><span class="grow"></span><button class="btn ghost sm" data-p="over">Start over</button></div>' : ''}
+    <p class="note">${conn.kind === 'bridge' ? 'Each pen is its own job. The bridge keeps plotting, and keeps its progress, if you close this tab.'
+      : isLocal() ? 'Each pen is its own job. Keep this tab open while plotting — progress is saved as it goes, so a plot cut short can be resumed.' : 'Each pen is its own job.'}</p>`);
+  // the numbers that change while plotting are filled in without rebuilding the buttons
+  const q = n => $('queueCard').querySelector(`[data-q="${n}"]`), left = a.filter(pp => !session.done.has(pp.pen.id)).reduce((s, pp) => s + pp.time, 0);
+  q('left').textContent = left ? ` · ~${fmtTime(left)} left` : '';
+  if (q('bar')) q('bar').style.width = (j.progress * 100) + '%';
+  if (q('st')) q('st').textContent = running ? `${Math.round(j.progress * 100)}%${j.eta ? ' · ' + fmtTime(j.eta) + ' left' : ''}` : j && j.resumable ? `${Math.round(j.progress * 100)}% · unfinished` : '';
 }
 let wakeLock = null;
 async function startPen() {
-  const R = plotRun, pp = R.list[R.i]; if (!pp || R.busy) return;
-  if (!(server.st && server.st.connected)) return toast('Connect the plotter first', true);
-  R.error = null; R.busy = true; R.started = false; updatePlotModal();
-  try {
-    const r = await api('run', {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up});
-    R.jobId = r.id; R.started = true;
-    if (conn.kind === 'usb' && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
-  }
-  catch (e) { R.busy = false; R.error = e.message; }
-  updatePlotModal();
+  const pp = nextPen(); if (!pp) return;
+  if (building) return toast('Still processing — try again in a moment', true);
+  const j = server.st && server.st.job;
+  if (j && j.resumable && !confirm(`Start ${pp.pen.name}? The unfinished plot “${j.name}” can then no longer be resumed.`)) return;
+  if (conn.kind === 'demo' && !session.done.size && demo && demo.ink.length && confirm('Put a fresh sheet on the demo plotter?')) demo.newSheet();
+  if (conn.kind === 'demo') demo.inkColor = pp.pen.color;
+  const r = await act('run', {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
+    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel()}});
+  if (r && isLocal() && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
+  pollServer();
 }
-function updatePlotModal() {
-  const R = plotRun; if (!R || !$('plGo')) return;
-  const st = server.st || {}, j0 = st.job || {}, j = R.jobId == null || j0.id === R.jobId ? j0 : {running: true};
-  if (R.busy && R.started && !j.running) {   // job finished
-    R.busy = false;
-    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
-    if (j.error) R.error = j.error; else { R.done.add(R.i); R.i++; }
+$('plotLeft').addEventListener('click', async e => {
+  const b = e.target.closest('[data-p]'); if (!b || b.disabled) return;
+  const p = b.dataset.p, st = server.st || {};
+  if (p === 'go') startPen();
+  else if (p === 'skip') { const pp = nextPen(); if (pp) { session.skipped.add(pp.pen.id); saveSession(); renderQueue(); } }
+  else if (p === 'redo') { session.done.delete(b.dataset.id); session.skipped.delete(b.dataset.id); saveSession(); renderQueue(); }
+  else if (p === 'over') { session.done.clear(); session.skipped.clear(); saveSession(); renderQueue(); }
+  else if (p === 'machine') setWs('machine');
+  else if (p === 'pause') { await act(st.state === 'Hold' ? 'resume' : 'pause'); pollServer(); }
+  else if (p === 'stop') {
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Stop — sure?'; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = 'Stop'; } }, 3000); return; }
+    b.disabled = true; await act('stop', {penUp: `M3 S${S.machine.up}`}); pollServer();
   }
-  const pct = j.progress != null ? j.progress : j.total ? j.sent / j.total : 0, held = st.state === 'Hold';
-  $('modal').querySelectorAll('.step').forEach(s => {
-    const i = +s.dataset.i, bar = s.querySelector('.bar'), cur = i === R.i && R.i < R.list.length;
-    s.classList.toggle('cur', cur); s.classList.toggle('done', R.done.has(i));
-    bar.hidden = !(cur && R.busy);
-    if (cur && R.busy && j.total) bar.firstElementChild.style.width = (pct * 100) + '%';
-    s.querySelector('[data-stat]').textContent = R.done.has(i) ? '✓ done' : cur && R.busy ? (j.total ? Math.round(pct * 100) + '%' + (j.eta ? ` · ${fmtTime(j.eta)} left` : '') : 'starting…') : '';
-  });
-  const fin = R.i >= R.list.length, pp = R.list[R.i];
-  $('plErr').innerHTML = (R.error ? `<div class="callout bad">${esc(R.error)}</div>` : '')
-    + (st.state === 'Alarm' ? `<div class="callout bad">The plotter is in alarm${st.alarm ? ` (${esc(st.alarm)})` : ''}. Check it, then <button class="btn sm" id="plUnlock">Unlock</button></div>` : '')
-    + (conn.kind && !server.up ? '<div class="callout bad">Lost contact with the bridge. The plot carries on there; this view reconnects on its own.</div>' : '');
-  if ($('plUnlock')) $('plUnlock').onclick = async () => { try { await api('unlock'); } catch (e) { toast(e.message, true); } };
-  $('plPrompt').innerHTML = fin ? '<b>All done.</b> The pen is up and parked.' : R.busy ? (held ? `Paused with <b>${esc(pp.pen.name)}</b> — press Resume to continue.` : `Plotting with <b>${esc(pp.pen.name)}</b>…`) : `${R.i ? 'Swap to' : 'Load'} the <b style="color:${pp.pen.color}">●</b> <b>${esc(pp.pen.name)}</b> pen, then press Plot.`;
-  $('plGo').disabled = fin || R.busy || !st.connected;
-  $('plGo').textContent = fin ? 'Finished' : R.error ? `Retry ${pp.pen.name}` : `Plot ${pp.pen.name}`;
-  $('plPause').hidden = !R.busy; $('plPause').textContent = held ? 'Resume' : 'Pause';
-  $('plSkip').disabled = fin || R.busy; $('plStop').disabled = !R.busy;
-  $('plNote').innerHTML = conn.kind === 'usb'
-    ? 'Each pen is its own job. <b>Keep this tab open and awake</b> while plotting — closing it stops the plot.'
-    : `Each pen is its own job. The bridge keeps plotting if you close this tab${conn.kind === 'bridge' ? ` — watch it on the <a href="${esc((conn.base || '') + '/')}" target="_blank" rel="noopener">monitor</a>` : ''}.`;
+  else recoverAct(p, b);
+});
+
+// ---------- Plot: recovery ----------
+let resumeLine = null, resumeKey = null;
+function renderRecover() {
+  const j = curJob(), st = server.st, el = $('recCard');
+  const show = !!(j && j.resumable);
+  el.hidden = !show; if (!show) { resumeKey = null; return; }
+  const key = `${j.via || conn.kind}:${j.id}:${j.resume_at}`;
+  if (key !== resumeKey) { resumeKey = key; resumeLine = j.resume_at ?? j.done; }
+  const on = !!(st && st.connected), fresh = on && st.pos_fresh !== false, was = j.pos, now = on ? st.pos : null, same = was && now && Math.hypot(was[0] - now[0], was[1] - now[1]) < 0.05;
+  const S_ = live.key && live.jobId === j.id ? live.strokes || [] : [], at = resumeLine, k = S_.filter(v => v <= at).length;
+  const offlineJob = j.offline, via = j.via === 'demo' ? 'the demo plotter' : 'the plotter over USB';
+  setHTML(el, `<h3>Unfinished plot <small>${j.ended ? 'stopped ' + new Date(j.ended * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : ''}</small></h3>
+    <div style="font-weight:600;font-size:13.5px">${esc(j.name)}</div>
+    <div class="rsub">${esc(j.error || 'Stopped')} · ${Math.round(j.progress * 100)}% drawn (${j.done.toLocaleString()} of ${j.total.toLocaleString()} lines)</div>
+    ${offlineJob ? `<div class="callout" style="margin-top:10px">Saved in this browser. Connect ${via} to resume it.
+        <div class="row" style="margin-top:8px">${j.via === 'demo' ? '<button class="btn sm primary" data-p="cdemo">Connect the demo plotter</button>' : '<button class="btn sm primary" data-p="machine">Connect…</button>'}<button class="btn sm danger" data-p="rdrop">Discard</button></div></div>` : `
+    <ol class="rsteps">
+      <li><div>Check the paper hasn't moved and the pen is in its holder${j.meta && j.meta.color ? ` (<b style="color:${esc(j.meta.color)}">●</b> ${esc((penById(j.meta.penId) || {}).name || 'this pen')})` : ''}.</div></li>
+      <li><div>Make sure the plotter knows where the pen is.
+        <div class="rsub">${!on ? '<span class="warn-t">Connect the plotter first.</span>' : !fresh ? 'Reading the position…'
+          : !was ? `Position now <b>X ${now[0].toFixed(2)} Y ${now[1].toFixed(2)}</b>`
+          : same ? `<span class="ok-t">✓ Unchanged</span> — the pen is where the plot stopped.`
+          : `<span class="warn-t">It reads <b>X ${now[0].toFixed(2)} Y ${now[1].toFixed(2)}</b> but the pen stopped at <b>X ${was[0].toFixed(2)} Y ${was[1].toFixed(2)}</b></span> — the controller probably restarted. ${st.homing ? 'Home it' : 'Move the pen to the origin by hand and press “Pen is at 0, 0”'}, or if nobody moved the pen, press “Pen hasn't moved”.`}</div>
+        <div class="row">${st && st.homing ? `<button class="btn sm" data-p="rhome" ${fresh ? '' : 'disabled'}>Home</button>` : ''}<button class="btn sm" data-p="rzero" ${fresh ? '' : 'disabled'}>Pen is at 0, 0</button>${fresh && was && !same ? `<button class="btn sm" data-p="rkeep">Pen hasn't moved</button>` : ''}
+          ${st && st.state === 'Alarm' ? '<button class="btn sm" data-p="runlock">Unlock</button>' : ''}</div></div></li>
+      <li><div>Continue from
+        <div class="row"><span class="picker"><button class="btn" data-p="rprev" ${S_.some(v => v < at) ? '' : 'disabled'} title="One stroke earlier">−</button><span>${S_.includes(at) ? `stroke ${k} of ${S_.length}` : `line ${at + 1}`}</span><button class="btn" data-p="rnext" ${S_.some(v => v > at) ? '' : 'disabled'} title="One stroke later">+</button></span></div>
+        <div class="rsub">${at < j.done ? `${(j.done - at).toLocaleString()} lines already drawn are traced again (the orange part)` : at > j.done ? `Skips ${(at - j.done).toLocaleString()} lines` : 'Exactly where it stopped'}</div></div></li>
+    </ol>
+    <div class="row" style="margin-top:12px"><button class="btn primary grow" data-p="rgo" ${on && st.state !== 'Alarm' ? '' : 'disabled'}>Resume plot</button><button class="btn danger" data-p="rdrop">Discard</button></div>`}`);
+}
+async function recoverAct(p, b) {
+  const j = curJob(); if (!j) return;
+  if (p === 'rhome') act('home');
+  else if (p === 'runlock') act('unlock');
+  else if (p === 'rzero') { if (confirm('Is the pen exactly at the origin (0, 0)? This position becomes X0 Y0.')) act('origin', {x: 0, y: 0}); }
+  else if (p === 'rkeep') act('origin', {x: j.pos[0], y: j.pos[1]});
+  else if (p === 'rprev' || p === 'rnext') {
+    const S_ = live.strokes || [], v = p === 'rprev' ? S_.filter(s => s < resumeLine).pop() : S_.find(s => s > resumeLine);
+    if (v != null) { resumeLine = v; renderRecover(); draw(); }
+  }
+  else if (p === 'rgo') {
+    b.disabled = true;
+    if (conn.kind === 'demo' && j.meta && j.meta.color) demo.inkColor = j.meta.color;
+    const r = await act('job/resume', {from: resumeLine});
+    if (r) { toast('Resumed'); if (isLocal() && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {}); }
+    pollServer();
+  }
+  else if (p === 'rdrop') {
+    if (!confirm('Discard the unfinished plot? It can no longer be resumed.')) return;
+    if (j.offline) { const k = j.via; offline[k] = null; IDB.del('job:' + k); IDB.del('job:' + k + ':lines'); afterStatus(); }
+    else { await act('job/discard'); pollServer(); }
+  }
+  else if (p === 'cdemo') { try { await connectDemo(); } catch (e) { toast(e.message, true); } }
+}
+
+// ---------- Plot: live status ----------
+function renderLiveCard() {
+  const st = server.st || {}, on = !!st.connected, j = curJob(), running = !!(j && j.running);
+  setHTML($('liveCard'), `<h3>Live <span class="chip ${!on ? '' : {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm'}[st.state] || ''}" style="padding:3px 9px 3px 8px;font-size:11px;text-transform:none;letter-spacing:0;color:var(--fg)"><i></i>${!conn.kind ? 'not connected' : !server.up ? 'offline' : on ? esc(st.state) : 'plotter off'}</span></h3>
+    ${j ? `<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.name)}</div>
+      <div class="livehead" style="margin-top:6px"><b id="lvPct"></b><span>${running ? (st.state === 'Hold' ? 'paused' : 'plotting') : j.state === 'finished' ? 'finished' : j.resumable ? 'unfinished' : esc(j.state || '')}</span></div>
+      <div class="bigbar ${j.resumable ? 'bad' : j.state === 'finished' ? 'ok' : ''}"><div id="lvBar"></div></div>
+      <div class="kv">
+        <div><span>Lines</span><b id="lvLines"></b></div><div><span>Elapsed</span><b id="lvEl"></b></div>
+        <div><span>Remaining</span><b id="lvEta"></b></div><div><span>Finishes</span><b id="lvFin"></b></div>
+      </div>` : '<p class="note" style="margin-top:0">Nothing plotting. Start a pen on the left.</p>'}
+    <div class="kv" style="margin-top:6px"><div><span>X</span><b id="lvX"></b></div><div><span>Y</span><b id="lvY"></b></div>
+      <div><span>Pen</span><b id="lvPen"></b></div><div><span>Via</span><b>${{usb: 'USB', demo: 'demo', bridge: 'bridge'}[conn.kind] || '—'}</b></div></div>
+    ${st.state === 'Alarm' ? `<div class="callout bad" style="margin-top:10px">Alarm${st.alarm ? ` (${esc(st.alarm)})` : ''} — unlock or home it in Machine.</div>` : ''}
+    ${conn.kind === 'bridge' ? `<p class="note"><a href="${esc((conn.base || '') + '/')}" target="_blank" rel="noopener">Open the bridge monitor ↗</a> — watch from any phone on your network.</p>` : ''}
+    ${conn.kind === 'demo' && running ? '<div class="demo-tools" style="margin-top:10px"><span class="note" style="margin:0">Demo:</span><button class="btn sm" data-l="glitch">Power glitch</button><button class="btn sm" data-l="unplug">Pull the cable</button></div>' : ''}`);
+  const t = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+  if (j) {
+    const pct = j.progress * 100;
+    t('lvPct', pct.toFixed(pct < 10 ? 1 : 0) + '%'); $('lvBar').style.width = pct + '%';
+    t('lvLines', `${j.done.toLocaleString()} / ${j.total.toLocaleString()}`); t('lvEl', j.elapsed != null ? fmtTime(j.elapsed) : '—');
+    t('lvEta', running ? (j.eta != null ? fmtTime(j.eta) : 'estimating…') : '—');
+    t('lvFin', running && j.eta ? new Date(Date.now() + j.eta * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '—');
+  }
+  t('lvX', on ? (+st.pos[0]).toFixed(2) : '—'); t('lvY', on ? (+st.pos[1]).toFixed(2) : '—');
+  t('lvPen', !on || !running ? '—' : live.penDown ? 'down' : 'up');
+  $('plotLogInfo').textContent = conn.kind ? '' : 'not connected';
+}
+$('liveCard').addEventListener('click', e => {
+  const b = e.target.closest('[data-l]'); if (!b || !demo) return;
+  if (b.dataset.l === 'glitch') { demo.crash(); toast('Power glitch: the demo controller rebooted'); }
+  if (b.dataset.l === 'unplug') { demo.unplug(); toast('Cable pulled'); }
+});
+
+// ---------- live view on the canvas (Machine and Plot) ----------
+// The job's moves come from the plotter (bridge or this tab), so a plot started elsewhere shows up too.
+const live = {key: null, jobId: null, moves: null, strokes: null, color: null, todo: null, done: null, doneIdx: 1, doneLine: 0, head: null, from: null, t0: 0, penDown: false};
+async function syncLive() {
+  const st = server.st, j = (st && st.job) || null, key = j && conn.kind ? `${conn.kind}:${conn.base}:${j.id}` : null;
+  if (key === live.key) return;
+  Object.assign(live, {key, jobId: j && j.id, moves: null, strokes: null, todo: null, done: null, doneIdx: 1, doneLine: 0});
+  if (!key) return;
+  let d = null; try { d = (conn.kind === 'bridge' ? await bridgeFetch(conn.base, conn.token, 'job') : await api('job')).job; } catch {}
+  if (live.key !== key || !d) return;
+  live.moves = d.moves || []; live.strokes = d.strokes || null;
+  live.color = (d.meta && d.meta.color) || (j.meta && j.meta.color) || null;
+  const p = new Path2D(), M = live.moves;
+  for (let i = 1; i < M.length; i++) if (M[i][3]) { p.moveTo(M[i - 1][1], M[i - 1][2]); p.lineTo(M[i][1], M[i][2]); }
+  live.todo = p; resumeKey = null;
+  if (ws === 'plot') renderRecover();
+  draw();
+}
+function liveDone(done) {   // the drawn part as one path, extended as the plot goes on
+  const M = live.moves; if (!M) return null;
+  if (!live.done || done < live.doneLine) { live.done = new Path2D(); live.doneIdx = 1; }
+  for (; live.doneIdx < M.length && M[live.doneIdx][0] < done; live.doneIdx++) {
+    const a = M[live.doneIdx - 1], b = M[live.doneIdx];
+    if (b[3]) { live.done.moveTo(a[1], a[2]); live.done.lineTo(b[1], b[2]); }
+  }
+  live.doneLine = done;
+  return live.done;
+}
+let hover = null, inkCache = {ver: -1, paths: []}, planCache = {plan: null, paths: []};
+function renderLive() {
+  const c = ctx, k = V.k, M = S.machine, P = paperRect(), st = server.st, j = curJob();
+  screenTransform(); c.clearRect(0, 0, V.W, V.H);
+  worldTransform();
+  c.fillStyle = css('--bedfill'); c.fillRect(0, 0, M.bedW, M.bedH);
+  c.strokeStyle = css('--line-2'); c.lineWidth = 1 / k; c.strokeRect(0, 0, M.bedW, M.bedH);
+  c.save(); c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 18; c.shadowOffsetY = -4 * (devicePixelRatio || 1);
+  c.fillStyle = paperColor(); c.fillRect(P.x, P.y, P.w, P.h); c.restore();
+  c.strokeStyle = lightness(paperColor()) < 0.5 ? 'rgba(255,255,255,.08)' : css('--grid'); c.lineWidth = 1 / k; c.beginPath();
+  for (let x = P.x + 10; x < P.x + P.w; x += 10) { c.moveTo(x, P.y); c.lineTo(x, P.y + P.h); }
+  for (let y = P.y + 10; y < P.y + P.h; y += 10) { c.moveTo(P.x, y); c.lineTo(P.x + P.w, y); }
+  c.stroke();
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  const lw = w => Math.max(w || 0.4, 0.8 / k);
+  // the design, faint, for context (in machine coordinates: mirrored like the G-code)
+  if (ws === 'plot' && plan) {
+    c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
+    c.globalAlpha = 0.16;
+    if (planCache.plan !== plan) planCache = {plan, paths: plan.pens.filter(pp => pp.paths.length).map(pp => {
+      const p = new Path2D(); for (const q of pp.paths) { p.moveTo(q[0][0], q[0][1]); for (let i = 1; i < q.length; i++) p.lineTo(q[i][0], q[i][1]); } return [pp.pen, p];
+    })};
+    for (const [pen, p] of planCache.paths) {
+      if (live.color && j && j.meta && j.meta.penId === pen.id) continue;
+      c.strokeStyle = pen.color; c.lineWidth = lw(pen.width); c.stroke(p);
+    }
+    c.restore();
+  }
+  // the job: to do (faint), drawn (solid), drawn but traced again on resume (accent)
+  const sj = st && st.job && st.job.id === live.jobId ? st.job : null, col = live.color || (j && j.meta && j.meta.color) || '#1b1b1f';
+  const pw = j && j.meta && penById(j.meta.penId) ? penById(j.meta.penId).width : 0.4;
+  if (live.todo && sj) {
+    c.globalAlpha = 0.28; c.strokeStyle = col; c.lineWidth = lw(pw); c.stroke(live.todo); c.globalAlpha = 1;
+    const from = sj.resumable && resumeLine != null ? resumeLine : sj.done;
+    const doneP = liveDone(sj.state === 'finished' ? Infinity : Math.min(from, sj.done));
+    if (doneP) { c.strokeStyle = col; c.lineWidth = lw(pw); c.stroke(doneP); }
+    if (sj.resumable && from < sj.done) {
+      const p = new Path2D(), Mv = live.moves;
+      for (let i = 1; i < Mv.length; i++) if (Mv[i][3] && Mv[i][0] >= from && Mv[i][0] < sj.done) { p.moveTo(Mv[i - 1][1], Mv[i - 1][2]); p.lineTo(Mv[i][1], Mv[i][2]); }
+      c.strokeStyle = css('--warn'); c.lineWidth = lw(pw) * 1.6; c.stroke(p);
+    }
+    if (sj.resumable) {   // where the resumed plot starts
+      let q = null; for (const m of live.moves) { if (m[0] >= from) break; q = m; }
+      if (q) { c.strokeStyle = css('--warn'); c.lineWidth = 2 / k; c.beginPath(); c.arc(q[1], q[2], 7 / k, 0, TAU); c.stroke(); }
+    }
+    if (live.penAt !== sj.done) { live.penAt = sj.done; const nm = live.moves.find(m => m[0] >= sj.done); live.penDown = !!(nm && nm[3]); }
+    if (!sj.running) live.penDown = false;
+  }
+  // the demo plotter's own sheet: the ink as it really landed
+  if (conn.kind === 'demo' && demo && demo.ink.length) {
+    if (inkCache.ver !== demo.inkVer) {
+      const I = demo.ink, R = demo.runs; inkCache = {ver: demo.inkVer, paths: []};
+      R.forEach(([s, color], r) => { const e = r + 1 < R.length ? R[r + 1][0] : I.length, p = new Path2D(); for (let i = s; i < e; i += 4) { p.moveTo(I[i], I[i + 1]); p.lineTo(I[i + 2], I[i + 3]); } inkCache.paths.push([color, p]); });
+    }
+    for (const [color, p] of inkCache.paths) { c.strokeStyle = color; c.lineWidth = lw(0.4); c.globalAlpha = 0.9; c.stroke(p); }
+    c.globalAlpha = 1;
+  }
+  c.fillStyle = css('--accent'); c.beginPath(); c.arc(0, 0, 3 / k, 0, TAU); c.fill();
+  // machine view: where a click sends the pen
+  screenTransform();
+  if (ws === 'machine' && hover && st && st.connected && !(st.job && st.job.running)) {
+    const [hx, hy] = toPx(...hover);
+    c.strokeStyle = css('--accent'); c.globalAlpha = .45; c.lineWidth = 1; c.setLineDash([3, 4]); c.beginPath();
+    c.moveTo(hx, 0); c.lineTo(hx, V.H); c.moveTo(0, hy); c.lineTo(V.W, hy); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  }
+  // the head, eased between status updates
+  if (st && st.connected) {
+    const tgt = [+st.pos[0], +st.pos[1]];
+    if (!live.head || Math.hypot(tgt[0] - live.head[0], tgt[1] - live.head[1]) > 1e-6) { live.from = live.cur || tgt; live.head = tgt; live.t0 = performance.now(); }
+    const t = Math.min(1, (performance.now() - live.t0) / 260), e = t * (2 - t);
+    live.cur = [live.from[0] + (live.head[0] - live.from[0]) * e, live.from[1] + (live.head[1] - live.from[1]) * e];
+    if (t < 1) draw();
+    const [px, py] = toPx(...live.cur), head = '#ff4d6d';
+    c.fillStyle = head; c.globalAlpha = .15; c.beginPath(); c.arc(px, py, 16, 0, TAU); c.fill(); c.globalAlpha = 1;
+    c.strokeStyle = head; c.lineWidth = 2; c.beginPath(); c.arc(px, py, 8, 0, TAU); c.stroke();
+    c.beginPath(); c.moveTo(px - 15, py); c.lineTo(px - 10, py); c.moveTo(px + 10, py); c.lineTo(px + 15, py); c.moveTo(px, py - 15); c.lineTo(px, py - 10); c.moveTo(px, py + 10); c.lineTo(px, py + 15); c.stroke();
+    c.fillStyle = head; c.beginPath(); c.arc(px, py, live.penDown ? 3.5 : 1.8, 0, TAU); c.fill();
+  } else live.head = live.cur = null;
+  $('zPct').textContent = Math.round(V.k / 2 * 100) + '%';
+}
+function liveStatusbar() {
+  const st = server.st, j = curJob(), sb = $('statusbar');
+  $('hudPaper').textContent = `${round(paperRect().w, 1)} × ${round(paperRect().h, 1)} mm`;
+  const bits = [`<span>Plotter <b>${!conn.kind ? 'not connected' : !server.up ? 'offline' : st && st.connected ? esc(st.state) : 'off'}</b></span>`];
+  if (st && st.connected) bits.push(`<span>X <b>${(+st.pos[0]).toFixed(2)}</b></span><span>Y <b>${(+st.pos[1]).toFixed(2)}</b></span>`);
+  if (j) bits.push(`<span>${esc(j.name)} <b>${Math.round(j.progress * 100)}%</b></span>`, j.running && j.eta ? `<span>Left <b>${fmtTime(j.eta)}</b></span>` : '', j.resumable ? '<span class="warn">Unfinished — can be resumed</span>' : '');
+  sb.innerHTML = bits.join('');
 }
 
 // =====================================================================
 //  example
 // =====================================================================
 const EXAMPLE_SRC = '';   // build_artifact.py embeds an image here for the hosted copy
+const DEMO = new URLSearchParams(location.search).has('demo');   // ?demo: load the example and plot it on the demo plotter
 async function loadExample() {
   if (!EXAMPLE_SRC) return;
   pens = [{id: 'pnavy', name: 'Navy', color: '#1f2f48', width: 0.4, on: true, down: '', feed: ''},
@@ -4974,10 +5712,26 @@ async function loadExample() {
 //  boot
 // =====================================================================
 renderObjects(); renderPens(); renderInspector(); renderDoc(); renderMach(); renderStatus();
-renderConn(); pollServer(); autoConnect();
-if (EXAMPLE_SRC && HOSTED) loadExample();
+renderConn(); pollServer();
+let booted = false;
+(async () => {
+  // what this browser kept: the project being worked on, and plots cut short (closed tab, crash, unplugged cable)
+  const [saved, u, d] = await Promise.all([IDB.get('autosave'), GrblSerial.saved('usb'), GrblSerial.saved('demo')]);
+  offline.usb = u && u.m; offline.demo = d && d.m;
+  if (saved && saved.items && saved.items.length && !items.length) {
+    try { await applyProject(saved); projTitle = saved.title || ''; renderProjName(); toast('Restored your last session', false, {label: 'Start new', fn: () => newProject()}); }
+    catch (e) { console.warn('could not restore the last session', e); }
+  } else if (EXAMPLE_SRC && (HOSTED || DEMO) && !items.length) await loadExample();
+  booted = true;
+  const j = curJob(); if (j && j.resumable) setWs('plot');
+  afterStatus();
+  if (DEMO) { try { await connectDemo(); setWs('plot'); } catch (e) { toast(e.message, true); } }
+  else autoConnect();
+})();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
-window.__studio = {conn: () => conn, server: () => server, GrblSerial, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S};
+window.__studio = {conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
+  ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
+  cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};
 </script>
 </body>
 </html>
