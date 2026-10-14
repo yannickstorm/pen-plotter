@@ -13,3 +13,5 @@ Tools for a CoreXY pen plotter running GRBL 1.1 with a servo pen (`M3 S0` = pen 
 | `tests/` | Browser tests for Plot Studio with real mouse/touch input: `python3 tests/test_studio.py` (needs google-chrome and `websockets`). `great-wave.webp` is the test image and the hosted example. |
 
 Plot Studio also works opened directly as a file or hosted; without the server it exports G-code / SVG / HPGL instead of plotting.
+
+**Online:** <https://yannickstorm.github.io/pen-plotter/>. GitHub Pages deploys it from `main` (`.github/workflows/pages.yml`). Over HTTPS in Chrome or Edge it can plot straight to a plotter on USB through Web Serial. Each release also carries `plot-studio.html`, a single file that works offline. To publish a release, push a `v*` tag or run the workflow with a release tag.
