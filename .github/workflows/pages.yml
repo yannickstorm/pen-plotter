@@ -1,0 +1,72 @@
+name: Plot Studio site
+
+# Builds the hosted Plot Studio (studio.html with the Great Wave example embedded),
+# deploys it to GitHub Pages from main, and publishes a release with the single-file
+# page attached when a v* tag is pushed or the workflow is run with a release tag.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Create a release with this tag (e.g. v1.0.0); leave empty to only deploy'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the page
+        run: |
+          mkdir -p _site
+          python3 build_artifact.py _site/index.html
+          # the page's "Save offline copy" button fetches this file
+          cp _site/index.html _site/plot-studio.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plot-studio
+          path: _site/plot-studio.html
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: plot-studio
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          gh release create "$TAG" plot-studio.html \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Plot Studio $TAG" --generate-notes
