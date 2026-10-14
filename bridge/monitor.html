@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Plotter Monitor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%238b7bff'/%3E%3Cpath d='M4 15c2.7-5 5.3-5 8 0s5.3 5 8 0' stroke='white' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #15181d; --panel-2: #1b1f26; --raise: #232832;
+    --line: #2a303a; --line-2: #363d49;
+    --fg: #eceff4; --muted: #8a93a3; --faint: #5b6372;
+    --accent: #8b7bff; --accent-2: #b4a9ff; --accent-ink: #0d0b1f;
+    --ok: #3ddc97; --warn: #ffb547; --danger: #ff5c6c;
+    --paper: #fbfaf6; --mat: #101317; --ink: #1d2433; --todo: rgba(29, 36, 51, .16);
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eceef2; --panel: #ffffff; --panel-2: #f5f6f9; --raise: #eef0f4;
+      --line: #e1e4ea; --line-2: #d0d5de; --fg: #161a22; --muted: #5f6878; --faint: #9aa2b1;
+      --accent: #5b47f5; --accent-2: #4636d6; --accent-ink: #fff; --mat: #dfe2e8;
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  .mono { font-family: var(--mono); }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  .mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), #ff7ab6); color: #fff; flex: none; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 650; }
+  header small { display: block; color: var(--muted); font-size: 11.5px; }
+  .grow { flex: 1; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .chip.idle i { background: var(--ok); } .chip.run i { background: var(--accent); animation: pulse 1s infinite; }
+  .chip.hold i { background: var(--warn); } .chip.alarm i { background: var(--danger); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--line-2); background: var(--raise); font-weight: 500; font-size: 13px; text-decoration: none; color: var(--fg); }
+  .btn:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line-2)); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+  .btn.danger { color: var(--danger); }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .btn svg { width: 16px; height: 16px; }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 12px 16px 24px; } }
+  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .card h2 small { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--faint); }
+
+  .jobname { font-size: 17px; font-weight: 650; margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sub { color: var(--muted); font-size: 12.5px; }
+  .bar { height: 10px; border-radius: 999px; background: var(--raise); overflow: hidden; margin: 14px 0 10px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .4s; }
+  .bar.err > i { background: var(--danger); } .bar.done > i { background: var(--ok); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+  .stat span { display: block; font-size: 11px; color: var(--muted); }
+  .stat b { font: 500 15px var(--mono); white-space: nowrap; }
+  @media (max-width: 480px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row.end { margin-top: 12px; }
+  .callout { padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 12px; background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+  .callout.bad { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+  .preview { position: relative; background: var(--mat); border-radius: 12px; overflow: hidden; aspect-ratio: 310 / 210; }
+  .preview canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .preview .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+
+  .pos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .jog { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; }
+  .jog .btn { height: 100%; padding: 0; border-radius: 12px; }
+  .jog .home { font-size: 11px; color: var(--muted); }
+  .seg { display: inline-grid; grid-auto-flow: column; padding: 3px; gap: 3px; border-radius: 9px; background: var(--raise); border: 1px solid var(--line); }
+  .seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; font: 500 12px var(--mono); }
+  .seg button.on { background: var(--panel); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+  input, select { height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); outline: none; min-width: 0; }
+  input:focus, select:focus { border-color: var(--accent); }
+  input.num { width: 70px; font-family: var(--mono); }
+
+  .log { height: 230px; overflow: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: 12px/1.55 var(--mono); }
+  .log div { white-space: pre-wrap; word-break: break-word; }
+  .log .tx { color: var(--accent-2); } .log .tx::before { content: '› '; }
+  .log .rx { color: var(--muted); }
+  .log .err { color: var(--danger); } .log .sys { color: var(--fg); }
+  .log time { color: var(--faint); margin-right: 8px; }
+  .send { display: flex; gap: 8px; margin-top: 8px; }
+  .send input { flex: 1; font-family: var(--mono); }
+  .drop { display: block; border: 1.5px dashed var(--line-2); border-radius: 12px; padding: 14px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .drop:hover, .drop.over { border-color: var(--accent); color: var(--fg); }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); opacity: 0; transition: .2s; background: var(--fg); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 13px; pointer-events: none; z-index: 30; max-width: calc(100% - 32px); }
+  #toast.show { opacity: 1; transform: translateX(-50%); }
+  #toast.bad { background: var(--danger); color: #fff; }
+  .gate { max-width: 380px; margin: 12vh auto; padding: 0 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 17c3-6 6-6 9 0s6 6 9 0"/><path d="M3 9c3-6 6-6 9 0s6 6 9 0" opacity=".5"/></svg></div>
+  <div class="grow"><h1>Plotter Monitor</h1><small id="host">connecting…</small></div>
+  <a class="btn sm" href="studio" id="lnkStudio">Plot Studio</a>
+  <div class="chip" id="chip"><i></i><span id="state">—</span></div>
+</header>
+
+<div class="gate" id="gate" hidden>
+  <div class="card">
+    <h2>Access token</h2>
+    <p class="sub" style="margin-top:0">This bridge was started with <span class="mono">--token</span>. Enter it to watch and control the plotter.</p>
+    <div class="send"><input id="tokIn" type="password" placeholder="token" autocomplete="current-password"><button class="btn primary" id="tokGo">Unlock</button></div>
+  </div>
+</div>
+
+<main id="main" hidden>
+  <div class="col">
+    <section class="card">
+      <h2>Current plot <small id="jobId"></small></h2>
+      <p class="jobname" id="jobName">Nothing plotting</p>
+      <div class="sub" id="jobSub">Send a plot from Plot Studio or drop a G-code file below.</div>
+      <div class="bar" id="bar"><i></i></div>
+      <div class="stats">
+        <div class="stat"><span>Progress</span><b id="sPct">—</b></div>
+        <div class="stat"><span>Elapsed</span><b id="sEl">—</b></div>
+        <div class="stat"><span>Remaining</span><b id="sEta">—</b></div>
+        <div class="stat"><span>Lines</span><b id="sLines">—</b></div>
+      </div>
+      <div id="msg"></div>
+      <div class="row end">
+        <button class="btn primary" id="bPause"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span>Pause</span></button>
+        <button class="btn danger" id="bStop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</button>
+        <span class="grow"></span>
+        <button class="btn sm" id="bUnlock" hidden>Unlock ($X)</button>
+        <button class="btn sm" id="bHome" hidden>Home ($H)</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Live preview <small id="pvInfo"></small></h2>
+      <div class="preview" id="pv"><canvas id="cv"></canvas><div class="empty" id="pvEmpty">The plot appears here while it runs</div></div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Machine</h2>
+      <div class="pos">
+        <div class="stat"><span>X</span><b id="pX">—</b></div>
+        <div class="stat"><span>Y</span><b id="pY">—</b></div>
+      </div>
+      <div class="row" style="align-items:flex-start;gap:16px">
+        <div class="jog" id="jog">
+          <span></span><button class="btn" data-j="0,1" aria-label="Y+">↑</button><span></span>
+          <button class="btn" data-j="-1,0" aria-label="X−">←</button><button class="btn home" id="bOrigin" title="Move to X0 Y0">0,0</button><button class="btn" data-j="1,0" aria-label="X+">→</button>
+          <span></span><button class="btn" data-j="0,-1" aria-label="Y−">↓</button><span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+          <div class="field">Step (mm)<div class="seg" id="steps"><button>1</button><button class="on">10</button><button>50</button></div></div>
+          <div class="field">Pen<div class="row"><button class="btn sm" id="bUp">Up</button><button class="btn sm" id="bDown">Down</button></div></div>
+          <div class="row" style="gap:6px;font-size:11px;color:var(--muted)">S up <input class="num" id="sUp" value="0"> down <input class="num" id="sDown" value="35"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Console <small id="portInfo"></small></h2>
+      <div class="log" id="log"></div>
+      <form class="send" id="sendF"><input id="sendIn" placeholder="G-code or $ command" autocomplete="off" spellcheck="false"><button class="btn">Send</button></form>
+    </section>
+
+    <section class="card">
+      <h2>Connection</h2>
+      <div class="row"><select id="ports" class="grow"></select><select id="baud"><option>115200</option><option>250000</option><option>57600</option><option>9600</option></select></div>
+      <div class="row end"><button class="btn primary" id="bConn">Connect</button><button class="btn" id="bDisc">Disconnect</button><button class="btn sm" id="bRefresh">Refresh ports</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Run a file</h2>
+      <label class="drop" id="drop"><input type="file" id="file" accept=".gcode,.nc,.gc,.txt,.ngc" hidden>Drop a G-code file here, or tap to choose</label>
+    </section>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+let token = store.get('bridgeToken') || '';
+let st = null, seq = 0, job = null, jobId = null, bed = [310, 210], polling = false, firstLog = true;
+
+function toast(m, bad) { const t = $('toast'); t.textContent = m; t.className = 'show' + (bad ? ' bad' : ''); clearTimeout(toast.t); toast.t = setTimeout(() => t.className = '', bad ? 5000 : 2200); }
+async function call(path, body) {
+  const opt = { headers: { 'X-Bridge-Token': token } };
+  if (body !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch('api/' + path, opt);
+  if (r.status === 401) { showGate(); throw new Error('Token required'); }
+  const j = await r.json(); if (j.error) throw new Error(j.error); return j;
+}
+const act = (path, body = {}) => call(path, body).catch(e => toast(e.message, true));
+function showGate() { $('gate').hidden = false; $('main').hidden = true; }
+$('tokGo').onclick = () => { token = $('tokIn').value.trim(); store.set('bridgeToken', token); $('gate').hidden = true; poll(); };
+$('tokIn').onkeydown = e => { if (e.key === 'Enter') $('tokGo').click(); };
+
+const fmt = s => { if (s == null) return '—'; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+async function poll() {
+  if (polling) return; polling = true;
+  try {
+    const s = await call('status?since=' + seq);
+    $('main').hidden = false; $('gate').hidden = true;
+    st = s; render(s);
+    if (s.log && s.log.length) addLog(s.log);
+    seq = s.seq;
+    const jid = s.job ? s.job.id : null;
+    if (jid !== jobId) { jobId = jid; job = jid ? (await call('job')).job : null; drawPreview(); }
+  } catch (e) {
+    if (e.message !== 'Token required') { $('state').textContent = 'Bridge offline'; $('chip').className = 'chip alarm'; }
+  }
+  polling = false;
+  setTimeout(poll, st && st.job && st.job.running ? 500 : 1200);
+}
+
+function render(s) {
+  const state = s.connected ? s.state : 'Disconnected';
+  $('host').textContent = `${s.host} · bridge ${s.bridge}`;
+  $('state').textContent = s.job && s.job.running ? `${state} · ${Math.round(s.job.progress * 100)}%` : state;
+  $('chip').className = 'chip ' + ({ Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Door: 'hold', Alarm: 'alarm', Disconnected: 'alarm' }[state] || '');
+  $('pX').textContent = s.connected ? s.pos[0].toFixed(2) : '—';
+  $('pY').textContent = s.connected ? s.pos[1].toFixed(2) : '—';
+  $('portInfo').textContent = s.connected ? `${s.port.split('/').pop()} · ${s.baud}` : 'not connected';
+  if (s.work) bed = s.work;
+  const j = s.job, running = j && j.running, held = state === 'Hold';
+  $('jobId').textContent = j ? `#${j.id}` : '';
+  $('jobName').textContent = j ? j.name : 'Nothing plotting';
+  $('jobSub').textContent = !j ? 'Send a plot from Plot Studio or drop a G-code file below.'
+    : running ? (held ? (j.paused ? 'Paused — press Resume to continue' : 'Waiting at a pause (M0) — change the pen, then Resume') : 'Plotting…')
+    : j.error ? 'Stopped' : `Finished at ${new Date(j.ended * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const pct = j ? j.progress : 0;
+  $('bar').firstElementChild.style.width = (pct * 100) + '%';
+  $('bar').className = 'bar' + (j && j.error ? ' err' : j && !running ? ' done' : '');
+  $('sPct').textContent = j ? Math.round(pct * 100) + '%' : '—';
+  $('sEl').textContent = j ? fmt(j.elapsed) : '—';
+  $('sEta').textContent = running ? (j.eta != null ? fmt(j.eta) : '…') : '—';
+  $('sLines').textContent = j ? `${j.sent}/${j.total}` : '—';
+  $('msg').innerHTML = (j && j.error ? `<div class="callout bad">${esc(j.error)}</div>` : '')
+    + (s.alarm ? `<div class="callout bad">${esc(s.alarm)} — check the machine, then unlock or home it.</div>` : '')
+    + (!s.connected && s.error ? `<div class="callout">${esc(s.error)}</div>` : '');
+  $('bPause').disabled = !running && !held;
+  $('bPause').querySelector('span').textContent = held ? 'Resume' : 'Pause';
+  $('bStop').disabled = !running && !held;
+  $('bUnlock').hidden = $('bHome').hidden = state !== 'Alarm';
+  const busy = !s.connected || running;
+  document.querySelectorAll('#jog .btn, #bUp, #bDown').forEach(b => b.disabled = busy);
+  $('bConn').hidden = s.connected; $('bDisc').hidden = !s.connected;
+  if (running) drawPreview();
+}
+
+function addLog(entries) {
+  const L = $('log'), stick = L.scrollTop + L.clientHeight >= L.scrollHeight - 4 || firstLog;
+  for (const e of entries) {
+    const d = document.createElement('div'); d.className = e.k;
+    const t = new Date(e.t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    d.innerHTML = `<time>${t}</time>`; d.append(e.m); L.append(d);
+  }
+  while (L.childElementCount > 400) L.firstElementChild.remove();
+  if (stick) L.scrollTop = L.scrollHeight; firstLog = false;
+}
+
+// ---------- preview ----------
+const cv = $('cv'), ctx = cv.getContext('2d');
+function drawPreview() {
+  const box = $('pv'); box.style.aspectRatio = `${bed[0]} / ${bed[1]}`;
+  const W = box.clientWidth, H = box.clientHeight, dpr = devicePixelRatio || 1;
+  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  $('pvEmpty').hidden = !!(job && job.moves.length);
+  const pad = 10, k = Math.min((W - 2 * pad) / bed[0], (H - 2 * pad) / bed[1]);
+  const ox = (W - bed[0] * k) / 2, oy = (H + bed[1] * k) / 2, P = (x, y) => [ox + x * k, oy - y * k];
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  ctx.fillStyle = css('--paper'); ctx.fillRect(ox, oy - bed[1] * k, bed[0] * k, bed[1] * k);
+  $('pvInfo').textContent = `${bed[0]} × ${bed[1]} mm`;
+  if (!job) return;
+  const done = st && st.job && st.job.id === job.id ? st.job.sent : 0, finished = st && st.job && !st.job.running && !st.job.error;
+  const M = job.moves; ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(1, 0.45 * k);
+  for (const pass of [0, 1]) {
+    ctx.beginPath(); ctx.strokeStyle = pass ? css('--ink') : css('--todo');
+    for (let i = 1; i < M.length; i++) {
+      const m = M[i]; if (!m[3]) continue;
+      const isDone = finished || m[0] < done; if (isDone !== !!pass) continue;
+      const a = P(M[i - 1][1], M[i - 1][2]), b = P(m[1], m[2]); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    }
+    ctx.stroke();
+  }
+  if (st && st.connected) {
+    const [hx, hy] = P(st.pos[0], st.pos[1]);
+    ctx.fillStyle = css('--accent'); ctx.beginPath(); ctx.arc(hx, hy, 5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+new ResizeObserver(drawPreview).observe($('pv'));
+
+// ---------- controls ----------
+$('bPause').onclick = () => act(st && st.state === 'Hold' ? 'resume' : 'pause');
+$('bStop').onclick = () => { if (confirm('Stop the plot? The machine is reset and the pen lifted.')) act('stop', { penUp: `M3 S${$('sUp').value}` }); };
+$('bUnlock').onclick = () => act('unlock');
+$('bHome').onclick = () => act('home');
+let step = 10;
+$('steps').onclick = e => { if (e.target.tagName !== 'BUTTON') return; step = +e.target.textContent; [...$('steps').children].forEach(b => b.classList.toggle('on', b === e.target)); };
+document.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { const [x, y] = b.dataset.j.split(',').map(Number); act('jog', { x: x * step, y: y * step, feed: 3000 }); });
+$('bOrigin').onclick = () => act('send', { line: 'G90 G0 X0 Y0' });
+for (const id of ['sUp', 'sDown']) { const v = store.get('mon.' + id); if (v) $(id).value = v; $(id).onchange = () => store.set('mon.' + id, $(id).value); }
+$('bUp').onclick = () => act('send', { line: `M3 S${$('sUp').value}` });
+$('bDown').onclick = () => act('send', { line: `M3 S${$('sDown').value}` });
+$('sendF').onsubmit = e => { e.preventDefault(); const v = $('sendIn').value.trim(); if (!v) return; act('send', { line: v }); $('sendIn').value = ''; };
+
+async function loadPorts() {
+  try {
+    const r = await call('ports');
+    $('ports').innerHTML = r.ports.length ? r.ports.map(p => `<option value="${esc(p.path)}" ${p.path === r.current ? 'selected' : ''}>${esc(p.path)}${p.desc ? ' — ' + esc(p.desc) : ''}</option>`).join('') : '<option value="">No serial ports found</option>';
+  } catch {}
+}
+$('bRefresh').onclick = loadPorts;
+$('bConn').onclick = async () => { $('bConn').disabled = true; await act('connect', { port: $('ports').value || undefined, baud: +$('baud').value }); $('bConn').disabled = false; };
+$('bDisc').onclick = () => act('disconnect');
+
+async function runFile(f) {
+  if (!f) return;
+  const text = await f.text();
+  try { await call('run', { gcode: text, name: f.name, penUp: $('sUp').value }); toast(`Started ${f.name}`); } catch (e) { toast(e.message, true); }
+}
+$('file').onchange = e => { runFile(e.target.files[0]); e.target.value = ''; };
+const drop = $('drop');
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); runFile(e.dataTransfer.files[0]); };
+
+poll(); loadPorts();
+</script>
+</body>
+</html>
