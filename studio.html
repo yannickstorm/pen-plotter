@@ -160,6 +160,41 @@
   .step.skip { opacity: .5; }
   .demo-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
+  /* machine list (device cards), wizard */
+  .mcard { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; }
+  .mcard:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
+  .mcard.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+  .mc-ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--raise); color: var(--muted); }
+  .mc-ic svg { width: 20px; height: 20px; } .mcard.on .mc-ic { color: var(--accent); }
+  .mc-body { min-width: 0; } .mc-body > b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mc-body > span { display: block; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mc-st { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11.5px; color: var(--muted); } .mc-st span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.idle { background: var(--ok); } .dot.run { background: var(--accent); animation: pulse 1s infinite; } .dot.hold { background: var(--warn); } .dot.alarm { background: var(--danger); }
+  .mc-bar { height: 4px; border-radius: 99px; background: var(--raise); overflow: hidden; margin-top: 6px; } .mc-bar > div { height: 100%; background: linear-gradient(90deg, var(--accent), #ff7ab6); }
+  .mc-err { font-size: 11.5px; color: var(--danger); margin-top: 4px; } .mc-hint { font-size: 11.5px; color: var(--warn); margin-top: 3px; } .mc-hint a { color: inherit; }
+  .mc-act { display: flex; align-items: center; gap: 4px; }
+  .mstrip { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); margin-bottom: 10px; }
+  .mstrip .grow { min-width: 0; } .mstrip b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mstrip span { display: block; font-size: 11.5px; color: var(--muted); }
+  /* the wizard sits beside the bed instead of over it, so you can watch the pen while you set it up */
+  .modal-bg.docked { background: transparent; backdrop-filter: none; pointer-events: none; place-items: center end; }
+  .modal-bg.docked .modal { pointer-events: auto; width: min(450px, 100%); max-height: calc(100vh - 32px); }
+  @media (max-width: 1000px) { .modal-bg.docked { background: rgba(5, 7, 12, .55); backdrop-filter: blur(3px); pointer-events: auto; place-items: center; } .modal-bg.docked .modal { width: min(520px, 100%); } }
+  .wz-steps { display: flex; gap: 6px; padding: 4px 18px 6px; }
+  .wz-steps span { flex: 1; text-align: center; padding-top: 7px; border-top: 3px solid var(--line); font-size: 11px; font-weight: 600; color: var(--faint); }
+  .wz-steps span.on { color: var(--accent); border-color: var(--accent); } .wz-steps span.done { color: var(--muted); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .wz-lead { margin: 0; font-size: 13.5px; font-weight: 600; }
+  .wz-opts { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .wz-opt { display: grid; grid-template-columns: 26px 1fr; column-gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; text-align: left; }
+  .wz-opt svg { width: 22px; height: 22px; color: var(--muted); grid-row: 1 / 3; } .wz-opt b { font-size: 13px; } .wz-opt span { font-size: 11.5px; color: var(--muted); grid-column: 2; }
+  .wz-opt:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
+  .wz-opt.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); } .wz-opt.on svg { color: var(--accent); }
+  .wz-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) 72px auto; gap: 8px; align-items: center; margin: 6px 0; font-size: 12.5px; }
+  .wz-row input[type=range] { margin: 0; }
+  .wz-foot { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .wz-glyph { width: 56px; height: 72px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); flex: none; }
+  @media (max-width: 560px) { .wz-row { grid-template-columns: 64px minmax(0, 1fr) 64px auto; } }
+
   /* ---------- layout ---------- */
   .app { display: grid; grid-template-columns: 270px minmax(0, 1fr) 330px; min-height: 0; }
   .left, .right { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
@@ -228,9 +263,10 @@
   .statusbar .warn { color: var(--warn); }
 
   .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 12px 12px 0; }
-  .tab { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 9px; }
-  .tab:hover { background: var(--panel-2); color: var(--fg); }
-  .tab.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .tab, .mtab { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 9px; }
+  .tab:hover, .mtab:hover { background: var(--panel-2); color: var(--fg); }
+  .tab.on, .mtab.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .mtab { border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 9px; }
   .panes { flex: 1; overflow: auto; padding: 12px; }
   .pane { display: none; flex-direction: column; gap: 12px; }
   .pane.on { display: flex; }
@@ -395,12 +431,7 @@
     </div>
   </aside>
   <!-- machine: connection, manual control, console -->
-  <aside class="left" data-ws="machine"><div class="ws-panes">
-    <div class="card" id="connCard"></div>
-    <div class="card" id="moveCard"></div>
-    <div class="card"><h3>Console <small id="conInfo"></small></h3><div class="console" id="conLog"></div>
-      <form class="row" id="conForm" style="margin-top:8px;flex-wrap:nowrap"><input class="input mono grow" id="conIn" placeholder="G-code or $ command" autocomplete="off" spellcheck="false"><button class="btn sm">Send</button></form></div>
-  </div></aside>
+  <aside class="left" data-ws="machine"><div class="ws-panes"><div id="machList"></div></div></aside>
   <!-- plot: recovery + pen queue -->
   <aside class="left" data-ws="plot"><div class="ws-panes" id="plotLeft">
     <div class="card recover" id="recCard" hidden></div>
@@ -457,7 +488,16 @@
     </div>
   </aside>
   <!-- machine settings -->
-  <aside class="right" data-ws="machine"><div class="panes"><div class="pane on" id="machPane"></div></div></aside>
+  <aside class="right" data-ws="machine">
+    <nav class="tabs"><button class="mtab on" data-mtab="ctl">Control</button><button class="mtab" data-mtab="set">Settings</button><button class="mtab" data-mtab="info">Info</button></nav>
+    <div class="panes">
+      <div class="pane on" id="ctlPane"><div class="card" id="moveCard"></div>
+        <div class="card"><h3>Console <small id="conInfo"></small></h3><div class="console" id="conLog"></div>
+          <form class="row" id="conForm" style="margin-top:8px;flex-wrap:nowrap"><input class="input mono grow" id="conIn" placeholder="G-code or $ command" autocomplete="off" spellcheck="false"><button class="btn sm">Send</button></form></div></div>
+      <div class="pane" id="machPane"></div>
+      <div class="pane" id="infoPane"></div>
+    </div>
+  </aside>
   <!-- plot: live status + log -->
   <aside class="right" data-ws="plot"><div class="ws-panes">
     <div class="card" id="liveCard"></div>
@@ -477,6 +517,7 @@
   <hr><div class="mh">Output</div>
   <button data-f="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Export G-code / SVG…<kbd data-k="E"></kbd></button>
 </div>
+<div class="menu" id="machMenu"></div>
 <div class="menu" id="addMenu">
   <button data-add="file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Import file…</button>
   <button data-add="text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Text</button>
@@ -499,6 +540,7 @@
 <div id="toast"></div>
 <input type="file" id="file" multiple accept=".svg,.png,.jpg,.jpeg,.webp,.gif,.bmp,.dxf,.gcode,.nc,.ngc,.gc,.txt,.json,image/*">
 <input type="file" id="projFile" accept=".json">
+<input type="file" id="machFile" accept=".json">
 
 <script>
 /* Plotter style engine: every style returns line art in millimetres on an A4 sheet (210 × 297). */
@@ -4262,8 +4304,14 @@ function servoTestGcode(waits) {
 let servoPreview = null;   // strokes shown on the paper while the test card is hovered
 const parseWaits = t => [...new Set(String(t).split(/[\s,;]+/).map(Number).filter(v => Number.isFinite(v) && v >= 0 && v <= 5))].slice(0, 14);
 function renderMach() {
-  const M = S.machine;
+  const M = S.machine, am = activeMachine();
   $('machPane').innerHTML = `
+    ${am ? `<div class="card"><h3>${esc(am.name)} <small>${VIA[am.via]}</small></h3>
+      <div class="fields"><label class="field full"><span>Name</span><input id="mName" value="${esc(am.name)}" maxlength="60"></label></div>
+      <p class="note">${am.via === 'bridge' ? 'These settings are kept on the bridge: every browser and phone that connects sees them.' : 'These settings are kept in this browser.'} Changes are saved as you type.</p>
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="mSetup">Run the setup wizard</button></div></div>`
+    : `<div class="card"><h3>No machine selected</h3><p class="note" style="margin-top:0">The settings below are the ones this studio uses for new plots. Add your plotter to keep them with it.</p>
+      <div class="row" style="margin-top:8px"><button class="btn sm primary" id="mAdd">Add a machine</button></div></div>`}
     <div class="card"><h3>Pen servo <small>M3 S…</small></h3><div class="fields" id="mf1">
       ${fieldHTML(['num', 'up', 'Pen up S', {step: 1, min: 0, max: 255}], M)}${fieldHTML(['num', 'down', 'Pen down S', {step: 1, min: 0, max: 255}], M)}
       ${fieldHTML(['num', 'dwell', 'Servo wait', {unit: 's', step: 0.05, min: 0}], M)}
@@ -4301,8 +4349,11 @@ function renderMach() {
       <p class="note">Pick the <b>first row that is clean</b> (both guides touched, no tails, all dots), add a small margin (≈ +0.05 s) and enter it as Servo wait above.</p>
       <div class="row" style="margin-top:10px"><button class="btn sm primary" id="stPlot">Plot test</button><button class="btn sm" id="stDl">Download G-code</button></div>
     </div>`;
-  for (const id of ['mf1', 'mf2', 'mf3']) bindForm($(id), M, k => { saveSettings(); if (k === 'bedW' || k === 'bedH') fitView(); computePlan(); renderStatus(); renderPens(); draw(); });
-  $('mReset').onclick = () => { S.machine = structuredClone(DEFAULTS.machine); saveSettings(); renderMach(); computePlan(); renderStatus(); draw(); };
+  for (const id of ['mf1', 'mf2', 'mf3']) bindForm($(id), M, k => { saveSettings(); commitProfile(); if (k === 'bedW' || k === 'bedH') fitView(); computePlan(); renderStatus(); renderPens(); draw(); });
+  $('mReset').onclick = () => { Object.assign(S.machine, structuredClone(DEFAULTS.machine)); saveSettings(); commitProfile(); renderMach(); computePlan(); renderStatus(); draw(); };
+  if ($('mName')) $('mName').oninput = () => { am.name = $('mName').value.trim() || am.name; if (am.via === 'bridge') { am.dirty = true; clearTimeout(pushTimer); pushTimer = setTimeout(() => pushProfile(am), 700); } saveMachines(); renderMachineList(); renderConn(); };
+  if ($('mSetup')) $('mSetup').onclick = () => openWizard(am);
+  if ($('mAdd')) $('mAdd').onclick = () => openWizard();
   const waits = () => parseWaits($('stWaits').value), info = () => {
     const w = waits(), t = w.length ? servoTestPlan(w) : null;
     $('stInfo').innerHTML = !t ? '<span style="color:var(--danger)">Enter one or more wait times, e.g. 0, 0.1, 0.2</span>'
@@ -4494,7 +4545,7 @@ const History = (() => {
     return {id: it.id, o, key: keyParts.join('|')};
   }
   function snap() {
-    const its = items.map(packItem), st = JSON.stringify({pens, paper: S.paper, opt: S.opt, machine: S.machine});
+    const its = items.map(packItem), st = JSON.stringify({pens, paper: S.paper, opt: S.opt});
     return {items: its, st, sel: sel ? sel.id : null, key: its.map(i => i.key).join('\n') + '\n' + st};
   }
   function describe(a, b) {
@@ -4522,7 +4573,7 @@ const History = (() => {
     if (JSON.stringify(A.pens) !== JSON.stringify(B.pens)) return 'Edit pens';
     if (JSON.stringify(A.paper) !== JSON.stringify(B.paper)) return 'Paper settings';
     if (JSON.stringify(A.opt) !== JSON.stringify(B.opt)) return 'Path optimisation';
-    return 'Machine settings';
+    return 'Settings';
   }
   function check(label) {
     clearTimeout(timer); timer = null;
@@ -4545,10 +4596,10 @@ const History = (() => {
         return it;
       });
       const st = JSON.parse(s.st);
-      pens = st.pens; Object.assign(S.paper, st.paper); Object.assign(S.opt, st.opt); Object.assign(S.machine, st.machine);
+      pens = st.pens; Object.assign(S.paper, st.paper); Object.assign(S.opt, st.opt);
       sel = items.find(i => i.id === s.sel) || null;
       for (const it of items) if (it.kind === 'image' && !it._img && it.src) loadImage(it.src).then(img => { it._img = img; schedule(0); });
-      saveSettings(); renderDoc(); renderMach(); renderPens(); renderObjects(); renderInspector(); schedule(0); draw();
+      saveSettings(); renderDoc(); renderPens(); renderObjects(); renderInspector(); schedule(0); draw();
       if (typeof renderProjName === 'function') renderProjName();
     } finally { restoring = false; }
     last = snap(); ver++;
@@ -4596,7 +4647,7 @@ function saveProject() {
 async function loadProject(text) { await applyProject(JSON.parse(text)); toast('Project opened'); }
 async function applyProject(d) {
   if (d.app !== 'plot-studio') throw new Error('not a Plot Studio project');
-  for (const k of Object.keys(DEFAULTS)) S[k] = Object.assign(structuredClone(DEFAULTS[k]), d.settings[k] || {});
+  for (const k of Object.keys(DEFAULTS)) { if (k === 'machine' && activeMachine()) continue; S[k] = Object.assign(structuredClone(DEFAULTS[k]), d.settings[k] || {}); }   // the machine in use decides the machine settings
   pens = d.pens; items = [];
   for (const it of d.items) { if (it.kind === 'image' || (it.kind === 'style' && it.src)) it._img = await loadImage(it.src); items.push(it); }
   sel = null; saveSettings(); renderDoc(); renderMach(); renderInspector(); renderPens(); fitView(); schedule(0);
@@ -4609,8 +4660,8 @@ setInterval(() => { if (History.version !== autosaved && !drag && booted) { auto
 //  modals: export
 // =====================================================================
 function openModal(html) { $('modal').innerHTML = html; $('modalBg').classList.add('show'); }
-function closeModal() { $('modalBg').classList.remove('show'); }
-$('modalBg').addEventListener('pointerdown', e => { if (e.target === $('modalBg')) closeModal(); });
+function closeModal() { $('modalBg').classList.remove('show', 'docked'); if (wz) wzAbort(); }
+$('modalBg').addEventListener('pointerdown', e => { if (e.target === $('modalBg') && !wz) closeModal(); });   // a half-finished wizard is not dismissed by a stray click
 const modalHead = t => `<header><h2>${t}</h2><button class="btn ghost icon" onclick="closeModal()">✕</button></header>`;
 const penRow = (pp, i, right = '') => `<div class="step" data-i="${i}"><span class="sw" style="background:${pp.pen.color}"></span><div><b>${i + 1}. ${esc(pp.pen.name)}</b><span>${fmtLen(pp.draw)} · ${pp.paths.length} lifts · ~${fmtTime(pp.time)}${pp.pen.down !== '' ? ` · down S${pp.pen.down}` : ''}</span><div class="bar" hidden><div></div></div></div><div class="row">${right}</div></div>`;
 
@@ -4760,7 +4811,7 @@ function jobView(j) {   // the job as the status API reports it (same fields as 
 }
 
 class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's character-counting flow control; checkpoints to IndexedDB
-  constructor(kind = 'usb') { this.kind = kind; this.key = 'job:' + kind; this.reset(); this.port = null; this.seq = 0; this.log = []; this.logSeq = 0; this.job = null; }
+  constructor(kind = 'usb', id = kind) { this.kind = kind; this.id = id; this.key = 'job:' + id; this.reset(); this.port = null; this.seq = 0; this.log = []; this.logSeq = 0; this.job = null; }
   reset() { this.state = 'Disconnected'; this.full = ''; this.alarm = null; this.mpos = [0, 0, 0]; this.wco = [0, 0, 0]; this.settings = {}; this.inflight = []; this.manual = []; this.banner = 0; this.blocks = 15; this.rx = 127; }
   say(k, m) { this.log.push({seq: ++this.logSeq, k, m, t: nowS()}); if (this.log.length > 300) this.log.shift(); if (k === 'err') console.warn('[plotter]', m); }
   async open(port, baud) {
@@ -4833,6 +4884,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
       return;
     }
     const m = t.match(/^\$(\d+)=([-\d.]+)/); if (m) { this.settings[+m[1]] = +m[2]; return; }
+    const v = t.match(/^\[VER:([^:\]]*)/); if (v) this.grblVersion = v[1];
     const o = t.match(/^\[OPT:[^,]*,(\d+),(\d+)/); if (o) { this.blocks = +o[1]; this.rx = Math.max(64, Math.min(+o[2], 1024) - 1); }
     this.say('rx', t);
   }
@@ -4899,7 +4951,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
     return {id: j.id, name: j.name, meta: j.meta, penUp: j.penUp, dwell: j.dwell, total: j.lines.length, done: j.done, state: j.state, error: j.error,
       started: j.started, ended: j.ended, runTime: j.runTime + (j.running ? nowS() - j.tRun : 0), pos: j.pos, resumeAt: j.resumeAt, resumeFrom: j.resumeFrom, saved: nowS()};
   }
-  save() { const j = this.job; if (!j) return; j.dirty = false; const m = this.meta(j); offline[this.kind] = m; IDB.set(this.key, m); }
+  save() { const j = this.job; if (!j) return; j.dirty = false; const m = this.meta(j); offline[this.id] = m; IDB.set(this.key, m); }
   static async saved(kind) {   // the job last streamed from this browser, as it was saved; a job still marked running was cut off
     const [m, lines] = await Promise.all([IDB.get('job:' + kind), IDB.get('job:' + kind + ':lines')]);
     if (!m || !lines || lines.length !== m.total) return null;
@@ -4942,7 +4994,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
   }
   discard() {
     if (this.job && this.job.running) throw new Error('The plot is running — stop it first');
-    this.job = null; offline[this.kind] = null; IDB.del(this.key); IDB.del(this.key + ':lines');
+    this.job = null; offline[this.id] = null; IDB.del(this.key); IDB.del(this.key + ':lines');
   }
   pause() { this.raw('!'); if (this.job && this.job.running) this.job.paused = true; }
   resume() { this.raw('~'); if (this.job) this.job.paused = false; }
@@ -4971,6 +5023,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
       pos: this.mpos.map((v, i) => v - (this.wco[i] || 0)), pos_fresh: (this.posAt || 0) > (this.resetAt || 0), port: this.name, baud: this.baud, via: this.kind,
       homing: this.settings[22] === 1, resume: true, seq: this.logSeq};
     if (this.settings[130] && this.settings[131]) s.work = [this.settings[130], this.settings[131]];
+    s.grbl = {version: this.grblVersion, settings: Object.fromEntries([10, 22, 110, 111, 130, 131].filter(k => this.settings[k] != null).map(k => [k, this.settings[k]]))};
     s.job = this.job ? jobView(this.job) : null;
     return s;
   }
@@ -5033,7 +5086,7 @@ class SimGrbl {
   }
   phys(p) { return [p[0] + this.offset[0], p[1] + this.offset[1]]; }
   emit(t) { try { if (this.ctl) this.ctl.enqueue(new TextEncoder().encode(t + '\r\n')); } catch {} }
-  penDown(s) { return Math.abs(s - S.machine.down) < Math.abs(s - S.machine.up); }
+  penDown(s) { const p = this.pen || S.machine; return Math.abs(s - p.down) < Math.abs(s - p.up); }
   input(chunk) {
     if (this.booting) return;   // a rebooting board ignores what arrives until it announces itself
     for (const code of chunk) {
@@ -5113,30 +5166,105 @@ class SimGrbl {
   }
 }
 
+// ---------- machines: the plotters you have set up ----------
+// A machine is what it is (its profile: bed, pen, speeds…) plus how to reach it (Plotter Bridge, USB cable or the demo).
+// The list lives in this browser. A bridge machine's profile lives on the bridge, which is the source of truth: every browser
+// and phone that connects reads the same settings from it, and edits are written back. USB and demo machines keep their
+// profile in this browser (export / import moves it elsewhere).
+const PROFILE_KEYS = Object.keys(DEFAULTS.machine);
+const newId = () => 'm' + uid() + uid();
+let machines = (lsGet('plotstudio.machines') || []).filter(m => m && m.id && m.via), activeId = lsGet('plotstudio.machine') || null;
+const machineById = id => machines.find(m => m.id === id) || null;
+const activeMachine = () => machineById(activeId);
+const saveMachines = () => { lsSet('plotstudio.machines', machines); lsSet('plotstudio.machine', activeId); };
+const profileOf = m => ({...structuredClone(DEFAULTS.machine), ...((m && m.profile) || S.machine)});
+const pickProfile = p => { const o = {}; for (const k of PROFILE_KEYS) if (k in p) o[k] = p[k]; return o; };
+const VIA = {bridge: 'Bridge', usb: 'USB', demo: 'Demo'};
+const bridgeLabel = base => String(base || '').replace(/^https?:\/\//, '');
+const hex4 = n => (n || 0).toString(16).padStart(4, '0');
+const machineSub = m => m.via === 'bridge' ? 'Bridge · ' + bridgeLabel(m.conn.base) : m.via === 'usb' ? 'USB cable' + (m.conn.vid ? ` · ${hex4(m.conn.vid)}:${hex4(m.conn.pid)}` : '') : 'Demo plotter · simulated';
+const fmtWhen = t => t ? new Date(t * 1000).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
+const MIC = {
+  bridge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="10" rx="2"/><path d="M8 18h8M12 14v4M8 9h.01M12 9h4"/></svg>',
+  usb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M8 7l4-4 4 4M7 12v3l5 3 5-3v-3"/><circle cx="12" cy="19" r="2"/></svg>',
+  demo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14l3-4 3 3 4-5"/></svg>',
+  dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+};
+
+function loadProfile(m) {   // make a machine's settings the studio's working settings (the design follows the machine)
+  const p = profileOf(m), M = S.machine;
+  for (const k of PROFILE_KEYS) M[k] = p[k];
+  saveSettings(); if (demo) demo.pen = {up: M.up, down: M.down};
+  renderMach(); renderDoc(); fitView(); computePlan(); renderStatus(); renderPens(); draw();
+}
+function selectMachine(id) {
+  const m = machineById(id); activeId = m ? id : null; saveMachines();
+  if (m && m.profile) loadProfile(m); else renderMach();
+  renderMachineViews();
+}
+let pushTimer = null, syncing = false;
+function commitProfile() {   // the working settings were edited: keep them with the machine (and on its bridge)
+  const m = activeMachine(); if (!m) return;
+  m.profile = pickProfile(S.machine);
+  if (demo) demo.pen = {up: S.machine.up, down: S.machine.down};
+  if (m.via === 'bridge') { m.dirty = true; clearTimeout(pushTimer); pushTimer = setTimeout(() => pushProfile(m), 700); }
+  saveMachines(); renderMachineList();
+}
+async function pushProfile(m, {force = false} = {}) {
+  if (!(conn.kind === 'bridge' && conn.id === m.id && server.up)) return;   // it is sent when the bridge is reached again
+  try {
+    const r = await bridgeFetch(conn.base, conn.token, 'machine', {name: m.name, profile: pickProfile(profileOf(m)), baseRev: force ? null : m.rev});
+    m.rev = r.machine.rev; m.dirty = false; saveMachines(); renderMachineViews();
+  } catch (e) {
+    if (e.data && e.data.conflict) return askConflict(m, e.data.machine);
+    toast('Could not save the settings on the bridge: ' + e.message, true);   // stays marked as unsaved; sent on the next connect
+  }
+}
+async function syncProfile(m) {   // after connecting to a bridge: who has the newest settings?
+  const r = (await bridgeFetch(conn.base, conn.token, 'machine')).machine;
+  m.conn.bridgeId = r.id;
+  if (r.profile == null) { m.rev = r.rev; saveMachines(); return pushProfile(m, {force: true}); }   // a fresh bridge learns the settings from here
+  if (m.dirty && m.rev !== r.rev) return askConflict(m, r);
+  if (m.dirty) return pushProfile(m);
+  if (m.rev === r.rev && m.profile) return;
+  m.ready = true; adoptRemote(m, r);
+}
+function adoptRemote(m, r) {
+  m.name = r.name || m.name; m.profile = pickProfile(r.profile || {}); m.rev = r.rev; m.dirty = false; saveMachines();
+  if (m.id === activeId) loadProfile(m);
+  renderMachineViews();
+}
+function askConflict(m, remote) {
+  openModal(`${modalHead('Settings differ')}<div class="body">
+    <p style="margin:0">“${esc(m.name)}” has different settings on the bridge${remote.updated ? ` (saved ${esc(fmtWhen(remote.updated))})` : ''} than the ones you changed in this browser. The bridge is where the plotter's settings are kept.</p>
+    <div class="row"><button class="btn primary grow" id="cfBridge">Use the bridge’s settings</button><button class="btn grow" id="cfMine">Overwrite the bridge with mine</button></div></div>`);
+  $('cfBridge').onclick = () => { adoptRemote(m, remote); closeModal(); };
+  $('cfMine').onclick = () => { m.rev = remote.rev; closeModal(); pushProfile(m, {force: true}); };
+}
+
 // ---------- connection state ----------
-// conn.kind: null | 'usb' | 'demo' | 'bridge'.  For the bridge, base '' means "the bridge that served this page".
-let conn = {kind: null, base: '', token: ''}, usb = null, demo = null;
+// conn.kind: null | 'usb' | 'demo' | 'bridge';  conn.id: the machine it belongs to.
+let conn = {kind: null, base: '', token: '', id: null}, usb = null, demo = null;
 let server = {up: false, st: null}, pollTimer = null;
-const offline = {usb: null, demo: null};   // checkpoints of jobs streamed from this browser, shown while not connected
+const offline = {};   // machine id → checkpoint of the job last streamed from this browser, shown while that machine is not connected
 const isLocal = () => conn.kind === 'usb' || conn.kind === 'demo';
 async function bridgeFetch(base, token, p, body) {
   const opt = {headers: {'X-Bridge-Token': token || ''}};
   if (body !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
   const r = await fetch((base || '') + '/api/' + p, opt);
   if (r.status === 401) throw new Error('The bridge needs its access token');
-  const j = await r.json(); if (j.error) throw new Error(j.error); return j;
+  const j = await r.json(); if (j.error) { const e = new Error(j.error); e.data = j; throw e; } return j;
 }
 async function api(path, body) {
   if (isLocal()) return usb.api(path, body || {});
   if (conn.kind === 'bridge') return bridgeFetch(conn.base, conn.token, path, body || {});
-  throw new Error('Connect the plotter first (Machine)');
+  throw new Error('Connect a plotter first (Machine)');
 }
 const act = (path, body) => api(path, body).catch(e => { toast(e.message, true); return null; });
 let devLog = [], logSeen = 0;
 function setConn(c) {
-  conn = c; server = {up: !!c.kind, st: null}; devLog = []; logSeen = 0;
+  conn = {base: '', token: '', id: null, ...c}; server = {up: !!c.kind, st: null}; devLog = []; logSeen = 0;
   for (const id of ['conLog', 'plotLog']) $(id).innerHTML = '';
-  if (c.kind === 'bridge' && c.base) lsSet('plotBridge', {base: c.base, token: c.token});
   live.key = null; afterStatus(); clearTimeout(pollTimer); pollServer();
 }
 async function pollServer() {
@@ -5149,15 +5277,19 @@ async function pollServer() {
       }
       const first = !server.st;
       server = {up: true, seen: true, st};
-      if (first && st.work && (st.work[0] !== S.machine.bedW || st.work[1] !== S.machine.bedH)) {   // adopt the machine's work area
+      if (first && !activeMachine() && st.work && (st.work[0] !== S.machine.bedW || st.work[1] !== S.machine.bedH)) {   // no machine set up yet: adopt the work area
         S.machine.bedW = st.work[0]; S.machine.bedH = st.work[1]; saveSettings(); renderMach(); fitView(); computePlan();
         toast(`Bed size set from the plotter: ${st.work[0]} × ${st.work[1]} mm`);
+      }
+      if (conn.kind === 'bridge' && st.machine_rev != null && !syncing) {   // someone changed the settings on the bridge: follow
+        const m = machineById(conn.id);
+        if (m && !m.dirty && m.rev !== st.machine_rev) { syncing = true; syncProfile(m).catch(() => {}).finally(() => { syncing = false; }); }
       }
       const fresh = isLocal() ? usb.log.filter(e => e.seq > logSeen) : st.log || [];
       if (st.seq < logSeen) logSeen = 0;
       if (fresh.length) { devLog.push(...fresh); devLog = devLog.slice(-300); addLog(fresh); }
       logSeen = st.seq ?? logSeen;
-      if (isLocal() && !st.connected) { conn = {kind: null}; server = {up: false, st: null}; live.key = null; }
+      if (isLocal() && !st.connected) { conn = {kind: null, base: '', token: '', id: null}; server = {up: false, st: null}; live.key = null; }
     } catch (e) {
       server.up = false; server.st = null; server.err = e.message;
     }
@@ -5169,72 +5301,115 @@ async function pollServer() {
 // the job to show: the plotter's, else (not connected) the last one this browser streamed
 function curJob() {
   if (server.st) return server.st.job;
-  const saved = [offline.usb, offline.demo].filter(Boolean).sort((a, b) => (b.saved || 0) - (a.saved || 0))[0];
-  return saved ? {...saved, offline: true, via: saved === offline.demo ? 'demo' : 'usb', progress: saved.done / saved.total, total: saved.total,
-    resumable: RESUMABLE.includes(saved.state) && saved.done < saved.total, resume_at: saved.resumeAt, running: false} : null;
+  const best = Object.entries(offline).filter(([, v]) => v).sort((a, b) => (b[1].saved || 0) - (a[1].saved || 0))[0];
+  if (!best) return null;
+  const [id, saved] = best, m = machineById(id);
+  return {...saved, offline: true, mid: id, mname: m ? m.name : 'the plotter', via: m ? m.via : 'usb', progress: saved.done / saved.total, total: saved.total,
+    resumable: RESUMABLE.includes(saved.state) && saved.done < saved.total, resume_at: saved.resumeAt, running: false};
 }
 function renderConn() {
-  const st = server.st, on = !!(st && st.connected), via = {usb: 'USB', demo: 'Demo', bridge: 'Bridge'}[conn.kind];
-  const j = st && st.job, pct = j ? Math.round(j.progress * 100) + '%' : '';
-  $('mstate').textContent = !conn.kind ? (curJob() && curJob().resumable ? 'Unfinished plot' : 'Connect plotter') : !server.up ? 'Bridge offline' : !on ? `${via} · plotter off`
-    : j && j.running ? `${st.state} · ${pct}` : j && j.resumable ? `${via} · ${pct} · unfinished` : `${via} · ${st.state}`;
-  $('mchip').className = 'chip' + (!conn.kind ? (curJob() && curJob().resumable ? ' hold' : '') : ' ' + (!server.up || !on ? 'alarm' : j && j.resumable && !j.running ? 'hold' : {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm', Connecting: 'busy'}[st.state] || ''));
-  const pb = document.querySelector('#wsSeg [data-ws=plot]'), cj = curJob();
+  const st = server.st, on = !!(st && st.connected), am = machineById(conn.id), nm = am ? am.name : VIA[conn.kind];
+  const j = st && st.job, pct = j ? Math.round(j.progress * 100) + '%' : '', cj = curJob();
+  $('mstate').textContent = !conn.kind ? (cj && cj.resumable ? 'Unfinished plot' : am ? am.name : 'Add a plotter') : !server.up ? `${nm} · offline` : !on ? `${nm} · plotter off`
+    : j && j.running ? `${st.state} · ${pct}` : j && j.resumable ? `${nm} · ${pct} · unfinished` : `${nm} · ${st.state}`;
+  $('mchip').className = 'chip' + (!conn.kind ? (cj && cj.resumable ? ' hold' : '') : ' ' + (!server.up || !on ? 'alarm' : j && j.resumable && !j.running ? 'hold' : {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm', Connecting: 'busy'}[st.state] || ''));
+  const pb = document.querySelector('#wsSeg [data-ws=plot]');
   pb.classList.toggle('live', !!(j && j.running)); pb.classList.toggle('warn', !!(cj && cj.resumable && !(j && j.running)));
 }
 $('mchip').onclick = () => { const j = curJob(); setWs(conn.kind && server.st && server.st.connected || (j && j.resumable) ? 'plot' : 'machine'); };
 addEventListener('beforeunload', e => { if (isLocal() && server.st && server.st.job && server.st.job.running) { usb.save(); e.preventDefault(); e.returnValue = ''; } });
 addEventListener('pagehide', () => { if (usb && usb.job && usb.job.dirty) usb.save(); if (demo) demo.save(); });
 
-async function connectUsb(baud, pick) {
+function normBridge(base) {
+  base = String(base || '').trim().replace(/\/+$/, '');
+  if (!base) throw new Error('Enter the bridge’s address, e.g. raspberrypi.local:8080');
+  if (!/^https?:\/\//.test(base)) base = 'http://' + base;
+  if (!/:\d+$/.test(base.replace(/^https?:\/\//, '')) && base.startsWith('http://')) base += ':8080';
+  if (location.protocol === 'https:' && base.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(base))
+    throw new Error('This page is served over https, so the browser blocks an http bridge. Open the studio from the bridge instead (its address + /studio).');
+  return base;
+}
+async function openUsb(m, pick) {
   if (!SERIAL_OK) throw new Error('This browser cannot reach USB serial devices');
-  let port;
-  if (!pick) { const ports = await navigator.serial.getPorts(); port = ports[0]; }
-  if (!port) port = await navigator.serial.requestPort();
-  if (isLocal() && usb) await usb.close();
-  usb = new GrblSerial('usb');
-  try { await usb.open(port, baud); }
+  const want = m.conn || {};
+  let port = null;
+  if (!pick) {   // a board this browser was already given access to needs no dialog
+    const ports = (await navigator.serial.getPorts()).filter(p => { const i = p.getInfo(); return !want.vid || (i.usbVendorId === want.vid && i.usbProductId === want.pid); });
+    if (ports.length === 1) port = ports[0];
+  }
+  if (!port) port = await navigator.serial.requestPort(want.vid ? {filters: [{usbVendorId: want.vid, usbProductId: want.pid}]} : {});
+  const g = new GrblSerial('usb', m.id);
+  try { await g.open(port, want.baud || 115200); }
   catch (e) { throw new Error(/already open/i.test(e.message) ? 'That port is busy — close other programs using it (Arduino IDE, another tab) and try again' : 'Could not open the port: ' + e.message); }
-  usb.adopt(await GrblSerial.saved('usb'));
-  lsSet('plotUsb', {baud});
-  setConn({kind: 'usb'});
+  usb = g;
+  const i = port.getInfo ? port.getInfo() : {}; if (i.usbVendorId) { m.conn.vid = i.usbVendorId; m.conn.pid = i.usbProductId; }
+  g.adopt(await GrblSerial.saved(m.id));
+  setConn({kind: 'usb', id: m.id});
+}
+async function openDemo(m) {
+  demo = demo || await SimGrbl.restore();
+  const p = profileOf(m); demo.pen = {up: p.up, down: p.down};
+  usb = new GrblSerial('demo', m.id);
+  await usb.open(demo, 115200);
+  usb.adopt(await GrblSerial.saved(m.id));
+  setConn({kind: 'demo', id: m.id});
+}
+async function openBridge(m) {
+  const base = normBridge(m.conn.base), token = m.conn.token || '';
+  try { await bridgeFetch(base, token, 'status'); }
+  catch (e) { throw new Error(e.message === 'Failed to fetch' ? `No bridge answered at ${bridgeLabel(base)} — is it running and on the same network?` : e.message); }
+  m.conn.base = base;
+  setConn({kind: 'bridge', base, token, id: m.id});
+  const reg = machineById(m.id);
+  if (reg) { try { await syncProfile(reg); } catch (e) { toast('Could not read the settings from the bridge: ' + e.message, true); } }
+}
+async function disconnectCurrent() {
+  if (server.st && server.st.job && server.st.job.running && isLocal()) throw new Error('Stop the plot before switching or disconnecting');
+  if (isLocal() && usb) await usb.close();
+  setConn({kind: null});
+}
+async function connectDevice(m, {pick = false} = {}) {   // m: a saved machine, or the wizard's draft
+  const same = conn.kind === m.via && conn.id === m.id && (m.via !== 'bridge' || conn.base === normBridge(m.conn.base));
+  if (same && server.st && server.st.connected) return;
+  if (conn.kind) await disconnectCurrent();
+  if (m.via === 'demo') await openDemo(m); else if (m.via === 'usb') await openUsb(m, pick); else await openBridge(m);
+  lsSet('plotstudio.auto', true);
+}
+async function activate(m, opts) {   // pick a machine: connect to it and make its settings the working settings
+  m.err = ''; renderMachineList();
+  try { await connectDevice(m, opts); selectMachine(m.id); }
+  catch (e) { if (e.name !== 'NotFoundError') m.err = e.message; selectMachine(m.id); }
+  renderMachineViews();
 }
 async function connectDemo() {
-  if (isLocal() && usb) await usb.close();
-  demo = demo || await SimGrbl.restore();
-  usb = new GrblSerial('demo');
-  await usb.open(demo, 115200);
-  usb.adopt(await GrblSerial.saved('demo'));
-  setConn({kind: 'demo'});
+  let m = machines.find(x => x.via === 'demo');
+  if (!m) { m = {id: newId(), name: 'Demo plotter', via: 'demo', conn: {}, profile: null, rev: null, ready: true}; machines.push(m); saveMachines(); }
+  await activate(m);
 }
-async function connectBridge(base, token) {
-  base = base.trim().replace(/\/+$/, '');
-  if (base && !/^https?:\/\//.test(base)) base = 'http://' + base;
-  if (base && !/:\d+$/.test(base.replace(/^https?:\/\//, '')) && base.startsWith('http://')) base += ':8080';
-  if (location.protocol === 'https:' && base.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(base))
-    throw new Error('This page is served over https, so the browser blocks an http bridge. Open the studio from the bridge instead (link below).');
-  try { await bridgeFetch(base, token, 'status'); }
-  catch (e) { throw new Error(e.message === 'Failed to fetch' ? `No bridge answered at ${base || 'this address'} — is it running and on the same network?` : e.message); }
-  if (isLocal() && usb) await usb.close();
-  setConn({kind: 'bridge', base, token});
+function removeMachine(m) {
+  if (conn.id === m.id) { if (server.st && server.st.job && server.st.job.running && isLocal()) return toast('Stop the plot first', true); disconnectCurrent().catch(() => {}); }
+  machines = machines.filter(x => x !== m); if (activeId === m.id) activeId = null;
+  offline[m.id] = null; IDB.del('job:' + m.id); IDB.del('job:' + m.id + ':lines');
+  saveMachines(); renderMachineViews();
 }
 async function disconnect() {
-  if (server.st && server.st.job && server.st.job.running && isLocal()) return toast('Stop the plot before disconnecting', true);
-  if (isLocal()) await usb.close();
-  if (conn.kind === 'bridge') lsSet('plotBridge', {...(lsGet('plotBridge') || {}), auto: false});
-  setConn({kind: null});
+  try { await disconnectCurrent(); lsSet('plotstudio.auto', false); } catch (e) { toast(e.message, true); }
+  renderMachineViews();
+}
+async function attachServedBridge(info) {   // the page came from a bridge: that is the plotter
+  let m = machines.find(x => x.via === 'bridge' && x.conn.bridgeId === info.id) || machines.find(x => x.via === 'bridge' && x.conn.base === location.origin);
+  if (!m) { m = {id: newId(), name: info.machine || info.host || 'Plotter', via: 'bridge', conn: {base: location.origin, token: '', bridgeId: info.id}, profile: null, rev: null, dirty: false, ready: false}; machines.push(m); saveMachines(); }
+  m.conn.base = location.origin; m.conn.bridgeId = info.id;
+  await activate(m);
+  if (m.err && /token/i.test(m.err)) setWs('machine');
 }
 async function autoConnect() {
   if (HOSTED) return;
-  if (/^https?:$/.test(location.protocol)) {   // served by a bridge? then talk to it directly
-    try { const r = await fetch('/api/info'); const j = await r.json(); if (j.name === 'plotter-bridge') {
-      const tok = (lsGet('plotBridge') || {}).token || '';
-      try { await bridgeFetch('', tok, 'status'); setConn({kind: 'bridge', base: '', token: tok}); }
-      catch (e) { if (/token/.test(e.message)) { connUi.err = 'Enter the bridge’s access token below, then Connect.'; connUi.url = location.origin; setWs('machine'); renderConnCard(true); } }
-      return; } } catch {}
+  if (/^https?:$/.test(location.protocol)) {
+    try { const info = await (await fetch('/api/info')).json(); if (info.name === 'plotter-bridge') return await attachServedBridge(info); } catch {}
   }
-  const saved = lsGet('plotBridge');
-  if (saved && saved.base && saved.auto !== false) { try { await connectBridge(saved.base, saved.token); } catch {} }
+  const m = activeMachine();
+  if (m && m.via !== 'demo' && lsGet('plotstudio.auto') !== false) { try { await connectDevice(m); selectMachine(m.id); } catch (e) { if (e.name !== 'NotFoundError') m.err = e.message; renderMachineViews(); } }
 }
 
 // =====================================================================
@@ -5248,13 +5423,15 @@ function setWs(w) {
   closeMenu();
   if (w !== 'design') { mapEdit = null; geoPick = null; }
   if (w === 'plot') ensureSession();
+  if (w === 'machine') pollOthers();
   hover = null; afterStatus(); renderStatus(); clearTimeout(pollTimer); pollServer(); draw();
 }
 document.querySelectorAll('#wsSeg [data-ws]').forEach(b => b.onclick = () => setWs(b.dataset.ws));
 function setHTML(el, html) { if (el._html === html) return false; el._html = html; el.innerHTML = html; return true; }
 function afterStatus() {
   renderConn();
-  if (ws === 'machine') { renderConnCard(); renderMoveCard(); }
+  if (wz) wzTick();
+  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderInfo(); }
   if (ws === 'plot') { trackSession(); renderRecover(); renderQueue(); renderLiveCard(); }
   else trackSession();
   if (ws !== 'design') { renderStatus(); syncLive(); draw(); }
@@ -5272,74 +5449,360 @@ function addLog(entries) {
   }
 }
 
-// ---------- Machine: connection ----------
-const connUi = {err: '', url: null, more: false};
-function renderConnCard(force) {
-  const st = server.st, on = !!(conn.kind && server.up), saved = lsGet('plotBridge') || {}, usbSaved = lsGet('plotUsb') || {};
-  const sig = [conn.kind, conn.base, server.up, st && st.connected, st && st.state === 'Alarm', connUi.err, connUi.more, demo && demo.speed, HOSTED].join('|');
-  const el = $('connCard'); if (!force && el._sig === sig) return; el._sig = sig;
-  const nowRow = !conn.kind ? '' : `<div class="conn-now"><span class="chip ${on && st && st.connected ? 'idle' : 'alarm'}"><i></i>${{usb: 'USB', demo: 'Demo', bridge: 'Bridge'}[conn.kind]}</span>
-      <div class="grow"><b>${conn.kind === 'bridge' ? esc(conn.base || location.host) : esc((st && st.port) || 'USB serial')}</b>
-      <span>${!server.up ? 'not answering' : st && st.connected ? 'connected' : 'bridge is up, plotter not connected'}</span></div>
-      ${conn.kind === 'bridge' && server.up && st && !st.connected ? '<button class="btn sm" data-c="plug">Connect plotter</button>' : ''}
-      ${conn.kind === 'bridge' ? `<a class="btn sm" href="${esc((conn.base || '') + '/')}" target="_blank" rel="noopener">Monitor ↗</a>` : ''}
-      <button class="btn sm" data-c="off">Disconnect</button></div>
-      ${conn.kind === 'demo' ? `<div class="demo-tools" style="margin-top:8px"><span class="note" style="margin:0">Speed</span><div class="seg" style="width:180px">${[1, 10, 50, 200].map(v => `<button data-c="speed" data-v="${v}" class="${demo && demo.speed === v ? 'on' : ''}">×${v}</button>`).join('')}</div>
-        <button class="btn sm" data-c="sheet" title="Take the plotted sheet off the demo plotter">New sheet</button></div>
-        <div class="demo-tools" style="margin-top:8px"><span class="note" style="margin:0">Try a crash:</span><button class="btn sm" data-c="glitch" title="The controller reboots mid-plot, as with a brown-out">Power glitch</button><button class="btn sm" data-c="unplug" title="The USB cable comes out">Pull the cable</button><span class="note" style="margin:0">or reload this page</span></div>` : ''}`;
-  const hostedNote = HOSTED ? `<div class="callout">This copy runs inside claude.ai, which keeps pages away from USB devices and your network. Try the demo plotter, or download Plot Studio and open it in Chrome or Edge.
-      <div class="row" style="margin-top:8px"><button class="btn sm primary" data-c="save">Download Plot Studio</button></div></div>` : '';
-  const options = `
-    <section class="conn-opt">
-      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14l3-4 3 3 4-5"/></svg><b>Demo plotter</b><small>no hardware</small></div>
-      <p>A simulated GRBL plotter in this page, with its own sheet of paper. Plot, watch, crash and resume without a machine.</p>
-      <div class="row"><span class="grow"></span><button class="btn ${conn.kind ? '' : 'primary'}" data-c="demo">Use the demo plotter</button></div>
-    </section>
-    <section class="conn-opt${SERIAL_OK ? '' : ' off'}">
-      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M8 7l4-4 4 4M7 12v3l5 3 5-3v-3"/><circle cx="12" cy="19" r="2"/></svg><b>USB cable</b><small>this computer</small></div>
-      <p>This tab streams the drawing to the plotter and saves its progress as it goes, so a plot cut short by a crash or a closed tab can be resumed.</p>
-      ${SERIAL_OK ? `<div class="row"><label class="field" style="width:120px"><span>Baud rate</span><select id="cnBaud">${[115200, 250000, 57600, 38400, 9600].map(b => `<option ${b === (usbSaved.baud || 115200) ? 'selected' : ''}>${b}</option>`).join('')}</select></label>
-        <span class="grow"></span><button class="btn primary" data-c="usb">Choose port…</button></div>`
-        : `<p class="note">${HOSTED ? 'Not available inside claude.ai.' : !window.isSecureContext ? 'USB needs a secure page (https, localhost or a downloaded file).' : 'USB plotting needs Chrome or Edge on a desktop computer.'}</p>`}
-    </section>
-    <section class="conn-opt">
-      <div class="conn-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="10" rx="2"/><path d="M8 18h8M12 14v4M8 9h.01M12 9h4"/></svg><b>Plotter Bridge</b><small>Raspberry Pi or another computer</small></div>
-      <p>A small app next to the plotter streams the job and keeps its progress on disk. The plot keeps going when you close this tab, and you can watch it from your phone.</p>
-      <div class="fields">
-        <label class="field full"><span>Bridge address</span><input id="cnUrl" placeholder="raspberrypi.local:8080" value="${esc(connUi.url ?? saved.base ?? '')}" spellcheck="false" autocapitalize="off"></label>
-        <label class="field full"><span>Access token <em style="color:var(--faint)">if set</em></span><input id="cnTok" type="password" value="${esc(saved.token || '')}" autocomplete="off"></label>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <a class="btn sm" id="cnOpen" target="_blank" rel="noopener">Open studio on the bridge ↗</a><span class="grow"></span>
-        ${BRIDGE_OK ? '<button class="btn primary" data-c="bridge">Connect</button>' : ''}
-      </div>
-    </section>`;
-  el.innerHTML = `<h3>Plotter <small>${conn.kind ? '' : 'not connected'}</small></h3><div style="display:flex;flex-direction:column;gap:10px">${hostedNote}${nowRow}
-    ${connUi.err ? `<div class="callout bad">${esc(connUi.err)}</div>` : ''}
-    ${conn.kind ? `<button class="btn sm ghost" data-c="more" style="align-self:flex-start">${connUi.more ? 'Hide other connections' : 'Other connections…'}</button>` : ''}
-    ${!conn.kind || connUi.more ? options : ''}</div>`;
-  const openLink = () => { const u = $('cnUrl'); if (!u) return; let b = u.value.trim().replace(/\/+$/, ''); if (!b) { $('cnOpen').removeAttribute('href'); return; } if (!/^https?:\/\//.test(b)) b = 'http://' + b; if (!/:\d+$/.test(b.replace(/^https?:\/\//, '')) && b.startsWith('http://')) b += ':8080'; $('cnOpen').href = b + '/studio'; };
-  if ($('cnUrl')) { $('cnUrl').oninput = () => { connUi.url = $('cnUrl').value; openLink(); }; openLink(); }
+// ---------- Machine: the device list ----------
+// Pick a machine here; connecting is one click. Everything about setting one up is in the wizard and in Settings.
+const mstat = {};   // bridge machines that are not connected right now: id → {up, st, auth, at}, polled while this view is open
+function machStatus(m) {   // {cls, text, st}
+  const here = conn.id === m.id && conn.kind;
+  if (here) {
+    const st = server.st;
+    if (!server.up) return {cls: 'alarm', text: 'Offline'};
+    if (!st || !st.connected) return {cls: 'alarm', text: m.via === 'bridge' ? 'Bridge up, plotter not connected' : 'Plotter not connected'};
+    const j = st.job;
+    return {cls: {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm'}[st.state] || '', text: j && j.running ? `Plotting · ${Math.round(j.progress * 100)}%` : j && j.resumable ? `${st.state} · unfinished plot` : st.state, st, on: true};
+  }
+  if (m.via === 'bridge') {
+    const s = mstat[m.id];
+    if (!s) return {cls: '', text: 'Checking…'};
+    if (s.auth) return {cls: 'hold', text: 'Needs access token'};
+    if (!s.up) return {cls: 'alarm', text: 'Not reachable'};
+    const st = s.st, j = st && st.job;
+    if (!st.connected) return {cls: 'alarm', text: 'Bridge up, plotter not connected', st};
+    return {cls: {Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Alarm: 'alarm'}[st.state] || '', text: j && j.running ? `Plotting · ${Math.round(j.progress * 100)}%` : j && j.resumable ? `${st.state} · unfinished plot` : st.state, st};
+  }
+  const o = offline[m.id];
+  return {cls: o && RESUMABLE.includes(o.state) && o.done < o.total ? 'hold' : '', text: o && RESUMABLE.includes(o.state) && o.done < o.total ? 'Not connected · unfinished plot' : 'Not connected'};
 }
-$('connCard').addEventListener('click', async e => {
-  const b = e.target.closest('[data-c]'); if (!b || b.disabled) return;
-  const c = b.dataset.c, err = m => { connUi.err = m || ''; renderConnCard(true); };
-  b.disabled = true;
-  try {
-    if (c === 'demo') { err(''); await connectDemo(); connUi.more = false; toast('Demo plotter connected'); }
-    else if (c === 'usb') { err(''); try { await connectUsb(+$('cnBaud').value, true); connUi.more = false; toast('Plotter connected over USB'); } catch (x) { if (x.name !== 'NotFoundError') err(x.message); } }
-    else if (c === 'bridge') { err(''); await connectBridge($('cnUrl').value, $('cnTok').value); connUi.more = false; toast('Connected to the bridge'); }
-    else if (c === 'off') await disconnect();
-    else if (c === 'plug') { await api('connect'); toast('Plotter connected'); }
-    else if (c === 'more') connUi.more = !connUi.more;
-    else if (c === 'speed') { demo.speed = +b.dataset.v; demo.save(); }
-    else if (c === 'sheet') { demo.newSheet(); draw(); }
-    else if (c === 'glitch') { demo.crash(); toast('Power glitch: the demo controller rebooted'); }
-    else if (c === 'unplug') { demo.unplug(); toast('Cable pulled'); }
-    else if (c === 'save') { const r = await fetch('plot-studio.html'); if (!r.ok) throw new Error(r.status); await download('plot-studio.html', await r.text(), 'text/html'); }
-  } catch (x) { err(x.message); }
-  b.disabled = false; renderConnCard(true);
+function cardHTML(m) {
+  const s = machStatus(m), on = m.id === activeId, st = s.st, j = st && st.job, running = !!(j && j.running);
+  return `<div class="mcard ${on ? 'on' : ''}" data-mc="card" data-id="${m.id}">
+    <div class="mc-ic">${MIC[m.via]}</div>
+    <div class="mc-body"><b>${esc(m.name)}</b><span>${esc(machineSub(m))}</span>
+      <div class="mc-st"><i class="dot ${s.cls}"></i><span>${esc(s.text)}${st && st.connected && !running ? ` · X ${(+st.pos[0]).toFixed(1)} Y ${(+st.pos[1]).toFixed(1)}` : ''}</span></div>
+      ${running ? `<div class="mc-bar"><div style="width:${j.progress * 100}%"></div></div>` : ''}
+      ${m.err ? `<div class="mc-err">${esc(m.err)}</div>` : ''}
+      ${m.err && /token/i.test(m.err) ? `<div class="row" style="margin-top:6px;flex-wrap:nowrap"><input class="input" type="password" placeholder="Access token" data-tok="${m.id}" autocomplete="off"><button class="btn sm primary" data-mc="token" data-id="${m.id}">Connect</button></div>` : ''}
+      ${!m.ready ? `<div class="mc-hint">Not set up yet · <a href="#" data-mc="setup" data-id="${m.id}">Run setup</a></div>` : ''}
+    </div>
+    <div class="mc-act">${!s.on && !m.err ? `<button class="btn sm ${on ? 'primary' : ''}" data-mc="connect" data-id="${m.id}">Connect</button>` : ''}
+      <button class="btn ghost icon sm" data-mc="menu" data-id="${m.id}" title="More" aria-label="More">${MIC.dots}</button></div>
+  </div>`;
+}
+function renderMachineList() {
+  const el = $('machList'); if (!el) return;
+  const hosted = HOSTED ? `<div class="callout" style="margin-bottom:10px">This copy runs inside claude.ai, which keeps pages away from USB devices and your network. Try the demo plotter, or download Plot Studio and open it in Chrome or Edge.
+      <div class="row" style="margin-top:8px"><button class="btn sm primary" data-mc="save">Download Plot Studio</button></div></div>` : '';
+  setHTML(el, `<div class="sect-h"><span class="grow">Machines</span><button class="btn sm" data-mc="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add</button></div>
+    ${hosted}
+    ${machines.length ? `<div class="list">${machines.map(cardHTML).join('')}</div>
+      <p class="note">Settings of a bridge machine are kept on the bridge. The others are kept in this browser — export them from ⋯ to keep a copy.</p>`
+    : `<div class="empty"><b>Add your plotter</b>A short setup finds its size, sets the pen and checks the direction.
+        <div class="row" style="justify-content:center;margin-top:12px"><button class="btn primary" data-mc="add">Add a machine</button><button class="btn" data-mc="demo">Try the demo plotter</button></div></div>`}`);
+  el.querySelectorAll('[data-tok]').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') el.querySelector(`[data-mc=token][data-id="${i.dataset.tok}"]`).click(); });
+}
+$('machList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-mc]'); if (!b) return;
+  const c = b.dataset.mc, m = machineById(b.dataset.id);
+  if (c === 'setup') e.preventDefault();
+  if (c === 'card') { if (e.target.closest('input,a,button')) return; if (m) { if (conn.id === m.id) { selectMachine(m.id); setMtab('ctl'); } else activate(m); } }
+  else if (c === 'connect' && m) activate(m);
+  else if (c === 'token' && m) { const i = $('machList').querySelector(`[data-tok="${m.id}"]`); m.conn.token = i ? i.value : ''; saveMachines(); activate(m); }
+  else if (c === 'menu' && m) openMachMenu(m, b);
+  else if (c === 'setup' && m) openWizard(m);
+  else if (c === 'add') openWizard();
+  else if (c === 'demo') { await connectDemo(); setMtab('ctl'); }
+  else if (c === 'save') { try { const r = await fetch('plot-studio.html'); if (!r.ok) throw new Error(r.status); await download('plot-studio.html', await r.text(), 'text/html'); } catch (x) { toast('Could not fetch the offline copy (' + x.message + ')', true); } }
 });
+function openMachMenu(m, anchor) {
+  const here = conn.id === m.id && conn.kind;
+  $('machMenu').innerHTML = `<button data-mm="settings" data-id="${m.id}">Settings</button><button data-mm="setup" data-id="${m.id}">Run setup again…</button><button data-mm="rename" data-id="${m.id}">Rename</button>
+    <button data-mm="export" data-id="${m.id}">Export settings…</button><hr>${here ? `<button data-mm="disconnect" data-id="${m.id}">Disconnect</button>` : ''}<button data-mm="remove" data-id="${m.id}" style="color:var(--danger)">Remove</button>`;
+  openMenu($('machMenu'), anchor);
+}
+$('machMenu').addEventListener('click', e => {
+  const b = e.target.closest('[data-mm]'); if (!b) return;
+  const m = machineById(b.dataset.id); if (!m) return;
+  const a = b.dataset.mm;
+  if (a === 'settings' || a === 'rename') { selectMachine(m.id); setMtab('set'); if (a === 'rename') setTimeout(() => { const i = $('mName'); if (i) { i.focus(); i.select(); } }, 30); }
+  else if (a === 'setup') openWizard(m);
+  else if (a === 'export') exportMachine(m);
+  else if (a === 'disconnect') disconnect();
+  else if (a === 'remove') { if (confirm(`Remove “${m.name}” from this browser?${m.via === 'bridge' ? ' Its settings stay on the bridge.' : ' Its settings are deleted — export them first to keep a copy.'}`)) removeMachine(m); }
+});
+function exportMachine(m) {
+  download(slug(m.name) + '.plotter.json', JSON.stringify({app: 'plot-studio-machine', version: 1, name: m.name, via: m.via, profile: pickProfile(profileOf(m))}, null, 1), 'application/json');
+}
+let othersTimer = null;
+async function pollOthers() {   // status of the bridges that are in the list but not connected, like a printer list with live state
+  clearTimeout(othersTimer);
+  if (ws === 'machine' && !document.hidden) {
+    await Promise.all(machines.filter(m => m.via === 'bridge' && !(conn.kind === 'bridge' && conn.id === m.id)).map(async m => {
+      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 3000);
+      try {
+        const r = await fetch(m.conn.base + '/api/status', {headers: {'X-Bridge-Token': m.conn.token || ''}, signal: ac.signal});
+        mstat[m.id] = r.ok ? {up: true, st: await r.json(), at: Date.now()} : {up: r.status === 401, auth: r.status === 401, st: null, at: Date.now()};
+      } catch { mstat[m.id] = {up: false, st: null, at: Date.now()}; }
+      clearTimeout(t);
+    }));
+    renderMachineList();
+  }
+  othersTimer = setTimeout(pollOthers, 4000);
+}
+
+// ---------- Machine: tabs on the right (Control · Settings · Info) ----------
+let mtab = 'ctl';
+function setMtab(t) {
+  mtab = t;
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b.dataset.mtab === t));
+  for (const [k, id] of [['ctl', 'ctlPane'], ['set', 'machPane'], ['info', 'infoPane']]) $(id).classList.toggle('on', k === t);
+  renderMachineViews();
+}
+document.querySelectorAll('.mtab').forEach(b => b.onclick = () => setMtab(b.dataset.mtab));
+function renderMachineViews() {
+  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderInfo(); }
+  renderConn(); if (ws === 'plot') renderQueue();
+}
+function renderInfo() {
+  const el = $('infoPane'), m = activeMachine(), st = server.st, here = m && conn.id === m.id && conn.kind;
+  if (!m) return setHTML(el, '<div class="empty"><b>No machine selected</b>Pick one on the left, or add your plotter.</div>');
+  const g = (here && st && st.grbl) || {}, gs = g.settings || {}, row = (k, v) => `<div><span>${k}</span><b>${v}</b></div>`;
+  setHTML(el, `<div class="card"><h3>${esc(m.name)} <small>${VIA[m.via]}</small></h3>
+      <div class="kv" style="grid-template-columns:1fr">
+        ${row('How', esc(machineSub(m)))}${row('Status', esc(machStatus(m).text))}
+        ${row('Firmware', g.version ? 'GRBL ' + esc(g.version) : here ? '…' : '—')}
+        ${row('Work area (GRBL)', gs[130] && gs[131] ? `${gs[130]} × ${gs[131]} mm` : '—')}
+        ${row('Homing switches', gs[22] != null ? (gs[22] ? 'yes ($22=1)' : 'no') : '—')}
+        ${row('Max speed X / Y', gs[110] ? `${gs[110]} / ${gs[111]} mm/min` : '—')}
+      </div></div>
+    ${m.via === 'demo' ? `<div class="card"><h3>Demo plotter</h3>
+      <div class="demo-tools"><span class="note" style="margin:0">Speed</span><div class="seg" style="width:190px">${[1, 10, 50, 200].map(v => `<button data-i="speed" data-v="${v}" class="${demo && demo.speed === v ? 'on' : ''}">×${v}</button>`).join('')}</div>
+        <button class="btn sm" data-i="sheet" title="Take the plotted sheet off the demo plotter">New sheet</button></div>
+      <div class="demo-tools" style="margin-top:8px"><span class="note" style="margin:0">Try a crash:</span><button class="btn sm" data-i="glitch" title="The controller reboots mid-plot, as with a brown-out">Power glitch</button><button class="btn sm" data-i="unplug" title="The USB cable comes out">Pull the cable</button></div>
+      <p class="note">It has its own sheet of paper. Reloading this page mid-plot is a crash too.</p></div>` : ''}
+    <div class="card"><h3>Where the settings are kept</h3>
+      <p class="note" style="margin-top:0">${m.via === 'bridge' ? `On the bridge — every browser and phone that connects to it sees the same settings. ${m.rev != null ? `Revision ${m.rev}${m.dirty ? ' · changes not yet sent' : ''}.` : ''}`
+        : 'In this browser only. Export them to keep a copy or to set up another computer.'}</p>
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-i="export">Export settings</button><button class="btn sm" data-i="setup">Run setup again</button>
+        ${m.via === 'bridge' ? `<a class="btn sm" href="${esc(m.conn.base)}/" target="_blank" rel="noopener">Bridge monitor ↗</a>` : ''}</div></div>
+    <div class="row"><button class="btn sm" data-i="${here ? 'off' : 'on'}">${here ? 'Disconnect' : 'Connect'}</button><span class="grow"></span><button class="btn sm danger" data-i="remove">Remove</button></div>`);
+}
+$('infoPane').addEventListener('click', e => {
+  const b = e.target.closest('[data-i]'), m = activeMachine(); if (!b || !m) return;
+  const a = b.dataset.i;
+  if (a === 'speed' && demo) { demo.speed = +b.dataset.v; demo.save(); renderInfo(); }
+  else if (a === 'sheet' && demo) { demo.newSheet(); draw(); }
+  else if (a === 'glitch' && demo) { demo.crash(); toast('Power glitch: the demo controller rebooted'); }
+  else if (a === 'unplug' && demo) { demo.unplug(); toast('Cable pulled'); }
+  else if (a === 'export') exportMachine(m); else if (a === 'setup') openWizard(m); else if (a === 'off') disconnect(); else if (a === 'on') activate(m);
+  else if (a === 'remove' && confirm(`Remove “${m.name}” from this browser?${m.via === 'bridge' ? ' Its settings stay on the bridge.' : ' Its settings are deleted — export them first to keep a copy.'}`)) removeMachine(m);
+});
+
+// ---------- setup wizard ----------
+// Connection → detect what GRBL says → pen servo (live) → origin and direction (draws a test mark) → name and save.
+let wz = null;
+const WZ_STEPS = ['Connect', 'Detect', 'Pen', 'Origin', 'Save'];
+function openWizard(existing) {
+  const d = existing ? structuredClone(existing) : {id: newId(), name: '', via: null, conn: {}, profile: null, rev: null, dirty: false, ready: false};
+  d.profile = pickProfile(existing ? profileOf(existing) : machines.length ? DEFAULTS.machine : profileOf(null));   // the first machine starts from the settings in use so far
+  d.conn = d.conn || {};
+  wz = {step: 0, d, existing: existing || null, err: '', busy: false, fromBridge: false, bedTouched: false, bedFromGrbl: false, mark: 0, step3: 10, url: d.conn.base || '', tok: d.conn.token || '', baud: d.conn.baud || 115200};
+  renderWizard();
+}
+function wzHead() { return `<header><h2>${wz.existing ? 'Set up “' + esc(wz.existing.name) + '” again' : 'Add a machine'}</h2><button class="btn ghost icon" data-wz="cancel">✕</button></header>`; }
+function wzCard(v, title, sub) { return `<button type="button" class="wz-opt ${wz.d.via === v ? 'on' : ''}" data-wz="via" data-v="${v}">${MIC[v]}<b>${title}</b><span>${sub}</span></button>`; }
+function wzConnect() {
+  const d = wz.d, serialNote = !SERIAL_OK ? (HOSTED ? 'Not available inside claude.ai.' : !window.isSecureContext ? 'USB needs a secure page (https, localhost or a downloaded file).' : 'USB needs Chrome or Edge on a desktop computer.') : '';
+  return `<p class="wz-lead">How is your plotter connected?</p>
+    <div class="wz-opts">${wzCard('bridge', 'Plotter Bridge', 'A Raspberry Pi or computer next to the plotter')}${wzCard('usb', 'USB cable', 'Plugged into this computer')}${wzCard('demo', 'Demo plotter', 'No hardware needed')}</div>
+    ${d.via === 'bridge' ? `<div class="fields">
+        <label class="field full"><span>Bridge address</span><input id="wzUrl" placeholder="raspberrypi.local:8080" value="${esc(wz.url)}" spellcheck="false" autocapitalize="off"></label>
+        <label class="field full"><span>Access token <em style="color:var(--faint)">if set</em></span><input id="wzTok" type="password" value="${esc(wz.tok)}" autocomplete="off"></label></div>
+      <p class="note">If the bridge already knows this plotter, its settings are used as the starting point.</p>` : ''}
+    ${d.via === 'usb' ? (SERIAL_OK ? `<div class="fields"><label class="field"><span>Baud rate</span><select id="wzBaud">${[115200, 250000, 57600, 38400, 9600].map(b => `<option ${b === +wz.baud ? 'selected' : ''}>${b}</option>`).join('')}</select></label></div>
+        <p class="note">Press Connect and choose the plotter's port. This tab then streams the drawing and saves its progress, so a plot cut short can be resumed.</p>` : `<div class="callout">${serialNote}</div>`) : ''}
+    ${d.via === 'demo' ? '<p class="note">A simulated GRBL plotter inside this page, with its own sheet of paper. Plot, crash and resume without a machine.</p>' : ''}
+    <div class="row"><button class="btn ghost sm" data-wz="import">Import settings from a file…</button>${wz.imported ? '<span class="note" style="margin:0">Settings imported ✓</span>' : ''}</div>`;
+}
+function wzDetect() {
+  const st = server.st || {}, g = st.grbl || {}, gs = g.settings || {}, p = wz.d.profile;
+  return `${!st.connected ? '<div class="callout bad">The plotter is not answering. Check the cable and power, then go Back and connect again.</div>' : ''}
+    <p class="wz-lead">${st.connected ? 'Found your plotter' : 'Waiting for the plotter…'}</p>
+    <div class="kv" style="grid-template-columns:1fr 1fr">
+      <div><span>Firmware</span><b>${g.version ? 'GRBL ' + esc(g.version) : st.connected ? 'GRBL' : '—'}</b></div>
+      <div><span>Homing switches</span><b>${gs[22] != null ? (gs[22] ? 'yes' : 'no') : '—'}</b></div>
+      <div><span>Work area GRBL knows</span><b>${gs[130] && gs[131] ? `${gs[130]} × ${gs[131]} mm` : 'not reported'}</b></div>
+      <div><span>Max speed</span><b>${gs[110] ? gs[110] + ' mm/min' : '—'}</b></div></div>
+    <p class="wz-lead" style="margin-top:6px">Drawing area</p>
+    <div class="fields">
+      <label class="field"><span>Width</span><div class="suffix" data-unit="mm"><input id="wzBedW" type="number" step="1" min="1" value="${p.bedW}"></div></label>
+      <label class="field"><span>Height</span><div class="suffix" data-unit="mm"><input id="wzBedH" type="number" step="1" min="1" value="${p.bedH}"></div></label></div>
+    <p class="note">${wz.fromBridge ? 'These are the settings saved on the bridge.' : gs[130] ? 'Taken from GRBL ($130 / $131). Make it smaller if you only want to use part of the bed.' : 'GRBL did not report its limits — enter the size the pen can travel.'}</p>`;
+}
+function wzPen() {
+  const p = wz.d.profile, st = server.st || {}, dis = st.connected ? '' : 'disabled';
+  const row = (k, label) => `<div class="wz-row"><span>${label}</span><input type="range" id="wzR_${k}" min="0" max="100" step="1" value="${Math.min(100, p[k])}" ${dis}><input type="number" id="wzN_${k}" step="1" min="0" max="1000" value="${p[k]}" class="input mono"><button class="btn sm" data-wz="pen" data-k="${k}" ${dis}>Test</button></div>`;
+  return `<p class="wz-lead">Set the pen servo</p>
+    <p class="note" style="margin-top:0">Drag the sliders — the pen moves as you do. Pen up: clear of the paper. Pen down: just touching, firmly enough to draw.</p>
+    ${row('up', 'Pen up S')}${row('down', 'Pen down S')}
+    <div class="fields"><label class="field"><span>Servo wait</span><div class="suffix" data-unit="s"><input id="wzWait" type="number" step="0.05" min="0" value="${p.dwell}"></div></label></div>
+    <p class="note">How long the servo needs to move. 0.3 s is a safe start; Settings → Servo wait test finds the shortest reliable value later.</p>`;
+}
+function wzOrigin() {
+  const st = server.st || {}, p = wz.d.profile, dis = st.connected ? '' : 'disabled';
+  return `<p class="wz-lead">Set the origin</p>
+    <p class="note" style="margin-top:0">Move the pen to the lower-left corner of the area you want to draw on, then press “Set 0,0 here”.</p>
+    <div class="row" style="align-items:flex-start;gap:14px;flex-wrap:nowrap">
+      <div class="jog">
+        <span></span><button class="btn" data-wz="jog" data-d="0,1" ${dis}>↑</button><span></span>
+        <button class="btn" data-wz="jog" data-d="-1,0" ${dis}>←</button><button class="btn mid" data-wz="zero" ${dis} title="Make this position X0 Y0">0,0</button><button class="btn" data-wz="jog" data-d="1,0" ${dis}>→</button>
+        <span></span><button class="btn" data-wz="jog" data-d="0,-1" ${dis}>↓</button><span></span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;flex:1;min-width:0">
+        <div class="field"><span>Step (mm)</span><div class="seg">${[1, 10, 50].map(v => `<button data-wz="step" data-v="${v}" class="${wz.step3 === v ? 'on' : ''}">${v}</button>`).join('')}</div></div>
+        <div class="kv"><div><span>X</span><b id="wzX">—</b></div><div><span>Y</span><b id="wzY">—</b></div></div>
+        <div class="row"><button class="btn sm primary" data-wz="zero" ${dis}>Set 0,0 here</button>${st.homing ? `<button class="btn sm" data-wz="home" ${dis}>Home</button>` : ''}</div></div></div>
+    <p class="wz-lead" style="margin-top:8px">Check the direction</p>
+    <p class="note" style="margin-top:0">Draws a small “F” from the origin. Seen from the front of the plotter it should read like this:</p>
+    <div class="row" style="align-items:center;gap:14px">
+      <svg class="wz-glyph" viewBox="0 0 56 72"><path d="M14 60V12h30M14 36h22" fill="none" stroke="#1b1b1f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div style="display:flex;flex-direction:column;gap:8px;flex:1">
+        <div class="row"><button class="btn sm" data-wz="mark" ${dis}>${wz.mark ? 'Draw it again' : 'Draw the test mark'}</button><span class="note" style="margin:0">${p.mirrorX ? 'X is mirrored' : 'X is not mirrored'}</span></div>
+        ${wz.mark ? `<div class="row"><span class="note" style="margin:0">Did it come out right?</span><button class="btn sm" data-wz="markok">Yes</button><button class="btn sm" data-wz="mirror">It's mirrored</button></div>` : ''}
+        ${wz.markOk ? '<span class="ok-t" style="font-size:12px">✓ Direction confirmed</span>' : ''}</div></div>
+    <p class="note">Upside down instead? Y can't be flipped here — reverse that axis in GRBL ($3).</p>`;
+}
+function wzSave() {
+  const d = wz.d, p = d.profile, name = d.name || (wz.existing && wz.existing.name) || (d.via === 'demo' ? 'Demo plotter' : 'My plotter');
+  return `<p class="wz-lead">Name your machine</p>
+    <div class="fields"><label class="field full"><span>Name</span><input id="wzName" value="${esc(name)}" maxlength="60"></label></div>
+    <div class="kv" style="grid-template-columns:1fr 1fr">
+      <div><span>Connected by</span><b>${esc(machineSub(d))}</b></div><div><span>Drawing area</span><b>${p.bedW} × ${p.bedH} mm</b></div>
+      <div><span>Pen up / down</span><b>S${p.up} / S${p.down}</b></div><div><span>Servo wait</span><b>${p.dwell} s</b></div></div>
+    <p class="note">${d.via === 'bridge' ? 'The settings are saved on the bridge, so every browser and phone that connects sees them.' : 'The settings are saved in this browser. Use ⋯ → Export settings to keep a copy.'}</p>`;
+}
+function renderWizard() {
+  if (!wz) return;
+  const body = [wzConnect, wzDetect, wzPen, wzOrigin, wzSave][wz.step](), last = wz.step === 4;
+  openModal(`${wzHead()}<div class="wz-steps">${WZ_STEPS.map((s, i) => `<span class="${i === wz.step ? 'on' : i < wz.step ? 'done' : ''}">${s}</span>`).join('')}</div>
+    <div class="body">${body}${wz.err ? `<div class="callout bad">${esc(wz.err)}</div>` : ''}
+      <div class="wz-foot"><button class="btn ghost" data-wz="cancel">Cancel</button><span class="grow"></span>${wz.step ? '<button class="btn" data-wz="back">Back</button>' : ''}
+        <button class="btn primary" data-wz="next" ${wz.busy ? 'disabled' : ''}>${wz.busy ? 'Working…' : last ? (wz.existing ? 'Save' : 'Add machine') : wz.step === 0 ? (wz.d.via ? 'Connect' : 'Next') : 'Next'}</button></div></div>`);
+  $('modalBg').classList.add('docked'); wz.sig = wzSig();
+}
+const wzSig = () => { const st = server.st || {}, g = st.grbl || {}; return [wz && wz.step, st.connected, g.version, st.work && st.work.join('x'), st.homing].join('|'); };
+function wzTick() {   // status arrived: update what the wizard shows without rebuilding fields that are being edited
+  if (!wz) return;
+  const st = server.st || {};
+  if (wz.step === 1 && !wz.fromBridge && !wz.bedTouched && !wz.bedFromGrbl && st.work) { wz.bedFromGrbl = true; wz.d.profile.bedW = st.work[0]; wz.d.profile.bedH = st.work[1]; renderWizard(); return; }
+  if (wz.step === 3) { const x = $('wzX'), y = $('wzY'); if (x && st.connected) { x.textContent = (+st.pos[0]).toFixed(2); y.textContent = (+st.pos[1]).toFixed(2); } }
+  if (wzSig() !== wz.sig && (wz.step === 1 || wz.step === 2 || wz.step === 3)) { wz.sig = wzSig(); renderWizard(); }
+}
+async function wzConnectNow() {   // → false: do not advance
+  const d = wz.d;
+  if (!d.via) throw new Error('Choose how the plotter is connected');
+  if (d.via === 'bridge') {
+    const base = normBridge(wz.url);
+    let info; try { info = await (await fetch(base + '/api/info')).json(); } catch { throw new Error(`No bridge answered at ${bridgeLabel(base)} — is it running and on the same network?`); }
+    if (info.name !== 'plotter-bridge') throw new Error('That address is not a Plotter Bridge');
+    const dup = machines.find(m => m.via === 'bridge' && m.conn.bridgeId === info.id && m.id !== d.id);
+    if (dup) { wz = null; closeModal(); toast(`“${dup.name}” is already in your list`); activate(dup); return false; }
+    d.conn = {...d.conn, base, token: wz.tok, bridgeId: info.id};
+    if (!d.name) d.name = info.machine || info.host || '';
+    await connectDevice(d);
+    const r = (await bridgeFetch(base, wz.tok, 'machine')).machine;
+    d.rev = r.rev;
+    if (r.profile) { d.profile = pickProfile({...structuredClone(DEFAULTS.machine), ...r.profile}); d.name = r.name || d.name; wz.fromBridge = true; }
+  } else if (d.via === 'usb') {
+    d.conn = {...d.conn, baud: wz.baud};
+    await connectDevice(d, {pick: true});
+  } else await connectDevice(d);
+  if (demo) demo.pen = {up: d.profile.up, down: d.profile.down};
+  return true;
+}
+function wzReadFields() {
+  const p = wz.d.profile, n = id => $(id) && +$(id).value;
+  if (wz.step === 0) { if ($('wzUrl')) { wz.url = $('wzUrl').value; wz.tok = $('wzTok').value; } if ($('wzBaud')) wz.baud = +$('wzBaud').value; }
+  if (wz.step === 1 && $('wzBedW')) { p.bedW = n('wzBedW') || p.bedW; p.bedH = n('wzBedH') || p.bedH; }
+  if (wz.step === 2 && $('wzWait')) p.dwell = Math.max(0, n('wzWait') || 0);
+  if (wz.step === 4 && $('wzName')) wz.d.name = $('wzName').value.trim();
+}
+async function wzNext() {
+  wz.err = ''; wzReadFields(); wz.busy = true; renderWizard();
+  try {
+    if (wz.step === 0) { if ((await wzConnectNow()) === false) return; }
+    else if (wz.step === 1 && !(wz.d.profile.bedW > 0 && wz.d.profile.bedH > 0)) throw new Error('Enter the width and height of the drawing area');
+    else if (wz.step === 4) { await wzFinish(); return; }
+    wz.step++;
+  } catch (e) { if (e.name !== 'NotFoundError') wz.err = e.message; }
+  if (wz) { wz.busy = false; renderWizard(); }
+}
+async function wzFinish() {
+  const d = wz.d, name = d.name || (d.via === 'demo' ? 'Demo plotter' : 'My plotter');
+  const rec = {id: d.id, name, via: d.via, conn: d.conn, profile: pickProfile(d.profile), rev: d.rev ?? null, dirty: d.via === 'bridge', ready: true};
+  const old = wz.existing && machineById(wz.existing.id);
+  if (old) Object.assign(old, rec); else machines.push(rec);
+  const m = old || rec;
+  wz = null; closeModal();
+  saveMachines();
+  if (m.via === 'bridge' && conn.id === m.id) await pushProfile(m, {force: true});
+  selectMachine(m.id); setMtab('ctl');
+  toast(`“${m.name}” is ready`);
+}
+function wzAbort() {   // cancelled: a machine that was never saved is not left connected
+  const w = wz; wz = null;
+  if (w && !w.existing && conn.id === w.d.id) disconnectCurrent().catch(() => {});
+}
+function testMarkGcode(P) {   // a small asymmetric "F" at the origin; mirrored about the bed centre when X is mirrored
+  const f = v => v.toFixed(P.decimals ?? 3), X = x => f(P.mirrorX ? P.bedW - x : x), k = Math.min(1, (P.bedW - 24) / 18, (P.bedH - 24) / 28);
+  const strokes = [[[12, 12], [12, 40]], [[12, 40], [30, 40]], [[12, 27], [26, 27]]].map(s => s.map(([x, y]) => [12 + (x - 12) * k, 12 + (y - 12) * k]));
+  const up = `M3 S${P.up}`, dw = P.dwell > 0 ? `G4 P${P.dwell}` : null, tv = P.travelG0 ? 'G0' : 'G1', tf = P.travelG0 ? '' : ` F${P.travel}`;
+  const L = ['G21', 'G90', up]; if (dw) L.push(dw);
+  if ((P.header || '').trim()) L.push(...P.header.trim().split('\n'));
+  for (const s of strokes) {
+    L.push(`${tv} X${X(s[0][0])} Y${f(s[0][1])}${tf}`, `M3 S${P.down}`); if (dw) L.push(dw);
+    L.push(`G1 X${X(s[1][0])} Y${f(s[1][1])} F${P.feed}`, up); if (dw) L.push(dw);
+  }
+  L.push(`${tv} X0 Y0${tf}`);
+  return L.join('\n');
+}
+$('modal').addEventListener('click', async e => {
+  const b = e.target.closest('[data-wz]'); if (!b || !wz || b.disabled) return;
+  const a = b.dataset.wz, p = wz.d.profile;
+  if (a === 'cancel') { closeModal(); return; }
+  if (a === 'next') return wzNext();
+  if (a === 'back') { wzReadFields(); wz.err = ''; wz.step = Math.max(0, wz.step - 1); return renderWizard(); }
+  if (a === 'via') { if (wz.d.via !== b.dataset.v) { if ($('wzUrl')) { wz.url = $('wzUrl').value; wz.tok = $('wzTok').value; } wz.d.via = b.dataset.v; wz.err = ''; renderWizard(); } return; }
+  if (a === 'import') return $('machFile').click();
+  if (a === 'pen') return act('send', {line: `M3 S${p[b.dataset.k]}`});
+  if (a === 'step') { wz.step3 = +b.dataset.v; return renderWizard(); }
+  if (a === 'jog') { const [x, y] = b.dataset.d.split(',').map(Number); return act('jog', {x: x * wz.step3, y: y * wz.step3, feed: p.travel}); }
+  if (a === 'home') return act('home');
+  if (a === 'zero') { const r = await act('origin', {x: 0, y: 0}); if (r) toast('This position is now X0 Y0'); return; }
+  if (a === 'mark') { if (demo) demo.pen = {up: p.up, down: p.down}; wz.mark = 1; wz.markOk = false; await act('send', {line: testMarkGcode(p)}); return renderWizard(); }
+  if (a === 'markok') { wz.markOk = true; return renderWizard(); }
+  if (a === 'mirror') { p.mirrorX = !p.mirrorX; wz.markOk = false; wz.mark = 0; toast(p.mirrorX ? 'X is now mirrored — draw the mark again' : 'X is no longer mirrored — draw the mark again'); return renderWizard(); }
+});
+$('modal').addEventListener('input', e => {
+  if (!wz) return;
+  const id = e.target.id || '', p = wz.d.profile;
+  const m = id.match(/^wz([RN])_(up|down)$/);
+  if (m) {
+    const v = Math.max(0, +e.target.value || 0), k = m[2];
+    p[k] = v; if (m[1] === 'R') $('wzN_' + k).value = v; else $('wzR_' + k).value = Math.min(100, v);
+    if (demo) demo.pen = {up: p.up, down: p.down};
+    clearTimeout(wz.penT); wz.penT = setTimeout(() => act('send', {line: `M3 S${v}`}), 120);   // the pen follows the slider
+  }
+  if (id === 'wzBedW' || id === 'wzBedH') wz.bedTouched = true;
+});
+$('machFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f || !wz) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (j.app !== 'plot-studio-machine' || !j.profile) throw new Error('not a Plot Studio machine file');
+    wz.d.profile = pickProfile({...structuredClone(DEFAULTS.machine), ...j.profile}); if (j.name && !wz.d.name) wz.d.name = j.name;
+    if (j.via && !wz.d.via) wz.d.via = j.via;
+    wz.imported = true; wz.err = ''; renderWizard();
+  } catch (x) { wz.err = 'Could not read that file: ' + x.message; renderWizard(); }
+};
 
 // ---------- Machine: manual control ----------
 let jogStep = 10;
@@ -5367,7 +5830,7 @@ function renderMoveCard() {
         ${st && st.homing ? `<button class="btn sm" data-m="home" ${!on || running ? 'disabled' : ''}>Home</button>` : ''}
         ${st && st.state === 'Alarm' ? '<button class="btn sm" data-m="unlock">Unlock</button>' : ''}
       </div>
-      <p class="note">${!on ? 'Connect a plotter above to move it.' : running ? 'A plot is running — see Plot.' : 'Click the bed to travel there with the pen up. Arrow keys jog.'}</p>`;
+      <p class="note">${!on ? (machines.length ? 'Pick a machine on the left to move it.' : 'Add a machine on the left to move it.') : running ? 'A plot is running — see Plot.' : 'Click the bed to travel there with the pen up. Arrow keys jog.'}</p>`;
   }
   $('mvX').textContent = on ? (+st.pos[0]).toFixed(2) : '—'; $('mvY').textContent = on ? (+st.pos[1]).toFixed(2) : '—';
   $('mvState').textContent = on ? st.state : '';
@@ -5432,7 +5895,7 @@ function renderQueue() {
     : j && j.resumable ? 'An unfinished plot is waiting — resume it above, or discard it.'
     : !nx ? '<b>All done.</b> The pen is up and parked.' : `${session.done.size ? 'Swap to' : 'Load'} the <b style="color:${nx.pen.color}">●</b> <b>${esc(nx.pen.name)}</b> pen, then press Plot.`;
   setHTML($('queueCard'), `<h3>Plot <small>${a.length} pen${a.length === 1 ? '' : 's'}<span data-q="left"></span></small></h3>
-    ${!conn.kind ? '<div class="callout" style="margin-bottom:10px">No plotter connected. <button class="btn sm" data-p="machine" style="margin-left:6px">Connect…</button></div>' : ''}
+    ${stripHTML()}
     ${S.machine.mirrorX ? '<div class="callout" style="margin-bottom:10px">X is mirrored in the output (Machine settings).</div>' : ''}
     <div style="display:flex;flex-direction:column;gap:8px">${steps}</div>
     <div class="callout" style="margin-top:10px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)">${prompt}</div>
@@ -5449,6 +5912,11 @@ function renderQueue() {
   q('left').textContent = left ? ` · ~${fmtTime(left)} left` : '';
   if (q('bar')) q('bar').style.width = (j.progress * 100) + '%';
   if (q('st')) q('st').textContent = running ? `${Math.round(j.progress * 100)}%${j.eta ? ' · ' + fmtTime(j.eta) + ' left' : ''}` : j && j.resumable ? `${Math.round(j.progress * 100)}% · unfinished` : '';
+}
+function stripHTML() {   // which plotter this plots on
+  const am = activeMachine(), s = am ? machStatus(am) : null;
+  return `<div class="mstrip"><i class="dot ${s ? s.cls : ''}"></i><div class="grow"><b>${am ? esc(am.name) : 'No machine'}</b><span>${s ? esc(s.text) : 'Add your plotter to plot'}</span></div>
+    ${am && !conn.kind ? '<button class="btn sm primary" data-p="mconnect">Connect</button>' : ''}<button class="btn sm" data-p="machine">${am ? 'Change' : 'Add…'}</button></div>`;
 }
 let wakeLock = null;
 async function startPen() {
@@ -5471,6 +5939,7 @@ $('plotLeft').addEventListener('click', async e => {
   else if (p === 'redo') { session.done.delete(b.dataset.id); session.skipped.delete(b.dataset.id); saveSession(); renderQueue(); }
   else if (p === 'over') { session.done.clear(); session.skipped.clear(); saveSession(); renderQueue(); }
   else if (p === 'machine') setWs('machine');
+  else if (p === 'mconnect') { const am = activeMachine(); if (am) { await activate(am); pollServer(); } }
   else if (p === 'pause') { await act(st.state === 'Hold' ? 'resume' : 'pause'); pollServer(); }
   else if (p === 'stop') {
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Stop — sure?'; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = 'Stop'; } }, 3000); return; }
@@ -5489,12 +5958,12 @@ function renderRecover() {
   if (key !== resumeKey) { resumeKey = key; resumeLine = j.resume_at ?? j.done; }
   const on = !!(st && st.connected), fresh = on && st.pos_fresh !== false, was = j.pos, now = on ? st.pos : null, same = was && now && Math.hypot(was[0] - now[0], was[1] - now[1]) < 0.05;
   const S_ = live.key && live.jobId === j.id ? live.strokes || [] : [], at = resumeLine, k = S_.filter(v => v <= at).length;
-  const offlineJob = j.offline, via = j.via === 'demo' ? 'the demo plotter' : 'the plotter over USB';
+  const offlineJob = j.offline, via = j.mname || 'the plotter';
   setHTML(el, `<h3>Unfinished plot <small>${j.ended ? 'stopped ' + new Date(j.ended * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : ''}</small></h3>
     <div style="font-weight:600;font-size:13.5px">${esc(j.name)}</div>
     <div class="rsub">${esc(j.error || 'Stopped')} · ${Math.round(j.progress * 100)}% drawn (${j.done.toLocaleString()} of ${j.total.toLocaleString()} lines)</div>
-    ${offlineJob ? `<div class="callout" style="margin-top:10px">Saved in this browser. Connect ${via} to resume it.
-        <div class="row" style="margin-top:8px">${j.via === 'demo' ? '<button class="btn sm primary" data-p="cdemo">Connect the demo plotter</button>' : '<button class="btn sm primary" data-p="machine">Connect…</button>'}<button class="btn sm danger" data-p="rdrop">Discard</button></div></div>` : `
+    ${offlineJob ? `<div class="callout" style="margin-top:10px">Saved in this browser. Connect ${esc(via)} to resume it.
+        <div class="row" style="margin-top:8px"><button class="btn sm primary" data-p="cmach">Connect ${esc(via)}</button><button class="btn sm danger" data-p="rdrop">Discard</button></div></div>` : `
     <ol class="rsteps">
       <li><div>Check the paper hasn't moved and the pen is in its holder${j.meta && j.meta.color ? ` (<b style="color:${esc(j.meta.color)}">●</b> ${esc((penById(j.meta.penId) || {}).name || 'this pen')})` : ''}.</div></li>
       <li><div>Make sure the plotter knows where the pen is.
@@ -5529,10 +5998,10 @@ async function recoverAct(p, b) {
   }
   else if (p === 'rdrop') {
     if (!confirm('Discard the unfinished plot? It can no longer be resumed.')) return;
-    if (j.offline) { const k = j.via; offline[k] = null; IDB.del('job:' + k); IDB.del('job:' + k + ':lines'); afterStatus(); }
+    if (j.offline) { const k = j.mid; offline[k] = null; IDB.del('job:' + k); IDB.del('job:' + k + ':lines'); afterStatus(); }
     else { await act('job/discard'); pollServer(); }
   }
-  else if (p === 'cdemo') { try { await connectDemo(); } catch (e) { toast(e.message, true); } }
+  else if (p === 'cmach') { const m = machineById(j.mid); if (m) await activate(m); }
 }
 
 // ---------- Plot: live status ----------
@@ -5711,13 +6180,14 @@ async function loadExample() {
 // =====================================================================
 //  boot
 // =====================================================================
+{ const am = activeMachine(); if (am && am.profile) Object.assign(S.machine, profileOf(am)); }   // the design follows the machine in use
 renderObjects(); renderPens(); renderInspector(); renderDoc(); renderMach(); renderStatus();
-renderConn(); pollServer();
+renderConn(); pollServer(); renderMachineList(); pollOthers();
 let booted = false;
 (async () => {
   // what this browser kept: the project being worked on, and plots cut short (closed tab, crash, unplugged cable)
-  const [saved, u, d] = await Promise.all([IDB.get('autosave'), GrblSerial.saved('usb'), GrblSerial.saved('demo')]);
-  offline.usb = u && u.m; offline.demo = d && d.m;
+  const saved = await IDB.get('autosave');
+  for (const m of machines) if (m.via !== 'bridge') { const j = await GrblSerial.saved(m.id); offline[m.id] = j && j.m; }
   if (saved && saved.items && saved.items.length && !items.length) {
     try { await applyProject(saved); projTitle = saved.title || ''; renderProjName(); toast('Restored your last session', false, {label: 'Start new', fn: () => newProject()}); }
     catch (e) { console.warn('could not restore the last session', e); }
@@ -5731,6 +6201,7 @@ let booted = false;
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 window.__studio = {conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
+  machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile,
   cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};
 </script>
 </body>

@@ -323,9 +323,8 @@ async def plotting():
         vis = await b.js("[...document.querySelectorAll('.app > [data-ws]')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.dataset.ws)")
         check(vis == ["machine", "machine"], f"Machine shows only machine panels {vis}")
         check(await b.js("getComputedStyle(document.getElementById('btnExport')).display === 'none'"), "design-only buttons are hidden outside Design")
-        await click(b, "[data-c=demo]")
+        await click(b, "[data-mc=demo]")
         check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo plotter connects")
-        await click(b, "[data-c=speed][data-v='50']")
         await click(b, "#wsSeg [data-ws=plot]")
         check(await b.js("__studio.ws()") == "plot", "Plot workspace")
         await click(b, "[data-p=go]")
@@ -364,7 +363,7 @@ async def plotting():
         j = await b.js("__studio.curJob()")
         check(j and j["offline"] and j["resumable"] and j["done"] >= done - 5, f"the unfinished plot is found in this browser ({j and j['done']} lines)")
         check(await b.js("__studio.ws()") == "plot", "and opens in Plot")
-        await click(b, "[data-p=cdemo]")
+        await click(b, "[data-p=cmach]")
         check(await wait(b, "__studio.server().st && __studio.server().st.connected && __studio.curJob().resumable && !__studio.curJob().offline", 8000), "reconnecting adopts it")
         await wait(b, "__studio.live.strokes", 5000)
         await click(b, "[data-p=rhome]")
@@ -430,9 +429,129 @@ async def on_bridge():
         P.disconnect()
 
 
+async def setv(b, sel, value):
+    """Type into a field: set it and fire the input event, as the browser does for each keystroke."""
+    await b.js(f"(() => {{ const e = document.querySelector({sel!r}); e.value = {json.dumps(str(value))}; e.dispatchEvent(new Event('input', {{bubbles: true}})); }})()")
+
+
+async def machines_wizard():
+    print("machines and the setup wizard")
+    import tempfile
+    import threading
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.01)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    bridge = f"127.0.0.1:{srv.server_address[1]}"
+    base = serve()
+    a = await Browser(1400, 900).start()
+    c = None
+    try:
+        await a.goto(base + "/studio.html")
+        await click(a, "#wsSeg [data-ws=machine]")
+        check(await a.js("!!document.querySelector('#machList .empty')"), "no machines yet: the list invites you to add one")
+
+        # --- the wizard with the demo plotter
+        await click(a, "[data-mc=add]")
+        await click(a, "[data-wz=via][data-v=demo]")
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.wizard() && __studio.wizard().step === 1", 8000), "wizard: connected, on the detect step")
+        check(await wait(a, "document.getElementById('modal').textContent.includes('GRBL 1.1h')", 8000), "detect: reads the firmware from the plotter")
+        check(await a.js("document.getElementById('modal').textContent.includes('310 × 210')"), "detect: and the work area GRBL reports")
+        check(await a.js("document.getElementById('modalBg').classList.contains('docked')"), "the wizard is docked beside the bed, not over it")
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzN_down", 30)
+        check(await wait(a, "document.getElementById('conLog').textContent.includes('M3 S30')", 4000), "pen step: moving the slider sends the pen there live")
+        check(await a.js("__studio.wizard().d.profile.down === 30 && __studio.demo().pen.down === 30"), "pen step: the value is kept")
+        await click(a, "[data-wz=next]")
+        await a.js("__studio.demo().speed = 200; __studio.demo().newSheet()")
+        await click(a, "[data-wz=mark]")
+        MARK = "(() => { const d = __studio.demo(), x = []; for (let i = 0; i < d.ink.length; i += 2) x.push(d.ink[i]); return {n: d.ink.length / 4, min: Math.min(...x), max: Math.max(...x)}; })()"
+        DRAWN = "(__studio.demo().ink.length >= 12 && !__studio.demo().cur && !__studio.demo().planner.length)"
+        await wait(a, DRAWN, 8000)
+        m1 = await a.js(MARK)
+        check(m1["n"] >= 3 and m1["min"] >= 11.5 and m1["max"] <= 30.5, f"origin step: the test mark lands at the origin, left side, as G-code says ({m1['min']:.1f}–{m1['max']:.1f} mm)")
+        await click(a, "[data-wz=mirror]")
+        check(await a.js("__studio.wizard().d.profile.mirrorX === true"), "“it's mirrored” turns X mirroring on")
+        await a.js("__studio.demo().newSheet()")
+        await click(a, "[data-wz=mark]")
+        await wait(a, DRAWN, 8000)
+        m2 = await a.js(MARK)
+        check(m2["n"] >= 3 and m2["min"] >= 278 and m2["max"] <= 299, f"drawn again, the mark is on the mirrored side ({m2['min']:.1f}–{m2['max']:.1f} mm)")
+        await click(a, "[data-wz=markok]")
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzName", "Test plotter")
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.machines().length === 1 && !__studio.wizard()", 5000), "wizard: saved, closed")
+        rec = await a.js("__studio.machines()[0]")
+        check(rec["name"] == "Test plotter" and rec["via"] == "demo" and rec["profile"]["down"] == 30 and rec["profile"]["mirrorX"] is True and rec["ready"], f"the machine keeps what the wizard set up")
+        check(await a.js("__studio.S.machine.down === 30 && __studio.S.machine.mirrorX === true"), "the design side now works with the machine's settings")
+        check("Test plotter" in await a.js("document.getElementById('machList').textContent"), "the machine is in the list")
+        await a.goto(base + "/studio.html")
+        check(await wait(a, "__studio.booted()", 8000), "reloaded")
+        check(await a.js("__studio.machines().length === 1 && __studio.S.machine.down === 30 && __studio.S.machine.mirrorX === true && __studio.activeMachine().name === 'Test plotter'"), "after a reload: the machine and its settings are still there")
+
+        # --- a second machine: the bridge. The wizard learns the plotter and saves the settings on the bridge.
+        await click(a, "#wsSeg [data-ws=machine]")
+        await click(a, "[data-mc=add]")
+        await click(a, "[data-wz=via][data-v=bridge]")
+        await setv(a, "#wzUrl", bridge)
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.wizard() && __studio.wizard().step === 1", 8000), "bridge: connected from another origin")
+        check(await a.js("__studio.wizard().d.profile.mirrorX === false"), "a new machine starts from defaults, not from the previous machine's settings")
+        await wait(a, "document.getElementById('modal').textContent.includes('GRBL 1.1h')", 8000)
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzN_down", 33)
+        await click(a, "[data-wz=next]")
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzName", "Studio plotter")
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.machines().length === 2 && !__studio.wizard()", 8000), "bridge machine added")
+        check(await wait(a, f"__studio.activeMachine().via === 'bridge' && !__studio.activeMachine().dirty", 8000), "…and its settings were sent to the bridge")
+        mb = P.machine.get()
+        check(mb["name"] == "Studio plotter" and mb["profile"]["down"] == 33 and mb["profile"]["mirrorX"] is False, f"the bridge keeps the machine: {mb['name']}, pen down S{mb['profile']['down']}")
+        check(await a.js("__studio.S.machine.down === 33 && __studio.S.machine.mirrorX === false"), "switching to it switches the design's machine settings")
+
+        # --- another browser (a phone): connects and gets the same machine from the bridge
+        c = await Browser(390, 844, mobile=True).start()
+        await c.goto(f"http://{bridge}/studio")
+        check(await wait(c, "__studio.booted() && __studio.server().st && __studio.server().st.connected", 10000), "second browser, opened from the bridge, connects by itself")
+        check(await wait(c, "__studio.machines().length === 1 && __studio.machines()[0].name === 'Studio plotter' && __studio.S.machine.down === 33", 8000), "…and gets the machine and its settings from the bridge")
+        # an edit in one browser reaches the other
+        await click(a, "[data-mtab=set]")
+        await setv(a, "#mf1 [data-key=down]", 36)
+        check(await wait(c, "__studio.S.machine.down === 36", 10000), "a settings change in the first browser reaches the second")
+        check(P.machine.get()["profile"]["down"] == 36, "…through the bridge")
+        await setv(c, "#mName", "Pi plotter")
+        check(await wait(a, "__studio.activeMachine().name === 'Pi plotter'", 10000) and P.machine.get()["name"] == "Pi plotter", "a rename in the second browser reaches the first, through the bridge")
+        # two edits at once → the user is asked
+        await a.js("(() => { const m = __studio.activeMachine(); m.dirty = true; m.rev -= 1; m.profile.down = 12; })()")
+        await a.js("__studio.syncProfile(__studio.activeMachine())")
+        check(await wait(a, "document.getElementById('modal').textContent.includes('Settings differ')", 5000), "concurrent edits: asks which settings to keep")
+        await click(a, "#cfBridge")
+        check(await wait(a, "__studio.S.machine.down === 36", 5000) and P.machine.get()["profile"]["down"] == 36, "“use the bridge's settings” keeps the bridge's value")
+        # the list shows other bridges live
+        await a.js("__studio.setWs('machine')")
+        await click(a, "#machList [data-mc=card][data-id='" + await a.js("__studio.machines()[0].id") + "']")
+        check(await wait(a, "document.getElementById('machList').textContent.includes('Idle') && __studio.machines().filter(m => m.via === 'bridge').length === 1", 12000),
+              "a bridge that is not connected still shows its live state in the list")
+        check(not a.errors and not c.errors, f"no page errors {a.errors[:2]} {c.errors[:2]}")
+    finally:
+        await a.close()
+        if c:
+            await c.close()
+        srv.shutdown()
+        P.disconnect()
+
+
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

@@ -236,7 +236,7 @@ def covered(expect, ink, tol=0.01):
 
 def new_bridge(state_dir, **fake):
     B.SerialPort = lambda path, baud: FakeGrbl(path, baud, **fake)
-    P = B.Plotter('/dev/fake', 115200, autoconnect=False, store=B.JobStore(state_dir))
+    P = B.Plotter('/dev/fake', 115200, autoconnect=False, store=B.JobStore(state_dir), machine=B.MachineStore(state_dir))
     return P
 
 
@@ -425,9 +425,49 @@ def http_api(tmp):
     P.disconnect()
 
 
+def machine_profile(tmp):
+    print('machine profile on the bridge')
+    P = new_bridge(tmp)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    srv = ThreadingHTTPServer(('127.0.0.1', 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f'http://127.0.0.1:{srv.server_address[1]}/api/'
+
+    def call(path, body=None):
+        req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
+                                     headers={'Content-Type': 'application/json'})
+        return json.load(urllib.request.urlopen(req))
+
+    info = call('info')
+    m = call('machine')['machine']
+    check(info['id'] == m['id'] and len(m['id']) >= 8 and m['profile'] is None and m['rev'] == 0, f"a fresh bridge has an id ({m['id']}) and no profile yet")
+    wait_for(lambda: call('status').get('grbl', {}).get('settings', {}).get('130'), 3)
+    st = call('status')
+    check(st['grbl']['version'].startswith('1.1') and st['grbl']['settings']['130'] == 310 and st['grbl']['settings']['131'] == 210, f"status carries what GRBL reported: {st['grbl']}")
+    prof = {'bedW': 310, 'bedH': 210, 'up': 0, 'down': 35, 'dwell': 0.3, 'feed': 2000, 'travel': 4000, 'park': True, 'mirrorX': True, 'header': 'G54', 'evil': 'x'}
+    r = call('machine', {'name': 'Studio plotter', 'profile': prof, 'baseRev': 0})
+    check(r['ok'] and r['machine']['rev'] == 1 and r['machine']['name'] == 'Studio plotter', 'saving the profile works')
+    check('evil' not in r['machine']['profile'] and r['machine']['profile']['mirrorX'] is True and r['machine']['profile']['dwell'] == 0.3, 'only known settings are kept, types preserved')
+    r = call('machine', {'profile': {'down': 'abc'}, 'baseRev': 1})
+    check('error' in r and call('machine')['machine']['rev'] == 1, f"bad values are refused: {r.get('error')}")
+    r = call('machine', {'profile': {'bedW': 99999}, 'baseRev': 1})
+    check('error' in r, 'out-of-range values are refused')
+    r = call('machine', {'profile': {**prof, 'down': 40}, 'baseRev': 0})
+    check(r.get('conflict') and r['machine']['profile']['down'] == 35, 'a stale write is refused with the current settings')
+    r = call('machine', {'profile': {**prof, 'down': 40}, 'baseRev': 1})
+    check(r['ok'] and r['machine']['rev'] == 2, 'a write on the current revision goes through')
+    check(call('status')['machine_rev'] == 2, 'status tells the revision, so other browsers notice changes')
+    srv.shutdown()
+    P.disconnect()
+    P2 = new_bridge(tmp)
+    m2 = P2.machine.get()
+    check(m2['id'] == m['id'] and m2['name'] == 'Studio plotter' and m2['profile']['down'] == 40 and m2['rev'] == 2, 'after a restart: same id, name and profile')
+
+
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

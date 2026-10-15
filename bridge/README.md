@@ -5,6 +5,7 @@ A small app that sits next to your GRBL pen plotter (on a Raspberry Pi or any co
 - **Monitor** at `http://<bridge>:8080/` — live progress, preview of what's drawn so far, time left, pause / resume / stop, jog, pen up/down, console, and "run a G-code file".
 - **Plot Studio** at `http://<bridge>:8080/studio` — the full studio, already connected to the plotter.
 - The plot keeps running if you close the browser. Open the monitor on your phone to check on it.
+- **Knows its plotter:** the machine's settings (drawing area, pen up/down, servo wait, speeds…) are kept on the bridge, so Plot Studio on any computer or phone — and this monitor — use the same ones. See [Machine settings](#machine-settings).
 - **Crash-proof:** the job and how far it got are saved to disk as it plots. After a power cut, a controller reset, a pulled cable or a restart of the bridge, the plot resumes from the stroke it was drawing (see [Resuming an interrupted plot](#resuming-an-interrupted-plot)).
 
 Only Python 3 is needed on Linux and macOS (no packages). On Windows, run `pip install pyserial` first.
@@ -51,9 +52,14 @@ python3 bridge.py --token s3cret          # require a token for the API
 | `--host` | 0.0.0.0 | `127.0.0.1` to allow this computer only |
 | `--token` | none | required as `X-Bridge-Token` header for every API call |
 | `--no-autoconnect` | off | only connect when asked from the web page |
-| `--state` | `~/.plotter-bridge` | where the running job and its progress are kept for resuming |
+| `--state` | `~/.plotter-bridge` | where the running job, its progress and the machine settings are kept |
+| `--name` | the computer's name | the plotter's name in Plot Studio |
 
-The same settings can come from the environment: `PLOTTER_PORT`, `PLOTTER_BAUD`, `BRIDGE_PORT`, `BRIDGE_HOST`, `BRIDGE_TOKEN`, `BRIDGE_STATE`.
+The same settings can come from the environment: `PLOTTER_PORT`, `PLOTTER_BAUD`, `BRIDGE_PORT`, `BRIDGE_HOST`, `BRIDGE_TOKEN`, `BRIDGE_STATE`, `BRIDGE_NAME`.
+
+## Machine settings
+
+`machine.json` in `--state` holds the plotter's name, a permanent id and its settings (`bedW`, `bedH`, `up`, `down`, `dwell`, `feed`, `travel`, `travelG0`, `parkX`, `parkY`, `park`, `mirrorX`, `decimals`, `header`, `footer`), with a revision that counts saves. Add the plotter from Plot Studio (Machine → Add → Plotter Bridge): the wizard reads what GRBL reports, sets up the pen, checks the direction and saves the result here. The id lets a browser recognise the bridge again after its address or name changes. The monitor reads the pen values and drawing area from these settings; change them in Plot Studio.
 
 ## Resuming an interrupted plot
 
@@ -113,8 +119,11 @@ All endpoints are under `/api/`, JSON in and out, with CORS enabled.
 | `POST send {line}` | send a command when no job is running |
 | `POST jog {x, y, feed}` / `unlock` / `home` | |
 | `POST origin {x?, y?}` | the pen's current position becomes work position x, y (default 0, 0) |
+| `GET machine` | `{machine: {id, name, rev, profile, updated}}` — `profile` is `null` until set up |
+| `POST machine {name?, profile?, baseRev?}` | save the settings. Unknown or out-of-range values are refused; a `baseRev` that is behind answers `{conflict: true, machine}` instead of overwriting |
+| `GET info` | `{name: 'plotter-bridge', id, machine, version, auth}` — no token needed, used to recognise the bridge |
 | `GET job?gcode=1` | the job's moves, stroke starts, resume point (and its lines) |
 | `POST job/resume {from?}` | resume a stopped or interrupted job from line `from` (default: the start of the interrupted stroke) |
 | `POST job/discard` | forget the job and its checkpoint |
 
-`status` reports the job's `state` (`running`, `finished`, `stopped`, `failed`, `interrupted`), `done` (lines drawn), `resumable`, `resume_at` and `pos` (where the pen was when it stopped).
+`status` also carries `machine_rev` (to notice settings changes) and `grbl` (`version` and the settings the controller reported: `$22`, `$110`, `$111`, `$130`, `$131`…). It reports the job's `state` (`running`, `finished`, `stopped`, `failed`, `interrupted`), `done` (lines drawn), `resumable`, `resume_at` and `pos` (where the pen was when it stopped).

@@ -16,7 +16,7 @@ can be resumed from the stroke it was drawing.
 Only the Python 3 standard library is needed on Linux and macOS. On Windows,
 install pyserial (pip install pyserial); it is also used on Linux/macOS when present.
 """
-import argparse, collections, glob, json, math, os, re, select, socket, sys, threading, time
+import argparse, collections, glob, json, math, os, re, select, socket, sys, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -325,6 +325,95 @@ class JobStore:
 
 
 # ---------------------------------------------------------------------------
+#  machine: what this plotter is (bed, pen, speeds…). The bridge is the source of truth: every
+#  browser and phone that connects reads the same profile from here and writes changes back.
+# ---------------------------------------------------------------------------
+PROFILE_KEYS = {'bedW': (1, 5000), 'bedH': (1, 5000), 'up': (0, 1000), 'down': (0, 1000), 'dwell': (0, 10), 'feed': (1, 100000),
+                'travel': (1, 100000), 'parkX': (-5000, 5000), 'parkY': (-5000, 5000), 'decimals': (0, 6)}
+PROFILE_FLAGS = ('travelG0', 'park', 'mirrorX')
+PROFILE_TEXT = ('header', 'footer')
+
+
+def clean_profile(p):
+    """Only known settings, with sane types and ranges: the profile ends up in G-code."""
+    if not isinstance(p, dict):
+        raise ValueError('The machine settings must be an object')
+    out = {}
+    for k, (lo, hi) in PROFILE_KEYS.items():
+        if k in p:
+            try:
+                v = float(p[k])
+            except (TypeError, ValueError):
+                raise ValueError(f'{k} must be a number')
+            if not (lo <= v <= hi):          # also false for NaN
+                raise ValueError(f'{k} must be between {lo:g} and {hi:g}')
+            out[k] = int(v) if v == int(v) and k != 'dwell' else v
+    for k in PROFILE_FLAGS:
+        if k in p:
+            out[k] = bool(p[k])
+    for k in PROFILE_TEXT:
+        if k in p:
+            out[k] = str(p[k])[:4000]
+    return out
+
+
+class Conflict(Exception):
+    def __init__(self, current):
+        super().__init__('The settings changed on the bridge in the meantime')
+        self.current = current
+
+
+class MachineStore:
+    """machine.json in the state folder: {id, name, rev, profile, updated}. `id` never changes, so a browser can
+    recognise this plotter again when its IP address or name changes. `rev` counts saves, to catch two people editing at once."""
+
+    def __init__(self, folder, name=None):
+        self.path = os.path.join(folder, 'machine.json') if folder else None
+        self.lock = threading.Lock()
+        self.data = {'id': uuid.uuid4().hex[:12], 'name': name or socket.gethostname(), 'rev': 0, 'profile': None, 'updated': None}
+        try:
+            with open(self.path) as f:
+                d = json.load(f)
+            if isinstance(d, dict) and d.get('id'):
+                self.data.update({k: d[k] for k in ('id', 'name', 'rev', 'profile', 'updated') if k in d})
+        except (OSError, ValueError, TypeError):
+            pass
+        if name:
+            self.data['name'] = name
+        self._write()
+
+    def _write(self):
+        if not self.path:
+            return
+        tmp = self.path + '.tmp'
+        try:
+            with open(tmp, 'w') as f:
+                json.dump(self.data, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.path)
+        except OSError as e:
+            print(f'[err] Could not save the machine settings: {e}', flush=True)
+
+    def get(self):
+        with self.lock:
+            return dict(self.data)
+
+    def save(self, name, profile, base_rev):
+        with self.lock:
+            if base_rev is not None and self.data['profile'] is not None and int(base_rev) != self.data['rev']:
+                raise Conflict(dict(self.data))
+            if name is not None and str(name).strip():
+                self.data['name'] = str(name).strip()[:60]
+            if profile is not None:
+                self.data['profile'] = clean_profile(profile)
+            self.data['rev'] += 1
+            self.data['updated'] = time.time()
+            self._write()
+            return dict(self.data)
+
+
+# ---------------------------------------------------------------------------
 #  GRBL connection + streamer
 # ---------------------------------------------------------------------------
 PLANNER_BLOCKS = 15       # moves GRBL 1.1 buffers on an Arduino; read from `$I` ([OPT:…,blocks,rx]) when reported
@@ -339,8 +428,10 @@ class Plotter:
     reports for the move it is executing (Ln:), from G4 dwells (answered only once every earlier move finished),
     and from the planner size (with more moves queued than fit in the planner, the oldest has finished)."""
 
-    def __init__(self, port=None, baud=115200, autoconnect=True, store=None):
+    def __init__(self, port=None, baud=115200, autoconnect=True, store=None, machine=None):
         self.want_port, self.baud, self.autoconnect = port, baud, autoconnect
+        self.machine = machine or MachineStore(None)
+        self.grbl = {}                          # what the controller says about itself: version, options
         self.lock = threading.RLock()
         self.cond = threading.Condition(self.lock)
         self.ser = None
@@ -559,6 +650,12 @@ class Plotter:
             if m:
                 self.settings[int(m.group(1))] = float(m.group(2))
                 return
+            m = re.match(r'^\[VER:([^:\]]*)', text)
+            if m:
+                self.grbl['version'] = m.group(1)
+            m = re.match(r'^\[OPT:([^,]*),', text)
+            if m:
+                self.grbl['options'] = m.group(1)
             m = re.match(r'^\[OPT:[^,]*,(\d+),(\d+)', text)
             if m:   # GRBL 1.1 / grblHAL build options: planner blocks and serial buffer size
                 self.planner_blocks, self.rx_buffer = int(m.group(1)), max(64, min(int(m.group(2)), 1024) - 1)
@@ -828,7 +925,8 @@ class Plotter:
             st = {'bridge': VERSION, 'host': socket.gethostname(), 'connected': self.ser is not None,
                   'port': self.port, 'baud': self.baud, 'state': self.state, 'alarm': self.alarm,
                   'pos': wpos, 'pos_fresh': self.status_at > self.banner_at, 'job': self._job_view(self.job) if self.job else None, 'error': self.error, 'seq': self.log_seq,
-                  'homing': self.settings.get(22) == 1, 'resume': True}
+                  'homing': self.settings.get(22) == 1, 'resume': True, 'machine_rev': self.machine.data['rev'],
+                  'grbl': {**self.grbl, 'settings': {str(k): v for k, v in self.settings.items() if k in (10, 20, 21, 22, 30, 31, 32, 110, 111, 130, 131)}}}
             if 130 in self.settings and 131 in self.settings:
                 st['work'] = [self.settings[130], self.settings[131]]
             if since is not None:
@@ -903,7 +1001,9 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ('/studio', '/studio/'):
             return self._file('studio.html')
         if u.path == '/api/info':
-            return self._send(200, {'name': 'plotter-bridge', 'version': VERSION, 'host': socket.gethostname(), 'auth': bool(self.token)})
+            m = self.plotter.machine.get()
+            return self._send(200, {'name': 'plotter-bridge', 'version': VERSION, 'host': socket.gethostname(), 'auth': bool(self.token),
+                                    'id': m['id'], 'machine': m['name']})
         if not u.path.startswith('/api/'):
             return self._send(404, {'error': 'Not found'})
         if not self._authed(q):
@@ -917,6 +1017,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self.plotter.status(since))
         if u.path == '/api/job':
             return self._send(200, self.plotter.job_detail(with_gcode=bool(q.get('gcode'))))
+        if u.path == '/api/machine':
+            return self._send(200, {'machine': self.plotter.machine.get()})
         if u.path == '/api/ports':
             return self._send(200, {'ports': list_ports(), 'current': self.plotter.port})
         self._send(404, {'error': 'Unknown endpoint'})
@@ -939,6 +1041,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, P.status(None))
             if cmd == 'job':
                 return self._send(200, P.job_detail(with_gcode=bool(body.get('gcode'))))
+            if cmd == 'machine':
+                try:
+                    return self._send(200, {'ok': True, 'machine': P.machine.save(body.get('name'), body.get('profile'), body.get('baseRev'))})
+                except Conflict as c:
+                    return self._send(200, {'error': str(c), 'conflict': True, 'machine': c.current})
+                except ValueError as e:
+                    return self._send(200, {'error': str(e)})
             if cmd == 'connect':
                 P.connect(body.get('port'), body.get('baud'))
             elif cmd == 'disconnect':
@@ -1005,6 +1114,7 @@ def main():
     ap.add_argument('--no-autoconnect', action='store_true', help='only connect when asked from the web page')
     ap.add_argument('--state', default=os.environ.get('BRIDGE_STATE', os.path.join(os.path.expanduser('~'), '.plotter-bridge')),
                     help='folder for the job checkpoint used to resume after a crash (default: ~/.plotter-bridge)')
+    ap.add_argument('--name', default=os.environ.get('BRIDGE_NAME'), help='name of this plotter in Plot Studio (default: the computer’s name)')
     a = ap.parse_args()
 
     try:
@@ -1012,7 +1122,8 @@ def main():
     except OSError as e:
         print(f'[err] Cannot use {a.state} for job recovery ({e}) — plots will not survive a restart', flush=True)
         store = None
-    plotter = Plotter(a.port, a.baud, autoconnect=not a.no_autoconnect, store=store)
+    plotter = Plotter(a.port, a.baud, autoconnect=not a.no_autoconnect, store=store,
+                      machine=MachineStore(a.state if store else None, a.name))
     Handler.plotter, Handler.token = plotter, a.token or None
     if not a.no_autoconnect:
         try:

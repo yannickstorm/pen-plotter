@@ -193,7 +193,8 @@
           <div class="field">Step (mm)<div class="seg" id="steps"><button>1</button><button class="on">10</button><button>50</button></div></div>
           <div class="field">Pen<div class="row"><button class="btn sm" id="bUp">Up</button><button class="btn sm" id="bDown">Down</button></div></div>
           <div class="field">Origin<div class="row"><button class="btn sm" id="bZero" title="Make the pen's current position X0 Y0 (kept through resets)">Set 0,0 here</button></div></div>
-          <div class="row" style="gap:6px;font-size:11px;color:var(--muted)">S up <input class="num" id="sUp" value="0"> down <input class="num" id="sDown" value="35"></div>
+          <div class="sub" style="font-size:11.5px" id="penVals">Pen up S0 · down S35</div>
+          <div class="sub" style="font-size:11.5px">Settings are kept on this bridge — change them in <a href="studio" style="color:var(--accent)">Plot Studio</a>.</div>
         </div>
       </div>
     </section>
@@ -223,6 +224,16 @@ const $ = id => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 let token = store.get('bridgeToken') || '';
 let st = null, seq = 0, job = null, jobKey = null, bed = [310, 210], polling = false, firstLog = true;
+let prof = { up: 0, down: 35 }, machRev = -1, machName = '';   // the machine settings, kept on the bridge and edited in Plot Studio
+async function loadMachine() {
+  try {
+    const m = (await call('machine')).machine; machRev = m.rev; machName = m.name;
+    if (m.profile) Object.assign(prof, m.profile);
+    $('penVals').textContent = `Pen up S${prof.up} · down S${prof.down}`;
+    if (prof.bedW) bed = [prof.bedW, prof.bedH];
+    if (st) render(st); drawPreview();
+  } catch {}
+}
 let resumeLine = null;   // where "Resume plot" continues from (a line index; the default is the start of the interrupted stroke)
 
 function toast(m, bad) { const t = $('toast'); t.textContent = m; t.className = 'show' + (bad ? ' bad' : ''); clearTimeout(toast.t); toast.t = setTimeout(() => t.className = '', bad ? 5000 : 2200); }
@@ -247,6 +258,7 @@ async function poll() {
     const s = await call('status?since=' + seq);
     $('main').hidden = false; $('gate').hidden = true;
     st = s; render(s);
+    if (s.machine_rev != null && s.machine_rev !== machRev) loadMachine();
     if (s.log && s.log.length) addLog(s.log);
     seq = s.seq;
     const key = s.job ? `${s.job.id}:${s.job.state}:${s.job.resume_at}` : null;
@@ -265,13 +277,13 @@ async function poll() {
 
 function render(s) {
   const state = s.connected ? s.state : 'Disconnected';
-  $('host').textContent = `${s.host} · bridge ${s.bridge}`;
+  $('host').textContent = `${machName || s.host} · bridge ${s.bridge}`;
   $('state').textContent = s.job && s.job.running ? `${state} · ${Math.round(s.job.progress * 100)}%` : state;
   $('chip').className = 'chip ' + ({ Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Door: 'hold', Alarm: 'alarm', Disconnected: 'alarm' }[state] || '');
   $('pX').textContent = s.connected ? s.pos[0].toFixed(2) : '—';
   $('pY').textContent = s.connected ? s.pos[1].toFixed(2) : '—';
   $('portInfo').textContent = s.connected ? `${s.port.split('/').pop()} · ${s.baud}` : 'not connected';
-  if (s.work) bed = s.work;
+  if (prof.bedW) bed = [prof.bedW, prof.bedH]; else if (s.work) bed = s.work;
   const j = s.job, running = j && j.running, held = state === 'Hold';
   $('jobId').textContent = j ? `#${j.id}` : '';
   $('jobName').textContent = j ? j.name : 'Nothing plotting';
@@ -378,7 +390,7 @@ new ResizeObserver(drawPreview).observe($('pv'));
 
 // ---------- controls ----------
 $('bPause').onclick = () => act(st && st.state === 'Hold' ? 'resume' : 'pause');
-$('bStop').onclick = () => { if (confirm('Stop the plot? The machine is reset and the pen lifted.')) act('stop', { penUp: `M3 S${$('sUp').value}` }); };
+$('bStop').onclick = () => { if (confirm('Stop the plot? The machine is reset and the pen lifted.')) act('stop', { penUp: `M3 S${prof.up}` }); };
 $('bUnlock').onclick = () => act('unlock');
 $('bZero').onclick = () => act('origin', { x: 0, y: 0 });
 $('recHome').onclick = () => act('home');
@@ -394,9 +406,8 @@ let step = 10;
 $('steps').onclick = e => { if (e.target.tagName !== 'BUTTON') return; step = +e.target.textContent; [...$('steps').children].forEach(b => b.classList.toggle('on', b === e.target)); };
 document.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { const [x, y] = b.dataset.j.split(',').map(Number); act('jog', { x: x * step, y: y * step, feed: 3000 }); });
 $('bOrigin').onclick = () => act('send', { line: 'G90 G0 X0 Y0' });
-for (const id of ['sUp', 'sDown']) { const v = store.get('mon.' + id); if (v) $(id).value = v; $(id).onchange = () => store.set('mon.' + id, $(id).value); }
-$('bUp').onclick = () => act('send', { line: `M3 S${$('sUp').value}` });
-$('bDown').onclick = () => act('send', { line: `M3 S${$('sDown').value}` });
+$('bUp').onclick = () => act('send', { line: `M3 S${prof.up}` });
+$('bDown').onclick = () => act('send', { line: `M3 S${prof.down}` });
 $('sendF').onsubmit = e => { e.preventDefault(); const v = $('sendIn').value.trim(); if (!v) return; act('send', { line: v }); $('sendIn').value = ''; };
 
 async function loadPorts() {
@@ -413,7 +424,7 @@ async function runFile(f) {
   if (!f) return;
   if (st && st.job && st.job.resumable && !confirm(`Start ${f.name}? The unfinished plot “${st.job.name}” can then no longer be resumed.`)) return;
   const text = await f.text();
-  try { await call('run', { gcode: text, name: f.name, penUp: $('sUp').value }); toast(`Started ${f.name}`); } catch (e) { toast(e.message, true); }
+  try { await call('run', { gcode: text, name: f.name, penUp: prof.up, dwell: prof.dwell }); toast(`Started ${f.name}`); } catch (e) { toast(e.message, true); }
 }
 $('file').onchange = e => { runFile(e.target.files[0]); e.target.value = ''; };
 const drop = $('drop');
