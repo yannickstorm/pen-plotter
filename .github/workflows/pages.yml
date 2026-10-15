@@ -43,15 +43,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          standalone() {   # build_artifact.py makes the claude.ai copy, which has no <head>; give it its doctype and charset back
-            sed -i '1i <!doctype html>\n<meta charset="utf-8">' "$1"
-          }
           build() {   # build <git ref> <folder>: that version's own build script, so each preview is exactly its branch
             local dir; dir=$(mktemp -d)
             git worktree add --detach "$dir" "$1" >/dev/null
             mkdir -p "_site/$2"
-            python3 "$dir/build_artifact.py" "_site/$2/index.html"
-            standalone "_site/$2/index.html"
+            if grep -q -- --standalone "$dir/build_artifact.py"; then
+              python3 "$dir/build_artifact.py" "_site/$2/index.html" --standalone
+            else   # an older branch: its script makes the claude.ai copy (no <head>), so give it one with the viewport
+              python3 "$dir/build_artifact.py" "_site/$2/index.html"
+              sed -i '1i <!doctype html>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">' "_site/$2/index.html"
+            fi
             cp "_site/$2/index.html" "_site/$2/plot-studio.html"   # the page's "Download Plot Studio" button fetches this
           }
           git fetch --quiet origin main
@@ -67,8 +68,7 @@ jobs:
       - name: Build the release page
         run: |
           mkdir -p dist
-          python3 build_artifact.py dist/plot-studio.html
-          sed -i '1i <!doctype html>\n<meta charset="utf-8">' dist/plot-studio.html
+          python3 build_artifact.py dist/plot-studio.html --standalone
       - name: Package the bridge
         env:
           TAG: ${{ inputs.release_tag || github.ref_name }}

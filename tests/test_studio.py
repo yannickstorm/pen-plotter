@@ -549,9 +549,28 @@ async def machines_wizard():
         P.disconnect()
 
 
+async def hosted_build():
+    """The page as GitHub Pages serves it (build_artifact.py --standalone) must still lay out for a phone."""
+    print("hosted build on a phone")
+    import subprocess
+    import tempfile
+    d = Path(tempfile.mkdtemp())
+    subprocess.run([sys.executable, str(Path(__file__).parent.parent / "build_artifact.py"), str(d / "index.html"), "--standalone"], check=True, stdout=subprocess.DEVNULL)
+    head = (d / "index.html").read_text()[:400]
+    check(head.startswith("<!doctype html>") and 'name="viewport"' in head and 'charset="utf-8"' in head, "the standalone build has a doctype, charset and viewport")
+    b = await Browser(390, 844, mobile=True).start()
+    try:
+        await b.goto(serve(d) + "/index.html")
+        w = await b.js("({inner: innerWidth, scroll: document.documentElement.scrollWidth})")
+        check(w["inner"] == 390 and w["scroll"] <= 390, f"on a 390 px phone the page is laid out at {w['inner']} px with no sideways scroll ({w['scroll']} px)")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
