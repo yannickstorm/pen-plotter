@@ -5,7 +5,7 @@ name: Plot Studio site
 # as a temporary preview (it goes away when the pull request closes). Open a preview with ?demo to
 # plot the example on the built-in demo plotter.
 # A v* tag, or a run with a release tag, also publishes a release carrying the single-file page and
-# plotter-bridge.tar.gz, the bridge for the Raspberry Pi with studio.html included.
+# plotter-bridge.tar.gz, the bridge for the Raspberry Pi (Plot Studio is not part of it: it is hosted here).
 
 on:
   push:
@@ -74,7 +74,7 @@ jobs:
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           mkdir -p dist/plotter-bridge
-          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md studio.html dist/plotter-bridge/
+          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md dist/plotter-bridge/
           if [[ "$TAG" == v* ]]; then
             sed -i "s/^VERSION = .*/VERSION = '${TAG#v}'/" dist/plotter-bridge/bridge.py
           fi

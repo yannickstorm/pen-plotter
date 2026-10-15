@@ -5320,13 +5320,16 @@ $('mchip').onclick = () => { const j = curJob(); setWs(conn.kind && server.st &&
 addEventListener('beforeunload', e => { if (isLocal() && server.st && server.st.job && server.st.job.running) { usb.save(); e.preventDefault(); e.returnValue = ''; } });
 addEventListener('pagehide', () => { if (usb && usb.job && usb.job.dirty) usb.save(); if (demo) demo.save(); });
 
-function normBridge(base) {
+const HTTPS_HELP = 'This page is served over https, so the browser only lets it talk to an https bridge. Give the bridge an https address — the easiest is Tailscale Serve (run “tailscale serve --bg 8080” on the bridge, then use the address it prints) — or open Plot Studio from a downloaded file instead.';
+function normBridge(base, proto = location.protocol) {
   base = String(base || '').trim().replace(/\/+$/, '');
   if (!base) throw new Error('Enter the bridge’s address, e.g. raspberrypi.local:8080');
-  if (!/^https?:\/\//.test(base)) base = 'http://' + base;
-  if (!/:\d+$/.test(base.replace(/^https?:\/\//, '')) && base.startsWith('http://')) base += ':8080';
-  if (location.protocol === 'https:' && base.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(base))
-    throw new Error('This page is served over https, so the browser blocks an http bridge. Open the studio from the bridge instead (its address + /studio).');
+  if (!/^https?:\/\//.test(base)) {
+    const host = base.split(/[/:]/)[0], plain = /^\d+\.\d+\.\d+\.\d+$/.test(host) || /\.local$/i.test(host) || !host.includes('.');   // an IP, .local or a bare name: no certificate
+    base = (proto === 'https:' && !plain ? 'https://' : 'http://') + base;
+  }
+  if (base.startsWith('http://') && !/:\d+$/.test(base.replace(/^https?:\/\//, ''))) base += ':8080';
+  if (proto === 'https:' && base.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(base)) throw new Error(HTTPS_HELP);
   return base;
 }
 async function openUsb(m, pick) {
@@ -5617,7 +5620,8 @@ function wzConnect() {
     ${d.via === 'bridge' ? `<div class="fields">
         <label class="field full"><span>Bridge address</span><input id="wzUrl" placeholder="raspberrypi.local:8080" value="${esc(wz.url)}" spellcheck="false" autocapitalize="off"></label>
         <label class="field full"><span>Access token <em style="color:var(--faint)">if set</em></span><input id="wzTok" type="password" value="${esc(wz.tok)}" autocomplete="off"></label></div>
-      <p class="note">If the bridge already knows this plotter, its settings are used as the starting point.</p>` : ''}
+      <p class="note">If the bridge already knows this plotter, its settings are used as the starting point.</p>
+      ${location.protocol === 'https:' ? '<div class="callout">This page is https, so the bridge needs an https address too — for example with Tailscale Serve (“tailscale serve --bg 8080” on the bridge). <a href="https://github.com/yannickstorm/pen-plotter/tree/main/bridge#plot-studio-and-https" target="_blank" rel="noopener">How</a></div>' : ''}` : ''}
     ${d.via === 'usb' ? (SERIAL_OK ? `<div class="fields"><label class="field"><span>Baud rate</span><select id="wzBaud">${[115200, 250000, 57600, 38400, 9600].map(b => `<option ${b === +wz.baud ? 'selected' : ''}>${b}</option>`).join('')}</select></label></div>
         <p class="note">Press Connect and choose the plotter's port. This tab then streams the drawing and saves its progress, so a plot cut short can be resumed.</p>` : `<div class="callout">${serialNote}</div>`) : ''}
     ${d.via === 'demo' ? '<p class="note">A simulated GRBL plotter inside this page, with its own sheet of paper. Plot, crash and resume without a machine.</p>' : ''}
@@ -6160,6 +6164,7 @@ function liveStatusbar() {
 // =====================================================================
 const EXAMPLE_SRC = '';   // build_artifact.py embeds an image here for the hosted copy
 const DEMO = new URLSearchParams(location.search).has('demo');   // ?demo: load the example and plot it on the demo plotter
+const BRIDGE_PARAM = new URLSearchParams(location.search).get('bridge');   // ?bridge=<address>: add that bridge (the monitor links here)
 async function loadExample() {
   if (!EXAMPLE_SRC) return;
   pens = [{id: 'pnavy', name: 'Navy', color: '#1f2f48', width: 0.4, on: true, down: '', feed: ''},
@@ -6196,12 +6201,19 @@ let booted = false;
   const j = curJob(); if (j && j.resumable) setWs('plot');
   afterStatus();
   if (DEMO) { try { await connectDemo(); setWs('plot'); } catch (e) { toast(e.message, true); } }
-  else autoConnect();
+  else if (BRIDGE_PARAM) {
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+    let base = null; try { base = normBridge(BRIDGE_PARAM); } catch (e) { /* the wizard explains */ }
+    const known = base && machines.find(m => m.via === 'bridge' && m.conn.base === base);
+    setWs('machine');
+    if (known) activate(known);
+    else { openWizard(); wz.d.via = 'bridge'; wz.url = base || BRIDGE_PARAM; renderWizard(); }
+  } else autoConnect();
 })();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 window.__studio = {conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
-  machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile,
+  machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
   cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};
 </script>
 </body>

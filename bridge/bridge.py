@@ -7,7 +7,10 @@ Plot Studio (or any browser) send jobs and monitor them over the network.
   python3 bridge.py --port /dev/ttyUSB0 --baud 115200 --token s3cret
 
 Open http://<this-computer>:8080/ for the live monitor and
-http://<this-computer>:8080/studio for Plot Studio talking to this bridge.
+Plot Studio is not part of the bridge: use the hosted copy (--studio-url) and add this bridge in its
+Machine view. From a browser on an https page, the bridge needs an https address (Tailscale Serve,
+or --cert/--key). When a studio.html sits next to bridge.py or in the folder above (running from a
+clone), /studio serves that copy instead.
 
 The running job and its progress are saved to disk (--state, default ~/.plotter-bridge) every
 couple of seconds. After a crash, a power cut, a controller reset or an unplugged cable, the plot
@@ -16,11 +19,12 @@ can be resumed from the stroke it was drawing.
 Only the Python 3 standard library is needed on Linux and macOS. On Windows,
 install pyserial (pip install pyserial); it is also used on Linux/macOS when present.
 """
-import argparse, collections, glob, json, math, os, re, select, socket, sys, threading, time, uuid
+import argparse, collections, glob, json, math, os, re, select, socket, ssl, sys, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 VERSION = '1.0.0'
+STUDIO_URL = 'https://yannickstorm.github.io/pen-plotter/'
 HERE = os.path.dirname(os.path.abspath(__file__))
 RX_BUFFER = 127           # GRBL's serial RX buffer is 128 bytes; keep one spare
 STATUS_EVERY = 0.25       # seconds between '?' status queries
@@ -955,10 +959,16 @@ def fmt_dur(s):
 # ---------------------------------------------------------------------------
 #  HTTP API
 # ---------------------------------------------------------------------------
+def find_file(name):
+    """A page next to bridge.py (the installed copy), else in the folder above (running from a clone)."""
+    return next((p for p in (os.path.join(HERE, name), os.path.join(os.path.dirname(HERE), name)) if os.path.exists(p)), None)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f'PlotterBridge/{VERSION}'
     plotter: Plotter = None
     token = None
+    studio_url = STUDIO_URL
 
     def log_message(self, *a):
         pass
@@ -999,11 +1009,16 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ('/', '/monitor'):
             return self._file('monitor.html')
         if u.path in ('/studio', '/studio/'):
-            return self._file('studio.html')
+            if find_file('studio.html'):
+                return self._file('studio.html')
+            self.send_response(302)    # the studio is not kept here: it lives at the hosted address and always is the newest
+            self.send_header('Location', self.studio_url)
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
         if u.path == '/api/info':
             m = self.plotter.machine.get()
             return self._send(200, {'name': 'plotter-bridge', 'version': VERSION, 'host': socket.gethostname(), 'auth': bool(self.token),
-                                    'id': m['id'], 'machine': m['name']})
+                                    'id': m['id'], 'machine': m['name'], 'studio': self.studio_url, 'studio_local': bool(find_file('studio.html'))})
         if not u.path.startswith('/api/'):
             return self._send(404, {'error': 'Not found'})
         if not self._authed(q):
@@ -1096,8 +1111,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {'error': f'{type(e).__name__}: {e}'})
 
     def _file(self, name):
-        # next to bridge.py (installed copy), else the repo root one folder up (running from a clone)
-        path = next((p for p in (os.path.join(HERE, name), os.path.join(os.path.dirname(HERE), name)) if os.path.exists(p)), None)
+        path = find_file(name)
         if not path:
             return self._send(404, f'{name} was not found next to bridge.py or in the folder above'.encode(), 'text/plain')
         with open(path, 'rb') as f:
@@ -1114,6 +1128,9 @@ def main():
     ap.add_argument('--no-autoconnect', action='store_true', help='only connect when asked from the web page')
     ap.add_argument('--state', default=os.environ.get('BRIDGE_STATE', os.path.join(os.path.expanduser('~'), '.plotter-bridge')),
                     help='folder for the job checkpoint used to resume after a crash (default: ~/.plotter-bridge)')
+    ap.add_argument('--cert', default=os.environ.get('BRIDGE_CERT'), help='TLS certificate (PEM): serve https directly')
+    ap.add_argument('--key', default=os.environ.get('BRIDGE_KEY'), help='its private key (PEM); omit if the certificate file holds it too')
+    ap.add_argument('--studio-url', default=os.environ.get('BRIDGE_STUDIO_URL', STUDIO_URL), help='where Plot Studio is hosted (default: %(default)s)')
     ap.add_argument('--name', default=os.environ.get('BRIDGE_NAME'), help='name of this plotter in Plot Studio (default: the computer’s name)')
     a = ap.parse_args()
 
@@ -1124,7 +1141,7 @@ def main():
         store = None
     plotter = Plotter(a.port, a.baud, autoconnect=not a.no_autoconnect, store=store,
                       machine=MachineStore(a.state if store else None, a.name))
-    Handler.plotter, Handler.token = plotter, a.token or None
+    Handler.plotter, Handler.token, Handler.studio_url = plotter, a.token or None, a.studio_url
     if not a.no_autoconnect:
         try:
             plotter.connect()
@@ -1132,8 +1149,14 @@ def main():
             print(f'[sys] {e} — will keep looking', flush=True)
     srv = ThreadingHTTPServer((a.host, a.http_port), Handler)
     srv.daemon_threads = True
+    scheme = 'http'
+    if a.cert:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(a.cert, a.key or None)
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+        scheme = 'https'
     host = socket.gethostname()
-    print(f'[sys] Plotter Bridge {VERSION} — monitor: http://{host}.local:{a.http_port}/  studio: http://{host}.local:{a.http_port}/studio'
+    print(f'[sys] Plotter Bridge {VERSION} — monitor: {scheme}://{host}.local:{a.http_port}/  add it in Plot Studio ({a.studio_url}) with that address'
           + ('  (token required)' if a.token else ''), flush=True)
     try:
         srv.serve_forever()

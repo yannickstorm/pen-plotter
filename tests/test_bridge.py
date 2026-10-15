@@ -465,9 +465,83 @@ def machine_profile(tmp):
     check(m2['id'] == m['id'] and m2['name'] == 'Studio plotter' and m2['profile']['down'] == 40 and m2['rev'] == 2, 'after a restart: same id, name and profile')
 
 
+def studio_and_https(tmp):
+    print('studio is hosted, and the bridge can serve https')
+    import http.client
+    import os
+    import shutil
+    import ssl
+    import subprocess
+    P = new_bridge(tmp)
+    P.connect()
+    B.Handler.plotter, B.Handler.token, B.Handler.studio_url = P, None, 'https://studio.example/app/'
+    real_find = B.find_file
+    srv = ThreadingHTTPServer(('127.0.0.1', 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    host, port = '127.0.0.1', srv.server_address[1]
+
+    def get(path, conn=None):
+        c = conn or http.client.HTTPConnection(host, port, timeout=5)
+        c.request('GET', path)
+        r = c.getresponse()
+        return r.status, r.getheader('Location'), r.read()
+
+    B.find_file = lambda name: real_find(name) if name != 'studio.html' else None   # an installed bridge: no studio next to it
+    st, loc, _ = get('/studio')
+    check(st == 302 and loc == 'https://studio.example/app/', f'/studio sends you to the hosted studio ({st} {loc})')
+    info = json.loads(get('/api/info')[2])
+    check(info['studio'] == 'https://studio.example/app/' and info['studio_local'] is False, 'info tells where the studio is, and that none is kept here')
+    st, _, body = get('/')
+    check(st == 200 and b'Plotter Monitor' in body and b'studioLink' in body, 'the monitor is still served, with links to the hosted studio')
+    B.find_file = lambda name: real_find(name)
+    if real_find('studio.html'):
+        st, _, body = get('/studio')
+        check(st == 200 and b'Plot Studio' in body, 'running from a clone: /studio serves the repo copy')
+    srv.shutdown()
+
+    if not shutil.which('openssl'):
+        print('  skip https (no openssl)')
+        P.disconnect()
+        return
+    crt, key = os.path.join(tmp, 'c.pem'), os.path.join(tmp, 'k.pem')
+    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', crt, '-days', '1', '-subj', '/CN=localhost'],
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    srv2 = ThreadingHTTPServer(('127.0.0.1', 0), B.Handler)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(crt, key)
+    srv2.socket = ctx.wrap_socket(srv2.socket, server_side=True)   # what --cert/--key do in main()
+    threading.Thread(target=srv2.serve_forever, daemon=True).start()
+    cctx = ssl.create_default_context()
+    cctx.check_hostname, cctx.verify_mode = False, ssl.CERT_NONE
+    c = http.client.HTTPSConnection(host, srv2.server_address[1], timeout=5, context=cctx)
+    st, _, body = get('/api/info', c)
+    check(st == 200 and json.loads(body)['name'] == 'plotter-bridge', 'with a certificate the API answers over https')
+    srv2.shutdown()
+    P.disconnect()
+    # …and the real command line: bridge.py --cert --key
+    import socket
+    s = socket.socket(); s.bind(('127.0.0.1', 0)); free = s.getsockname()[1]; s.close()
+    proc = subprocess.Popen([sys.executable, str(Path(B.__file__)), '--no-autoconnect', '--http-port', str(free), '--host', '127.0.0.1', '--cert', crt, '--key', key,
+                             '--state', os.path.join(tmp, 'cli'), '--studio-url', 'https://studio.example/'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        ok = False
+        for _ in range(60):
+            try:
+                c = http.client.HTTPSConnection('127.0.0.1', free, timeout=2, context=cctx)
+                st, _, body = get('/api/info', c)
+                ok = st == 200 and json.loads(body)['studio'] == 'https://studio.example/'
+                break
+            except OSError:
+                time.sleep(0.1)
+        check(ok, 'bridge.py --cert --key --studio-url serves https and reports the studio address')
+    finally:
+        proc.terminate()
+        proc.wait(5)
+
+
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

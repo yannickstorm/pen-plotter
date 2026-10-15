@@ -119,7 +119,7 @@
 <header>
   <div class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 17c3-6 6-6 9 0s6 6 9 0"/><path d="M3 9c3-6 6-6 9 0s6 6 9 0" opacity=".5"/></svg></div>
   <div class="grow"><h1>Plotter Monitor</h1><small id="host">connecting…</small></div>
-  <a class="btn sm" href="studio" id="lnkStudio">Plot Studio</a>
+  <a class="btn sm studioLink" href="studio" id="lnkStudio">Plot Studio</a>
   <div class="chip" id="chip"><i></i><span id="state">—</span></div>
 </header>
 
@@ -194,7 +194,7 @@
           <div class="field">Pen<div class="row"><button class="btn sm" id="bUp">Up</button><button class="btn sm" id="bDown">Down</button></div></div>
           <div class="field">Origin<div class="row"><button class="btn sm" id="bZero" title="Make the pen's current position X0 Y0 (kept through resets)">Set 0,0 here</button></div></div>
           <div class="sub" style="font-size:11.5px" id="penVals">Pen up S0 · down S35</div>
-          <div class="sub" style="font-size:11.5px">Settings are kept on this bridge — change them in <a href="studio" style="color:var(--accent)">Plot Studio</a>.</div>
+          <div class="sub" style="font-size:11.5px">Settings are kept on this bridge — change them in <a href="studio" class="studioLink" style="color:var(--accent)">Plot Studio</a>.</div>
         </div>
       </div>
     </section>
@@ -432,6 +432,10 @@ drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); runFile(e.dataTransfer.files[0]); };
 
+// Plot Studio is hosted, not kept on the bridge: the link opens it with this bridge's address filled in
+fetch('api/info').then(r => r.json()).then(i => {
+  if (i.studio && !i.studio_local) document.querySelectorAll('.studioLink').forEach(a => { a.href = i.studio + '?bridge=' + encodeURIComponent(location.origin); a.target = '_blank'; a.rel = 'noopener'; });
+}).catch(() => {});
 poll(); loadPorts();
 </script>
 </body>

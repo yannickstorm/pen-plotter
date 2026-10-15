@@ -568,9 +568,33 @@ async def hosted_build():
         await b.close()
 
 
+async def bridge_addresses():
+    print("bridge addresses, https and the ?bridge= link")
+    base = serve()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(base + "/studio.html")
+        N = lambda addr, proto: f"(() => {{ try {{ return __studio.normBridge({addr!r}, {proto!r}); }} catch (e) {{ return 'ERR: ' + e.message; }} }})()"
+        check(await b.js(N("raspberrypi.local", "http:")) == "http://raspberrypi.local:8080", "http page: a bare name gets http and the bridge's port")
+        check(await b.js(N("192.168.1.5:9000", "http:")) == "http://192.168.1.5:9000", "http page: an explicit port is kept")
+        check(await b.js(N("raspberrypi.tail1234.ts.net", "https:")) == "https://raspberrypi.tail1234.ts.net", "https page: a real host name gets https, no port")
+        check(await b.js(N("https://pi.example.net:8443/", "https:")) == "https://pi.example.net:8443", "https page: an https address is kept")
+        e = await b.js(N("192.168.1.5", "https:"))
+        check(e.startswith("ERR:") and "Tailscale Serve" in e and "tailscale serve --bg 8080" in e, "https page: a plain-http bridge gets an explanation with the fix, not “open it from the bridge”")
+        check(await b.js(N("localhost:8080", "https:")) == "http://localhost:8080", "https page: localhost is allowed over http")
+        # the monitor links here with the bridge's address
+        await b.goto(base + "/studio.html?bridge=" + "127.0.0.1:5999")
+        check(await wait(b, "__studio.booted() && __studio.wizard() && __studio.wizard().d.via === 'bridge'", 8000), "?bridge= opens the wizard on the bridge option")
+        check(await b.js("document.getElementById('wzUrl').value") == "http://127.0.0.1:5999", "…with that address filled in")
+        check(await b.js("location.search === ''"), "…and the address bar is cleaned")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
