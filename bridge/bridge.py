@@ -436,6 +436,8 @@ class Plotter:
         self.want_port, self.baud, self.autoconnect = port, baud, autoconnect
         self.machine = machine or MachineStore(None)
         self.grbl = {}                          # what the controller says about itself: version, options
+        self.no_jog = False                     # this firmware rejected $J= (GRBL before 1.1): jog with plain moves
+        self._last_jog = None
         self.lock = threading.RLock()
         self.cond = threading.Condition(self.lock)
         self.ser = None
@@ -624,6 +626,11 @@ class Plotter:
                     sent = b.decode().strip()
                     msg = f'{text} on "{sent}"' + (f' (line {idx + 1})' if idx is not None and idx >= 0 else '')
                     self.say('err', msg)
+                    if idx is None and sent.startswith('$J=') and not self.no_jog:   # no jog command in this firmware: do it with a plain move
+                        self.no_jog = True
+                        self.say('sys', 'This GRBL has no $J jog command (it is older than 1.1) — jogging with plain moves instead')
+                        if self._last_jog:
+                            threading.Thread(target=self.jog, args=self._last_jog, daemon=True).start()
                     if idx is not None and j and j['running']:
                         self._abort_locked(f'GRBL rejected a line: {msg}')
                 elif idx is not None and idx >= 0 and j:
@@ -901,6 +908,21 @@ class Plotter:
                 self.say('tx', line)
             self.cond.notify_all()
 
+    def jog(self, dx, dy, feed):
+        """Move the pen by dx, dy. GRBL 1.1 has jog commands ($J=, cancellable, never leaves a mode behind); older firmware
+        reads `$J=` as a setting and answers "Bad number format", so there it is a plain absolute move, kept inside the bed."""
+        self._last_jog = (dx, dy, feed)
+        version = self.grbl.get('version') or ''
+        if version and not version.startswith('0.') and not self.no_jog:
+            return self.queue(f'$J=G21G91X{dx:g}Y{dy:g}F{feed:g}')
+        with self.lock:
+            wx, wy = (self.settings.get(130), self.settings.get(131))
+            px, py = self.mpos[0] - self.wco[0], self.mpos[1] - self.wco[1]
+        prof = self.machine.get().get('profile') or {}
+        W, H = wx or prof.get('bedW') or 310.0, wy or prof.get('bedH') or 210.0
+        x, y = min(max(px + dx, 0.0), W), min(max(py + dy, 0.0), H)
+        self.queue(f'G21 G90 G1 X{x:.3f} Y{y:.3f} F{feed:g}')
+
     def set_origin(self, x=0.0, y=0.0):
         """Tell GRBL the pen is at work position x, y. G10 L20 stores it in G54, which survives resets."""
         self.queue(f'G10 L20 P1 X{float(x):.3f} Y{float(y):.3f}')
@@ -1099,7 +1121,7 @@ class Handler(BaseHTTPRequestHandler):
                 if P.job and P.job['running']:
                     raise RuntimeError('A plot is running')
                 dx, dy, f = float(body.get('x', 0)), float(body.get('y', 0)), float(body.get('feed', 3000))
-                P.queue(f'$J=G21G91X{dx:g}Y{dy:g}F{f:g}')
+                P.jog(dx, dy, f)
             elif cmd == 'jogcancel':
                 P._raw(b'\x85')
             else:

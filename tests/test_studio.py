@@ -592,9 +592,32 @@ async def bridge_addresses():
         await b.close()
 
 
+async def jog_old_grbl():
+    print("jogging when GRBL has no $J command")
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(serve() + "/studio.html")
+        await b.js("__studio.connectDemo()")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo connected")
+        await b.js("__studio.demo().noJog = true; __studio.demo().speed = 200")
+        await wait(b, "!!__studio.usb().grblVersion", 5000)   # until the firmware has said it is 1.1, jogging uses plain moves anyway
+        POS = "(() => { const p = __studio.server().st.pos; return [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]; })()"
+        await b.js("__studio.usb().api('jog', {x: 10, y: 5, feed: 3000})")
+        check(await wait(b, f"JSON.stringify({POS}) === '[10,5]'", 6000), "the first jog is rejected by the firmware and still moves the pen")
+        said = await wait(b, "document.getElementById('conLog').textContent.includes('no $J jog command')", 3000)
+        check(said, "…and says what it did" + ("" if said else " — console: " + (await b.js("document.getElementById('conLog').textContent.slice(-300)"))))
+        await b.js("__studio.usb().api('jog', {x: -30, y: 0, feed: 3000})")
+        check(await wait(b, f"JSON.stringify({POS}) === '[0,5]'", 6000), "later jogs are plain moves, kept inside the bed")
+        n = await b.js("document.getElementById('conLog').textContent.split('› $J=').length - 1")
+        check(n == 1, f"$J= was only tried once ({n})")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

@@ -43,8 +43,10 @@ class FakeGrbl:
     BLOCKS = 15
     instances = []
 
-    def __init__(self, path=None, baud=None, report_ln=True, move_time=0.002):
+    def __init__(self, path=None, baud=None, report_ln=True, move_time=0.002, legacy=False, nojog=False):
         self.report_ln, self.move_time = report_ln, move_time
+        self.legacy, self.nojog = legacy, nojog   # legacy: GRBL 0.9 (no $J, no [VER:]); nojog: says 1.1 but has no jog command
+        self.seen = []                            # every line received, as GRBL parsed it
         self.lock = threading.RLock()
         self.out = bytearray()
         self.rx = b''
@@ -171,12 +173,25 @@ class FakeGrbl:
         m = re.match(r'N(\d+)\s*', line)
         n = int(m.group(1)) if m else 0
         body = line[m.end():] if m else line
+        self.seen.append(body)
         idle = not self.cur and not self.planner
         if body == '$$':
             for k, v in ((130, 310), (131, 210), (22, 1)):
                 self._emit(f'${k}={v}')
         elif body == '$I':
-            self._emit('[VER:1.1h.20190825:]'); self._emit(f'[OPT:V,{self.BLOCKS},128]')
+            if self.legacy:
+                self._emit('[0.9j.20160326:]')
+            else:
+                self._emit('[VER:1.1h.20190825:]'); self._emit(f'[OPT:V,{self.BLOCKS},128]')
+        elif body.startswith('$J='):
+            if self.legacy or self.nojog:             # GRBL 0.9 reads this as the setting "$J"
+                self._emit('error:2')
+                return True
+            w = {k: float(v) for k, v in re.findall(r'([A-Z])\s*([-+]?\d*\.?\d+)', body[3:])}
+            last = self.planner[-1] if self.planner else self.cur or [*self.mpos, 0, False]
+            if len(self.planner) + (1 if self.cur else 0) >= self.BLOCKS:
+                return False
+            self.planner.append([last[0] + w.get('X', 0), last[1] + w.get('Y', 0), 0, False])
         elif body == '$H':
             if not idle:
                 return False
@@ -425,6 +440,29 @@ def http_api(tmp):
     P.disconnect()
 
 
+def jogging(tmp):
+    print('jogging on any GRBL')
+    for label, fake in (('GRBL 1.1', {}), ('GRBL 0.9 (no $J)', {'legacy': True}), ('firmware that says 1.1 but rejects $J', {'nojog': True})):
+        with tempfile.TemporaryDirectory() as d:
+            P = new_bridge(d, **fake)
+            P.connect()
+            g = FakeGrbl.instances[-1]
+            wait_for(lambda: P.settings.get(130), 3)
+            at = lambda: tuple(round(v, 3) for v in P.status()['pos'][:2])
+            P.jog(10, 5, 3000)
+            check(wait_for(lambda: at() == (10.0, 5.0), 4), f'{label}: jog +10,+5 moves the pen ({at()})')
+            P.jog(-30, 0, 3000)
+            check(wait_for(lambda: at() == (0.0, 5.0), 4) or at() == (-20.0, 5.0) and 'GRBL 1.1' in label, f'{label}: a jog past the edge {"is clamped to the bed" if "1.1" not in label or fake else "goes on (GRBL 1.1 enforces its own soft limits)"} ({at()})')
+            sent = [x for x in g.seen if x.startswith('$J=')]
+            if fake.get('legacy'):
+                check(not sent, f'{label}: never sends $J= ({sent})')
+            elif fake.get('nojog'):
+                check(len(sent) == 1, f'{label}: tried $J= once, then stopped trying ({len(sent)})')
+            else:
+                check(len(sent) == 2, f'{label}: uses $J= ({len(sent)})')
+            P.disconnect()
+
+
 def machine_profile(tmp):
     print('machine profile on the bridge')
     P = new_bridge(tmp)
@@ -541,7 +579,7 @@ def studio_and_https(tmp):
 
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

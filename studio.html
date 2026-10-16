@@ -4869,6 +4869,10 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
       const f = this.inflight.shift() || {}, j = this.job;
       if (t.startsWith('error')) {
         const msg = `${t} on "${(f.line || '').trim()}"${isLine(f.idx) ? ` (line ${f.idx + 1})` : ''}`; this.say('err', msg);
+        if (f.idx == null && (f.line || '').startsWith('$J=') && !this.noJog) {   // no jog command in this firmware: do it with a plain move
+          this.noJog = true; this.say('sys', 'This GRBL has no $J jog command (it is older than 1.1) — jogging with plain moves instead');
+          if (this.lastJog) setTimeout(() => this.jog(...this.lastJog), 0);
+        }
         if (f.idx != null && j && j.running) this.stop('GRBL rejected a line: ' + msg, null, 'failed');
       } else if (isLine(f.idx) && j) this.acked(j, f.idx);
       return this.pump();
@@ -5018,6 +5022,12 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
     for (const l of lines) { this.manual.push(l); if (l !== '$$' && l !== '$I') this.say('tx', l); }
     this.pump();
   }
+  jog(dx, dy, feed) {   // GRBL 1.1 has $J= (cancellable); older firmware reads it as a setting and answers "Bad number format" → a plain move, kept inside the bed
+    this.lastJog = [dx, dy, feed];
+    if (this.grblVersion && !/^0\./.test(this.grblVersion) && !this.noJog) return this.queue(`$J=G21G91X${dx}Y${dy}F${feed}`);
+    const p = this.snapshot().pos, W = this.settings[130] && this.settings[131] ? [this.settings[130], this.settings[131]] : [S.machine.bedW, S.machine.bedH];
+    this.queue(`G21 G90 G1 X${clamp(p[0] + dx, 0, W[0]).toFixed(3)} Y${clamp(p[1] + dy, 0, W[1]).toFixed(3)} F${feed}`);
+  }
   snapshot() {
     const s = {connected: !!this.port, state: this.port ? this.state : 'Disconnected', alarm: this.alarm,
       pos: this.mpos.map((v, i) => v - (this.wco[i] || 0)), pos_fresh: (this.posAt || 0) > (this.resetAt || 0), port: this.name, baud: this.baud, via: this.kind,
@@ -5046,7 +5056,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
       case 'unlock': this.queue('$X'); break;
       case 'home': this.queue('$H'); break;
       case 'origin': if (this.job && this.job.running) throw new Error('A plot is running'); this.queue(`G10 L20 P1 X${(+body.x || 0).toFixed(3)} Y${(+body.y || 0).toFixed(3)}`); break;
-      case 'jog': if (this.job && this.job.running) throw new Error('A plot is running'); this.queue(`$J=G21G91X${+body.x || 0}Y${+body.y || 0}F${+body.feed || 3000}`); break;
+      case 'jog': if (this.job && this.job.running) throw new Error('A plot is running'); this.jog(+body.x || 0, +body.y || 0, +body.feed || 3000); break;
       case 'jogcancel': this.raw('\x85'); break;
       case 'disconnect': await this.close(); break;
       case 'connect': if (!this.port) throw new Error('Choose the plotter in the Machine view'); break;
@@ -5135,6 +5145,7 @@ class SimGrbl {
     if (body === '$$') { for (const [k, v] of [[130, 310], [131, 210], [22, 1], [110, 8000], [111, 8000]]) this.emit(`$${k}=${v}`); }
     else if (body === '$I') { this.emit('[VER:1.1h.20190825:Demo plotter]'); this.emit('[OPT:V,15,128]'); }
     else if (body === '$H') { if (!idle) return false; this.mpos = [0, 0]; this.offset = [0, 0]; }
+    else if (body.startsWith('$J=') && this.noJog) { this.emit('error:2'); return true; }   // old GRBL reads it as the setting "$J": "Bad number format"
     else if (body.startsWith('$J=')) {
       const w = gcWords(body.slice(3).toUpperCase()), rel = /G91/i.test(body), lw = [last[0] - this.wco[0], last[1] - this.wco[1]];
       const x = clamp(w.X ? (rel ? lw[0] + w.X[0] : w.X[0]) : lw[0], -this.wco[0], 310 - this.wco[0]), y = clamp(w.Y ? (rel ? lw[1] + w.Y[0] : w.Y[0]) : lw[1], -this.wco[1], 210 - this.wco[1]);
