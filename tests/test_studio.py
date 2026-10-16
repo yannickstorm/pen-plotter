@@ -635,6 +635,14 @@ async def servo_test_card():
         check(abs(r["lenBefore"] - r["lenAfter"]) < 1e-6, "…without losing any part of a digit")
         check(r["joinable"] == 0, "…and no two stroke ends are left meeting where they could be joined")
         check(r["dwell"] < 150, f"the whole test now waits {r['dwell']:.0f} s on the servo (it was 372 s)")
+        # the drawing can be dragged around on the paper
+        await b.js("__studio.setWs('machine'); __studio.S.servoTestOff = [0, 0]; __studio.setServoPreview(__studio.servoTestPlan([0, 0.1, 0.2]).strokes.map(s => s[0]))")
+        g = await b.js("""(() => { const r = document.querySelector('canvas').getBoundingClientRect(), p = __studio.servoTestPlan([0, 0.1, 0.2]), q = __studio.toPx(p.box[0] + 5, p.box[1] + 5);
+          return {x: q[0] + r.left, y: q[1] + r.top, box: p.box}; })()""")
+        await b.mouse_drag((g["x"], g["y"]), (g["x"] + 60, g["y"] + 40))
+        r2 = await b.js("({off: __studio.S.servoTestOff, box: __studio.servoTestPlan([0, 0.1, 0.2]).box, gx: __studio.servoTestGcode([0, 0.1, 0.2]).length})")
+        check(abs(r2["off"][0]) > 1 and r2["box"][0] > g["box"][0] + 1, f"dragging moves the test drawing (offset {r2['off']})")
+        check(r2["box"][0] > g["box"][0] and r2["box"][1] != g["box"][1], "…and the plan and its G-code follow it")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()

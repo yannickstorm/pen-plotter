@@ -3604,6 +3604,11 @@ let pinch = null;
 cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
   V.auto = false; lastPtr = e.pointerType || 'mouse';
+  if (ws === 'machine' && servoHit(wx, wy) && e.button === 0) {   // grab the servo test drawing
+    servoDrag = {wx, wy, off: (S.servoTestOff || [0, 0]).slice()};
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+    cv.style.cursor = 'grabbing'; return;
+  }
   if (ws !== 'design') {
     if (e.pointerType === 'touch') {
       touches.set(e.pointerId, [px, py]);
@@ -3662,6 +3667,11 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, [wx, wy] = toW(px, py);
   if (!drag) lastPtr = e.pointerType || 'mouse';
+  if (servoDrag) {
+    S.servoTestOff = [servoDrag.off[0] + wx - servoDrag.wx, servoDrag.off[1] + wy - servoDrag.wy];
+    if (e.shiftKey) S.servoTestOff = S.servoTestOff.map(v => Math.round(v));
+    if (servoRefresh) servoRefresh(); return;
+  }
   $('hudCur').textContent = `${wx.toFixed(1)}, ${wy.toFixed(1)}`;
   if (touches.has(e.pointerId)) touches.set(e.pointerId, [px, py]);
   if (pinch && touches.size === 2) {
@@ -3676,7 +3686,7 @@ cv.addEventListener('pointermove', e => {
     return;
   }
   if (!drag && ws !== 'design') {
-    hover = [wx, wy]; cv.style.cursor = ws === 'machine' && canTravel() ? 'crosshair' : 'grab';
+    hover = [wx, wy]; cv.style.cursor = ws === 'machine' && servoHit(wx, wy) ? 'move' : ws === 'machine' && canTravel() ? 'crosshair' : 'grab';
     if (ws === 'machine') draw();
     return;
   }
@@ -3748,8 +3758,16 @@ function endDrag(e) {
   }
   drag = null;
 }
-cv.addEventListener('pointerup', endDrag);
-cv.addEventListener('pointercancel', endDrag);
+const servoEnd = () => { if (servoDrag) { servoDrag = null; cv.style.cursor = 'move'; saveSettings(); return true; } };
+function servoHit(wx, wy) {
+  if (!servoPreview || !servoPreview.length) return false;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const st of servoPreview) for (const q of st) { x1 = Math.min(x1, q[0]); x2 = Math.max(x2, q[0]); y1 = Math.min(y1, q[1]); y2 = Math.max(y2, q[1]); }
+  const pad = 3 / V.k;
+  return wx >= x1 - pad && wx <= x2 + pad && wy >= y1 - pad && wy <= y2 + pad;
+}
+cv.addEventListener('pointerup', e => { if (!servoEnd()) endDrag(e); });
+cv.addEventListener('pointercancel', e => { if (!servoEnd()) endDrag(e); });
 cv.addEventListener('pointerleave', () => { if (hover) { hover = null; draw(); } });
 const canTravel = () => !!(server.st && server.st.connected && !(server.st.job && server.st.job.running) && server.st.state !== 'Alarm');
 function clickTravel(x, y) {   // Machine view: a click on the bed sends the pen there, lifted
@@ -4304,8 +4322,11 @@ function servoTestPlan(waits) {
     for (let i = 0; i < nD; i++) { const xa = xd + i * (dash + gap); strokes.push([[[xa, y], [xa + dash, y]], wt]); }
     for (let i = 0; i < nDots; i++) { const xa = xd + nD * (dash + gap) + 2 + i * 4; strokes.push([[[xa, y], [xa + 0.01, y]], wt]); }
   });
-  const fits = xd + nD * (dash + gap) + 2 + nDots * 4 <= U.x + U.w && bottom - 1 >= U.y;
-  return {strokes, fits, size: [Math.round(nD * (dash + gap) + nDots * 4 + 22), Math.round(top + 3 - bottom + 1)]};
+  const [ox, oy] = S.servoTestOff || [0, 0];   // where the user dragged the card on the paper
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const st of strokes) for (const q of st[0]) { q[0] += ox; q[1] += oy; x1 = Math.min(x1, q[0]); x2 = Math.max(x2, q[0]); y1 = Math.min(y1, q[1]); y2 = Math.max(y2, q[1]); }
+  const fits = x1 >= U.x - 1e-6 && x2 <= U.x + U.w + 1e-6 && y1 >= U.y - 1e-6 && y2 <= U.y + U.h + 1e-6;
+  return {strokes, fits, box: [x1, y1, x2, y2], size: [Math.round(nD * (dash + gap) + nDots * 4 + 22), Math.round(top + 3 - bottom + 1)]};
 }
 function servoTestGcode(waits) {
   const M = S.machine, P = paperRect(), cx = P.x + P.w / 2, f = v => v.toFixed(M.decimals), X = x => f(M.mirrorX ? 2 * cx - x : x);
@@ -4323,7 +4344,8 @@ function servoTestGcode(waits) {
   if (M.footer.trim()) L.push(...M.footer.trim().split('\n'));
   return L.join('\n') + '\n';
 }
-let servoPreview = null;   // strokes shown on the paper while the test card is hovered
+let servoPreview = null;   // strokes shown on the paper once the test card was hovered (until you leave the Machine view)
+let servoDrag = null, servoRefresh = null;
 const parseWaits = t => [...new Set(String(t).split(/[\s,;]+/).map(Number).filter(v => Number.isFinite(v) && v >= 0 && v <= 5))].slice(0, 14);
 function renderMach() {
   const M = S.machine, am = activeMachine();
@@ -4351,7 +4373,7 @@ function renderMach() {
       ${fieldHTML(['area', 'header', 'Extra start G-code'], M)}${fieldHTML(['area', 'footer', 'Extra end G-code'], M)}
     </div><div class="row" style="margin-top:10px"><button class="btn sm" id="mReset">Reset to defaults</button></div></div>
     <div class="card" id="stCard"><h3>Servo wait test <small>calibration plot</small></h3>
-      <p class="note" style="margin-top:0">Plots one row of dashes per wait time, between guide lines drawn with a long, safe wait. Uses your pen up/down, speeds and paper position (top-left of the margin).</p>
+      <p class="note" style="margin-top:0">Plots one row of dashes per wait time, between guide lines drawn with a long, safe wait. Uses your pen up/down, speeds and paper position. Drag the blue drawing on the paper to place it.</p>
       <div class="fields" style="margin-top:10px">
         <label class="field full"><span>Wait times to test <em>s</em></span><input id="stWaits" class="mono" value="${esc(S.servoTestWaits || '0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5')}"></label>
       </div>
@@ -4385,7 +4407,7 @@ function renderMach() {
   $('stWaits').oninput = () => { S.servoTestWaits = $('stWaits').value; saveSettings(); info(); };
   const card = $('stCard');
   card.onmouseenter = () => { const w = waits(); servoPreview = w.length ? servoTestPlan(w).strokes.map(s => s[0]) : null; draw(); };
-  card.onmouseleave = () => { servoPreview = null; draw(); };
+  servoRefresh = info;
   $('stDl').onclick = () => { const w = waits(); if (w.length) download('servo-wait-test.gcode', servoTestGcode(w)); };
   $('stPlot').onclick = async () => {
     const w = waits(); if (!w.length) return;
@@ -5458,6 +5480,7 @@ function setWs(w) {
   document.querySelectorAll('#wsSeg [data-ws]').forEach(b => b.classList.toggle('on', b.dataset.ws === w));
   closeMenu();
   if (w !== 'design') { mapEdit = null; geoPick = null; }
+  if (w !== 'machine') servoPreview = null;
   if (w === 'plot') ensureSession();
   if (w === 'machine') pollOthers();
   hover = null; afterStatus(); renderStatus(); clearTimeout(pollTimer); pollServer(); draw();
@@ -6246,7 +6269,7 @@ let booted = false;
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 window.__studio = {conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
-  servoTestPlan, servoTestGcode, chainSegs, segText, machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
+  servoTestPlan, servoTestGcode, chainSegs, servoHit, setServoPreview: v => { servoPreview = v; }, segText, machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
   cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};
 </script>
 </body>
