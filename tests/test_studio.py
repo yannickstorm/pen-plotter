@@ -615,9 +615,34 @@ async def jog_old_grbl():
         await b.close()
 
 
+async def servo_test_card():
+    print("servo wait test G-code")
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(serve() + "/studio.html")
+        r = await b.js("""(() => {
+          const T = __studio, len = p => { let s = 0; for (let i = 1; i < p.length; i++) s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return s; };
+          const segs = T.segText('0.45', 0, 0, 4), chained = T.chainSegs(segs);
+          const w = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5], g = T.servoTestGcode(w);
+          const dwell = g.split('\\n').filter(l => l.startsWith('G4 P')).map(l => +l.slice(4)).reduce((a, b) => a + b, 0);
+          const ends = new Map(); let joinable = 0;   // exactly two stroke ends meeting in a point could have been one line (a closed loop counts once) (three or more cannot be chained)
+          for (const s of chained) for (const q of (s.length > 2 && s[0][0] === s[s.length - 1][0] && s[0][1] === s[s.length - 1][1] ? [s[0]] : [s[0], s[s.length - 1]])) { const k = q.map(v => v.toFixed(4)).join(); ends.set(k, (ends.get(k) || 0) + 1); }
+          for (const n of ends.values()) if (n === 2) joinable++;
+          return {segs: segs.length, strokes: chained.length, lenBefore: segs.reduce((a, s) => a + len(s), 0), lenAfter: chained.reduce((a, s) => a + len(s), 0), joinable, dwell,
+                  strokesAll: T.servoTestPlan(w).strokes.length};
+        })()""")
+        check(r["strokes"] < r["segs"] / 2, f"digits are chained into few strokes ({r['segs']} segments → {r['strokes']} strokes)")
+        check(abs(r["lenBefore"] - r["lenAfter"]) < 1e-6, "…without losing any part of a digit")
+        check(r["joinable"] == 0, "…and no two stroke ends are left meeting where they could be joined")
+        check(r["dwell"] < 150, f"the whole test now waits {r['dwell']:.0f} s on the servo (it was 372 s)")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

@@ -4267,8 +4267,30 @@ function segText(str, x, y, h) {   // tiny 7-segment stroke text, baseline-left 
   }
   return out;
 }
+function chainSegs(segs) {   // join strokes that share an end point into continuous lines: a digit is one or two strokes, not five
+  const eq = (a, b) => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6, left = segs.map(s => s.slice()), out = [];
+  while (left.length) {
+    const cur = left.shift();
+    for (let grown = true; grown;) {
+      grown = false;
+      for (let i = 0; i < left.length; i++) {
+        const t = left[i], end = cur[cur.length - 1], start = cur[0];
+        if (eq(t[0], end)) cur.push(...t.slice(1));
+        else if (eq(t[t.length - 1], end)) cur.push(...t.slice(0, -1).reverse());
+        else if (eq(t[t.length - 1], start)) cur.unshift(...t.slice(0, -1));
+        else if (eq(t[0], start)) cur.unshift(...t.slice(1).reverse());
+        else continue;
+        left.splice(i, 1); grown = true; break;
+      }
+    }
+    out.push(cur);
+  }
+  return out;
+}
 function servoTestPlan(waits) {
-  const U = usable(), safe = Math.max(0.6, 2 * Math.max(...waits)), rowH = 8, dash = 6, gap = 3.5, nD = 6, nDots = 4;
+  // every stroke costs two servo waits (down, up). The guide lines get a generous one so they are always drawn; the row labels
+  // only need to be visible, so they get the longest wait under test, not a doubled one.
+  const U = usable(), safe = Math.max(0.6, 2 * Math.max(...waits)), labelWait = Math.max(0.2, Math.max(...waits)), rowH = 8, dash = 6, gap = 3.5, nD = 6, nDots = 4;
   const x0 = U.x + 4, xd = x0 + 16, top = U.y + U.h - 6, bottom = top - (waits.length - 1) * rowH - 2;
   const strokes = [];   // [points, wait]
   // guides: a vertical line at every dash start and end, drawn top→bottom / bottom→top alternately
@@ -4278,7 +4300,7 @@ function servoTestPlan(waits) {
   }
   waits.forEach((wt, r) => {
     const y = top - r * rowH;
-    for (const l of segText(wt.toFixed(2), x0, y - 2, 4)) strokes.push([l, safe]);
+    for (const l of chainSegs(segText(wt.toFixed(2), x0, y - 2, 4))) strokes.push([l, labelWait]);
     for (let i = 0; i < nD; i++) { const xa = xd + i * (dash + gap); strokes.push([[[xa, y], [xa + dash, y]], wt]); }
     for (let i = 0; i < nDots; i++) { const xa = xd + nD * (dash + gap) + 2 + i * 4; strokes.push([[[xa, y], [xa + 0.01, y]], wt]); }
   });
@@ -6224,7 +6246,7 @@ let booted = false;
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 window.__studio = {conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
-  machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
+  servoTestPlan, servoTestGcode, chainSegs, segText, machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
   cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};
 </script>
 </body>
