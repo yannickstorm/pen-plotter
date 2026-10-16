@@ -4,6 +4,7 @@
 Run:  python3 tests/test_studio.py        (needs google-chrome and the `websockets` package)
 """
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -261,9 +262,397 @@ async def phone():
         await b.close()
 
 
+# ---------- plotting on the demo plotter: live view, crash, recovery, resume ----------
+WAIT = """(async (cond, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (eval(cond)) return true; await new Promise(r => setTimeout(r, 40)); } return false; })"""
+# every pen-down move of the job must be on the demo plotter's paper (it lays ink where the pen physically went)
+INK_COVERS = """(async () => {
+  const T = __studio, d = (await T.usb().api('job')).job, I = T.demo().ink, key = (a, b, c, e) => [a, b, c, e].map(v => v.toFixed(2)).join();
+  const have = new Set(); for (let i = 0; i < I.length; i += 4) have.add(key(I[i], I[i + 1], I[i + 2], I[i + 3]));
+  let miss = 0, n = 0; const M = d.moves;
+  for (let i = 1; i < M.length; i++) if (M[i][3]) { n++; if (!have.has(key(M[i - 1][1], M[i - 1][2], M[i][1], M[i][2]))) miss++; }
+  return {n, miss};
+})()"""
+
+
+async def wait(b, cond, ms=20000):
+    return await b.js(f"{WAIT}({cond!r}, {ms})")
+
+
+async def click(b, sel):
+    """Click an element the way a person does (real mouse events at its centre), once it is there and enabled."""
+    await wait(b, f"(e => e && !e.disabled)(document.querySelector({sel!r}))", 8000)
+    r = await b.js(f"(() => {{ const e = document.querySelector({sel!r}); if (!e) return null; e.scrollIntoView({{block: 'center'}}); const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }})()")
+    if not r:
+        raise RuntimeError(f"nothing to click: {sel}")
+    await b.mouse("mouseMoved", *r)
+    await b.mouse("mousePressed", *r, buttons=1)
+    await b.mouse("mouseReleased", *r)
+    await asyncio.sleep(0.15)
+
+
+async def plot_until_crash(b, frac):
+    await wait(b, f"__studio.curJob() && __studio.curJob().running && __studio.curJob().progress > {frac}")
+    # crash with the pen down, part-way through a stroke
+    await wait(b, "__studio.demo().cur && __studio.demo().cur.down && __studio.demo().cur.t > 0.3")
+
+
+async def plotting():
+    print("plotting on the demo plotter")
+    b = await Browser(1400, 900).start()
+    base = serve()
+    try:
+        await b.goto(base + "/studio.html")
+        # the studio's resume rules match the bridge's
+        sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+        sys.path.insert(0, str(Path(__file__).parent))
+        import bridge as B
+        from test_bridge import make_job
+        g, _ = make_job(12, 4, seed=3)
+        lines = B.clean_lines(g)
+        js = await b.js(f"""(() => {{ const L = __studio.cleanLines({json.dumps(g)});
+          return {{lines: L, starts: __studio.strokeStarts(L, 0), points: L.map((_, d) => __studio.resumePoint(L, d, 0)), pre: __studio.resumePreamble(L, 30, 0)}}; }})()""")
+        check(js["lines"] == lines, "cleaned lines match the bridge")
+        check(js["starts"] == B.stroke_starts(lines, 0), "stroke starts match the bridge")
+        check(js["points"] == [B.resume_point(lines, d, 0) for d in range(len(lines))], "resume points match the bridge for every line")
+        check(js["pre"] == B.resume_preamble(lines, 30, 0), f"resume preamble matches the bridge {js['pre']}")
+
+        await b.js("__studio.addKind('pattern')")
+        await b.js(SETTLE)
+        # workspaces: each shows its own panels; the design can't be edited from Plot
+        await click(b, "#wsSeg [data-ws=machine]")
+        vis = await b.js("[...document.querySelectorAll('.app > [data-ws]')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.dataset.ws)")
+        check(vis == ["machine", "machine"], f"Machine shows only machine panels {vis}")
+        check(await b.js("getComputedStyle(document.getElementById('btnExport')).display === 'none'"), "design-only buttons are hidden outside Design")
+        await click(b, "[data-mc=demo]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo plotter connects")
+        await click(b, "#wsSeg [data-ws=plot]")
+        check(await b.js("__studio.ws()") == "plot", "Plot workspace")
+        await click(b, "[data-p=go]")
+        await plot_until_crash(b, 0.3)
+        before = await b.js("__studio.curJob().done")
+        await b.js("__studio.demo().crash()")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().state === 'interrupted'", 5000), "power glitch mid-plot → interrupted")
+        j = await b.js("__studio.curJob()")
+        check(j["resumable"] and j["done"] >= before, f"saved progress kept ({j['done']} of {j['total']} lines)")
+        await wait(b, "__studio.live.strokes && document.getElementById('recCard').textContent.includes('stopped at')", 5000)
+        rec = await b.js("""(() => { const c = document.getElementById('recCard'); return {shown: !c.hidden, text: c.textContent,
+          start: __studio.live.strokes.includes(__studio.curJob().resume_at) || __studio.curJob().resume_at === __studio.curJob().done}; })()""")
+        check(rec["shown"] and "controller reset" in rec["text"], "recovery card explains what happened")
+        check("stopped at" in rec["text"], f"and warns that the controller lost its position: {rec['text'][:400]!r}")
+        check(rec["start"] and j["resume_at"] <= j["done"], f"resumes at the start of the interrupted stroke (line {j['resume_at']}, done {j['done']})")
+        await click(b, "[data-p=rhome]")
+        check(await wait(b, "Math.hypot(...__studio.server().st.pos.slice(0, 2)) < 1e-6 && __studio.demo().offset[0] === 0", 5000), "Home puts it back at 0,0")
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "[data-p=rgo]")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed plot finishes")
+        ink = await b.js(INK_COVERS)
+        check(ink["n"] > 50 and ink["miss"] == 0, f"every line of the plan is on the paper ({ink['n']} moves, {ink['miss']} missing)")
+        check(await b.js("__studio.session().done.size === 1"), "the pen is marked done")
+
+        # the tab closes mid-plot: the design and the plot come back
+        await click(b, "[data-p=redo]")
+        await b.js("__studio.demo().newSheet()")
+        await click(b, "[data-p=go]")
+        await plot_until_crash(b, 0.25)
+        await b.js("__studio.usb().pause()")     # hold still while the demo plotter's paper is saved
+        await asyncio.sleep(3.5)
+        done = await b.js("__studio.curJob().done")
+        await b.goto(base + "/studio.html")
+        check(await wait(b, "__studio.booted()", 10000), "reloaded")
+        check(await b.js("__studio.items().length === 1 && __studio.items()[0].kind === 'pattern'"), "the design is restored")
+        j = await b.js("__studio.curJob()")
+        check(j and j["offline"] and j["resumable"] and j["done"] >= done - 5, f"the unfinished plot is found in this browser ({j and j['done']} lines)")
+        check(await b.js("__studio.ws()") == "plot", "and opens in Plot")
+        await click(b, "[data-p=cmach]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected && __studio.curJob().resumable && !__studio.curJob().offline", 8000), "reconnecting adopts it")
+        await wait(b, "__studio.live.strokes", 5000)
+        await click(b, "[data-p=rhome]")
+        await wait(b, "__studio.demo().offset[0] === 0", 5000)
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "[data-p=rgo]")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed after the reload, and finished")
+        ink = await b.js(INK_COVERS)
+        check(ink["miss"] == 0, f"every line on the paper after the reload ({ink['miss']} missing)")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def on_bridge():
+    """The studio served by a Plotter Bridge (running here on a simulated GRBL): plot, crash, recover, resume."""
+    print("plotting through the Plotter Bridge")
+    import tempfile
+    import threading
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import FakeGrbl, new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.12)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
+        check(await wait(b, "__studio.conn().kind === 'bridge' && __studio.server().st && __studio.server().st.connected", 8000), "the studio on the bridge connects to it by itself")
+        await b.js("__studio.addKind('star')")
+        await b.js(SETTLE)
+        await click(b, "#wsSeg [data-ws=plot]")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().running && __studio.curJob().progress > 0.25"), "plotting through the bridge, progress shows live")
+        check(await wait(b, "__studio.live.moves && __studio.live.moves.length > 10", 5000), "the live view has the job's moves from the bridge")
+        fake = FakeGrbl.instances[-1]
+        for _ in range(400):   # crash while the star is being drawn
+            if fake.cur and fake.cur[3] and len(fake.ink) >= 3:
+                break
+            await asyncio.sleep(0.01)
+        drawn = len(fake.ink)
+        fake.crash()
+        check(await wait(b, "__studio.curJob().state === 'interrupted' && document.getElementById('recCard').textContent.includes('stopped at')", 8000),
+              "controller reset → the recovery card, with the position warning")
+        await click(b, "[data-p=rhome]")
+        await wait(b, "Math.hypot(...__studio.server().st.pos.slice(0, 2)) < 1e-6", 5000)
+        await click(b, "[data-p=rgo]")
+        j = await b.js("__studio.curJob()")
+        check(j["resume_from"] < j["total"] and drawn >= 3, f"crashed mid-stroke ({drawn} segments drawn), resumed from the stroke's start (line {j['resume_from'] + 1})")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed through the bridge and finished")
+        M = P.job["moves"]
+        have = {tuple(round(v, 2) for v in seg) for seg in fake.ink}
+        miss = [i for i in range(1, len(M)) if M[i][3] and (round(M[i - 1][1], 2), round(M[i - 1][2], 2), round(M[i][1], 2), round(M[i][2], 2)) not in have]
+        check(not miss, f"every line is on the paper ({len(miss)} missing)")
+        check(await b.js("__studio.session().done.size === 1"), "the pen is marked done")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+        srv.shutdown()
+        P.disconnect()
+
+
+async def setv(b, sel, value):
+    """Type into a field: set it and fire the input event, as the browser does for each keystroke."""
+    await b.js(f"(() => {{ const e = document.querySelector({sel!r}); e.value = {json.dumps(str(value))}; e.dispatchEvent(new Event('input', {{bubbles: true}})); }})()")
+
+
+async def machines_wizard():
+    print("machines and the setup wizard")
+    import tempfile
+    import threading
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.01)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    bridge = f"127.0.0.1:{srv.server_address[1]}"
+    base = serve()
+    a = await Browser(1400, 900).start()
+    c = None
+    try:
+        await a.goto(base + "/studio.html")
+        await click(a, "#wsSeg [data-ws=machine]")
+        check(await a.js("!!document.querySelector('#machList .empty')"), "no machines yet: the list invites you to add one")
+
+        # --- the wizard with the demo plotter
+        await click(a, "[data-mc=add]")
+        await click(a, "[data-wz=via][data-v=demo]")
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.wizard() && __studio.wizard().step === 1", 8000), "wizard: connected, on the detect step")
+        check(await wait(a, "document.getElementById('modal').textContent.includes('GRBL 1.1h')", 8000), "detect: reads the firmware from the plotter")
+        check(await a.js("document.getElementById('modal').textContent.includes('310 × 210')"), "detect: and the work area GRBL reports")
+        check(await a.js("document.getElementById('modalBg').classList.contains('docked')"), "the wizard is docked beside the bed, not over it")
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzN_down", 30)
+        check(await wait(a, "document.getElementById('conLog').textContent.includes('M3 S30')", 4000), "pen step: moving the slider sends the pen there live")
+        check(await a.js("__studio.wizard().d.profile.down === 30 && __studio.demo().pen.down === 30"), "pen step: the value is kept")
+        await click(a, "[data-wz=next]")
+        await a.js("__studio.demo().speed = 200; __studio.demo().newSheet()")
+        await click(a, "[data-wz=mark]")
+        MARK = "(() => { const d = __studio.demo(), x = []; for (let i = 0; i < d.ink.length; i += 2) x.push(d.ink[i]); return {n: d.ink.length / 4, min: Math.min(...x), max: Math.max(...x)}; })()"
+        DRAWN = "(__studio.demo().ink.length >= 12 && !__studio.demo().cur && !__studio.demo().planner.length)"
+        await wait(a, DRAWN, 8000)
+        m1 = await a.js(MARK)
+        check(m1["n"] >= 3 and m1["min"] >= 11.5 and m1["max"] <= 30.5, f"origin step: the test mark lands at the origin, left side, as G-code says ({m1['min']:.1f}–{m1['max']:.1f} mm)")
+        await click(a, "[data-wz=mirror]")
+        check(await a.js("__studio.wizard().d.profile.mirrorX === true"), "“it's mirrored” turns X mirroring on")
+        await a.js("__studio.demo().newSheet()")
+        await click(a, "[data-wz=mark]")
+        await wait(a, DRAWN, 8000)
+        m2 = await a.js(MARK)
+        check(m2["n"] >= 3 and m2["min"] >= 278 and m2["max"] <= 299, f"drawn again, the mark is on the mirrored side ({m2['min']:.1f}–{m2['max']:.1f} mm)")
+        await click(a, "[data-wz=markok]")
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzName", "Test plotter")
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.machines().length === 1 && !__studio.wizard()", 5000), "wizard: saved, closed")
+        rec = await a.js("__studio.machines()[0]")
+        check(rec["name"] == "Test plotter" and rec["via"] == "demo" and rec["profile"]["down"] == 30 and rec["profile"]["mirrorX"] is True and rec["ready"], f"the machine keeps what the wizard set up")
+        check(await a.js("__studio.S.machine.down === 30 && __studio.S.machine.mirrorX === true"), "the design side now works with the machine's settings")
+        check("Test plotter" in await a.js("document.getElementById('machList').textContent"), "the machine is in the list")
+        await a.goto(base + "/studio.html")
+        check(await wait(a, "__studio.booted()", 8000), "reloaded")
+        check(await a.js("__studio.machines().length === 1 && __studio.S.machine.down === 30 && __studio.S.machine.mirrorX === true && __studio.activeMachine().name === 'Test plotter'"), "after a reload: the machine and its settings are still there")
+
+        # --- a second machine: the bridge. The wizard learns the plotter and saves the settings on the bridge.
+        await click(a, "#wsSeg [data-ws=machine]")
+        await click(a, "[data-mc=add]")
+        await click(a, "[data-wz=via][data-v=bridge]")
+        await setv(a, "#wzUrl", bridge)
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.wizard() && __studio.wizard().step === 1", 8000), "bridge: connected from another origin")
+        check(await a.js("__studio.wizard().d.profile.mirrorX === false"), "a new machine starts from defaults, not from the previous machine's settings")
+        await wait(a, "document.getElementById('modal').textContent.includes('GRBL 1.1h')", 8000)
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzN_down", 33)
+        await click(a, "[data-wz=next]")
+        await click(a, "[data-wz=next]")
+        await setv(a, "#wzName", "Studio plotter")
+        await click(a, "[data-wz=next]")
+        check(await wait(a, "__studio.machines().length === 2 && !__studio.wizard()", 8000), "bridge machine added")
+        check(await wait(a, f"__studio.activeMachine().via === 'bridge' && !__studio.activeMachine().dirty", 8000), "…and its settings were sent to the bridge")
+        mb = P.machine.get()
+        check(mb["name"] == "Studio plotter" and mb["profile"]["down"] == 33 and mb["profile"]["mirrorX"] is False, f"the bridge keeps the machine: {mb['name']}, pen down S{mb['profile']['down']}")
+        check(await a.js("__studio.S.machine.down === 33 && __studio.S.machine.mirrorX === false"), "switching to it switches the design's machine settings")
+
+        # --- another browser (a phone): connects and gets the same machine from the bridge
+        c = await Browser(390, 844, mobile=True).start()
+        await c.goto(f"http://{bridge}/studio")
+        check(await wait(c, "__studio.booted() && __studio.server().st && __studio.server().st.connected", 10000), "second browser, opened from the bridge, connects by itself")
+        check(await wait(c, "__studio.machines().length === 1 && __studio.machines()[0].name === 'Studio plotter' && __studio.S.machine.down === 33", 8000), "…and gets the machine and its settings from the bridge")
+        # an edit in one browser reaches the other
+        await click(a, "[data-mtab=set]")
+        await setv(a, "#mf1 [data-key=down]", 36)
+        check(await wait(c, "__studio.S.machine.down === 36", 10000), "a settings change in the first browser reaches the second")
+        check(P.machine.get()["profile"]["down"] == 36, "…through the bridge")
+        await setv(c, "#mName", "Pi plotter")
+        check(await wait(a, "__studio.activeMachine().name === 'Pi plotter'", 10000) and P.machine.get()["name"] == "Pi plotter", "a rename in the second browser reaches the first, through the bridge")
+        # two edits at once → the user is asked
+        await a.js("(() => { const m = __studio.activeMachine(); m.dirty = true; m.rev -= 1; m.profile.down = 12; })()")
+        await a.js("__studio.syncProfile(__studio.activeMachine())")
+        check(await wait(a, "document.getElementById('modal').textContent.includes('Settings differ')", 5000), "concurrent edits: asks which settings to keep")
+        await click(a, "#cfBridge")
+        check(await wait(a, "__studio.S.machine.down === 36", 5000) and P.machine.get()["profile"]["down"] == 36, "“use the bridge's settings” keeps the bridge's value")
+        # the list shows other bridges live
+        await a.js("__studio.setWs('machine')")
+        await click(a, "#machList [data-mc=card][data-id='" + await a.js("__studio.machines()[0].id") + "']")
+        check(await wait(a, "document.getElementById('machList').textContent.includes('Idle') && __studio.machines().filter(m => m.via === 'bridge').length === 1", 12000),
+              "a bridge that is not connected still shows its live state in the list")
+        check(not a.errors and not c.errors, f"no page errors {a.errors[:2]} {c.errors[:2]}")
+    finally:
+        await a.close()
+        if c:
+            await c.close()
+        srv.shutdown()
+        P.disconnect()
+
+
+async def hosted_build():
+    """The page as GitHub Pages serves it (build_artifact.py --standalone) must still lay out for a phone."""
+    print("hosted build on a phone")
+    import subprocess
+    import tempfile
+    d = Path(tempfile.mkdtemp())
+    subprocess.run([sys.executable, str(Path(__file__).parent.parent / "build_artifact.py"), str(d / "index.html"), "--standalone"], check=True, stdout=subprocess.DEVNULL)
+    head = (d / "index.html").read_text()[:400]
+    check(head.startswith("<!doctype html>") and 'name="viewport"' in head and 'charset="utf-8"' in head, "the standalone build has a doctype, charset and viewport")
+    b = await Browser(390, 844, mobile=True).start()
+    try:
+        await b.goto(serve(d) + "/index.html")
+        w = await b.js("({inner: innerWidth, scroll: document.documentElement.scrollWidth})")
+        check(w["inner"] == 390 and w["scroll"] <= 390, f"on a 390 px phone the page is laid out at {w['inner']} px with no sideways scroll ({w['scroll']} px)")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def bridge_addresses():
+    print("bridge addresses, https and the ?bridge= link")
+    base = serve()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(base + "/studio.html")
+        N = lambda addr, proto: f"(() => {{ try {{ return __studio.normBridge({addr!r}, {proto!r}); }} catch (e) {{ return 'ERR: ' + e.message; }} }})()"
+        check(await b.js(N("raspberrypi.local", "http:")) == "http://raspberrypi.local:8080", "http page: a bare name gets http and the bridge's port")
+        check(await b.js(N("192.168.1.5:9000", "http:")) == "http://192.168.1.5:9000", "http page: an explicit port is kept")
+        check(await b.js(N("raspberrypi.tail1234.ts.net", "https:")) == "https://raspberrypi.tail1234.ts.net", "https page: a real host name gets https, no port")
+        check(await b.js(N("https://pi.example.net:8443/", "https:")) == "https://pi.example.net:8443", "https page: an https address is kept")
+        e = await b.js(N("192.168.1.5", "https:"))
+        check(e.startswith("ERR:") and "Tailscale Serve" in e and "tailscale serve --bg 8080" in e, "https page: a plain-http bridge gets an explanation with the fix, not “open it from the bridge”")
+        check(await b.js(N("localhost:8080", "https:")) == "http://localhost:8080", "https page: localhost is allowed over http")
+        # the monitor links here with the bridge's address
+        await b.goto(base + "/studio.html?bridge=" + "127.0.0.1:5999")
+        check(await wait(b, "__studio.booted() && __studio.wizard() && __studio.wizard().d.via === 'bridge'", 8000), "?bridge= opens the wizard on the bridge option")
+        check(await b.js("document.getElementById('wzUrl').value") == "http://127.0.0.1:5999", "…with that address filled in")
+        check(await b.js("location.search === ''"), "…and the address bar is cleaned")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def jog_old_grbl():
+    print("jogging when GRBL has no $J command")
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(serve() + "/studio.html")
+        await b.js("__studio.connectDemo()")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo connected")
+        await b.js("__studio.demo().noJog = true; __studio.demo().speed = 200")
+        await wait(b, "!!__studio.usb().grblVersion", 5000)   # until the firmware has said it is 1.1, jogging uses plain moves anyway
+        POS = "(() => { const p = __studio.server().st.pos; return [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]; })()"
+        await b.js("__studio.usb().api('jog', {x: 10, y: 5, feed: 3000})")
+        check(await wait(b, f"JSON.stringify({POS}) === '[10,5]'", 6000), "the first jog is rejected by the firmware and still moves the pen")
+        said = await wait(b, "document.getElementById('conLog').textContent.includes('no $J jog command')", 3000)
+        check(said, "…and says what it did" + ("" if said else " — console: " + (await b.js("document.getElementById('conLog').textContent.slice(-300)"))))
+        await b.js("__studio.usb().api('jog', {x: -30, y: 0, feed: 3000})")
+        check(await wait(b, f"JSON.stringify({POS}) === '[0,5]'", 6000), "later jogs are plain moves, kept inside the bed")
+        n = await b.js("document.getElementById('conLog').textContent.split('› $J=').length - 1")
+        check(n == 1, f"$J= was only tried once ({n})")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def servo_test_card():
+    print("servo wait test G-code")
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(serve() + "/studio.html")
+        r = await b.js("""(() => {
+          const T = __studio, len = p => { let s = 0; for (let i = 1; i < p.length; i++) s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return s; };
+          const segs = T.segText('0.45', 0, 0, 4), chained = T.chainSegs(segs);
+          const w = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5], g = T.servoTestGcode(w);
+          const dwell = g.split('\\n').filter(l => l.startsWith('G4 P')).map(l => +l.slice(4)).reduce((a, b) => a + b, 0);
+          const ends = new Map(); let joinable = 0;   // exactly two stroke ends meeting in a point could have been one line (a closed loop counts once) (three or more cannot be chained)
+          for (const s of chained) for (const q of (s.length > 2 && s[0][0] === s[s.length - 1][0] && s[0][1] === s[s.length - 1][1] ? [s[0]] : [s[0], s[s.length - 1]])) { const k = q.map(v => v.toFixed(4)).join(); ends.set(k, (ends.get(k) || 0) + 1); }
+          for (const n of ends.values()) if (n === 2) joinable++;
+          return {segs: segs.length, strokes: chained.length, lenBefore: segs.reduce((a, s) => a + len(s), 0), lenAfter: chained.reduce((a, s) => a + len(s), 0), joinable, dwell,
+                  strokesAll: T.servoTestPlan(w).strokes.length};
+        })()""")
+        check(r["strokes"] < r["segs"] / 2, f"digits are chained into few strokes ({r['segs']} segments → {r['strokes']} strokes)")
+        check(abs(r["lenBefore"] - r["lenAfter"]) < 1e-6, "…without losing any part of a digit")
+        check(r["joinable"] == 0, "…and no two stroke ends are left meeting where they could be joined")
+        check(r["dwell"] < 150, f"the whole test now waits {r['dwell']:.0f} s on the servo (it was 372 s)")
+        # the drawing can be dragged around on the paper
+        await b.js("__studio.setWs('machine'); __studio.S.servoTestOff = [0, 0]; __studio.setServoPreview(__studio.servoTestPlan([0, 0.1, 0.2]).strokes.map(s => s[0]))")
+        g = await b.js("""(() => { const r = document.querySelector('canvas').getBoundingClientRect(), p = __studio.servoTestPlan([0, 0.1, 0.2]), q = __studio.toPx(p.box[0] + 5, p.box[1] + 5);
+          return {x: q[0] + r.left, y: q[1] + r.top, box: p.box}; })()""")
+        await b.mouse_drag((g["x"], g["y"]), (g["x"] + 60, g["y"] + 40))
+        r2 = await b.js("({off: __studio.S.servoTestOff, box: __studio.servoTestPlan([0, 0.1, 0.2]).box, gx: __studio.servoTestGcode([0, 0.1, 0.2]).length})")
+        check(abs(r2["off"][0]) > 1 and r2["box"][0] > g["box"][0] + 1, f"dragging moves the test drawing (offset {r2['off']})")
+        check(r2["box"][0] > g["box"][0] and r2["box"][1] != g["box"][1], "…and the plan and its G-code follow it")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
 async def main():
-    await desktop()
-    await phone()
+    only = sys.argv[1:]
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card)):
+        if not only or name in only:
+            await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
     sys.exit(1 if failures else 0)
 

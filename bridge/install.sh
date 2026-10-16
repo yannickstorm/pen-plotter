@@ -9,9 +9,8 @@ DEST=/opt/plotter-bridge
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
 mkdir -p "$DEST"
-STUDIO="$SRC/studio.html"; [ -f "$STUDIO" ] || STUDIO="$SRC/../studio.html"   # repo layout: studio.html is one folder up
-if [ ! -f "$STUDIO" ]; then echo "studio.html not found next to install.sh or in the folder above"; exit 1; fi
-cp "$SRC/bridge.py" "$SRC/monitor.html" "$STUDIO" "$DEST/"
+cp "$SRC/bridge.py" "$SRC/monitor.html" "$DEST/"
+rm -f "$DEST/studio.html"              # Plot Studio is not kept on the bridge: use the hosted one, it is always the newest
 usermod -aG dialout "$RUN_AS"          # access to /dev/ttyUSB* and /dev/ttyACM*
 
 cat > /etc/systemd/system/plotter-bridge.service <<EOF
