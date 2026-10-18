@@ -40,7 +40,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now plotter-bridge
+systemctl enable plotter-bridge
+systemctl restart plotter-bridge     # 'enable --now' does not restart a running service: an update would keep running the old code
 sleep 1
 systemctl --no-pager --lines=5 status plotter-bridge || true
 echo

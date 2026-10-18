@@ -109,6 +109,8 @@ else
   SUDO_USER="${SUDO_USER:-}" "$SRC/install.sh" >"$TMP/install.log" 2>&1 || {
     tail -15 "$TMP/install.log" | sed 's/^/    /'
     fail "install.sh failed (output above)" "Go back:  sudo cp $DEST/bridge.py.prev $DEST/bridge.py && sudo systemctl restart plotter-bridge"; }
+  # older install.sh versions only 'enable --now' (which leaves a running service alone): restart it for certain
+  systemctl restart plotter-bridge >"$TMP/restart.log" 2>&1 || { sed 's/^/    /' "$TMP/restart.log"; fail "systemctl restart plotter-bridge failed (output above)" "sudo systemctl status plotter-bridge"; }
   ok "files installed, service restarted"
 fi
 
@@ -117,16 +119,19 @@ step "Checking that the new bridge answers"
 PORT="$(printf '%s' "$OPTS" | sed -n 's/.*--http-port[ =]\([0-9]*\).*/\1/p')"; PORT="${PORT:-8080}"
 SCHEME=http; case "$OPTS" in *--cert*) SCHEME=https ;; esac
 if [ -n "${BRIDGE_SKIP_INSTALL:-}" ]; then ok "skipped"; else
+  ask() { curl -fsSk "$SCHEME://127.0.0.1:$PORT/api/info" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])' 2>/dev/null || true; }
   RUNNING=""
-  for _ in $(seq 1 25); do
-    RUNNING="$(curl -fsSk "$SCHEME://127.0.0.1:$PORT/api/info" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])' 2>/dev/null || true)"
-    [ -n "$RUNNING" ] && break; sleep 1
-  done
+  for _ in $(seq 1 45); do RUNNING="$(ask)"; [ "$RUNNING" = "$NEW" ] && break; sleep 1; done   # it connects to the plotter first: can take a while
+  if [ -n "$RUNNING" ] && [ "$RUNNING" != "$NEW" ]; then
+    echo "    the old bridge ($RUNNING) is still the one answering — restarting the service once more"
+    systemctl restart plotter-bridge 2>&1 | sed 's/^/    /'
+    for _ in $(seq 1 45); do RUNNING="$(ask)"; [ "$RUNNING" = "$NEW" ] && break; sleep 1; done
+  fi
   if [ "$RUNNING" != "$NEW" ]; then
     echo "    ${R}the bridge says: '${RUNNING:-nothing}' (expected $NEW)${N}"
     systemctl --no-pager --lines=0 status plotter-bridge 2>&1 | sed 's/^/    /' | head -8
-    echo "    --- last log lines ---"; journalctl -u plotter-bridge -n 20 --no-pager 2>&1 | sed 's/^/    /'
-    fail "The new bridge did not come up as $NEW within 25 s (log above)" \
+    echo "    --- last log lines ---"; journalctl -u plotter-bridge -n 25 --no-pager 2>&1 | sed 's/^/    /'
+    fail "The new bridge did not come up as $NEW (log above). Port/protocol checked: $SCHEME://127.0.0.1:$PORT" \
          "Go back:  sudo cp $DEST/bridge.py.prev $DEST/bridge.py && sudo cp $DEST/monitor.html.prev $DEST/monitor.html && sudo systemctl restart plotter-bridge"
   fi
   ok "the bridge answers as $RUNNING"
