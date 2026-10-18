@@ -74,11 +74,11 @@ jobs:
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           mkdir -p dist/plotter-bridge
-          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md dist/plotter-bridge/
+          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/update.sh bridge/README.md dist/plotter-bridge/
           if [[ "$TAG" == v* ]]; then
             sed -i "s/^VERSION = .*/VERSION = '${TAG#v}'/" dist/plotter-bridge/bridge.py
           fi
-          chmod +x dist/plotter-bridge/install.sh dist/plotter-bridge/bridge.py
+          chmod +x dist/plotter-bridge/install.sh dist/plotter-bridge/update.sh dist/plotter-bridge/bridge.py
           tar -czf dist/plotter-bridge.tar.gz -C dist plotter-bridge
       - uses: actions/upload-pages-artifact@v3
         with:

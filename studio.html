@@ -262,10 +262,12 @@
   .statusbar b { color: var(--fg); font: 500 12px var(--mono); }
   .statusbar .warn { color: var(--warn); }
 
-  details.rel { border-top: 1px solid var(--line); padding: 8px 0; }
-  details.rel summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
-  details.rel summary::-webkit-details-marker { display: none; }
+  details.rel, details.alt { border-top: 1px solid var(--line); padding: 8px 0; }
+  details.rel summary, details.alt summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+  details.rel summary::-webkit-details-marker, details.alt summary::-webkit-details-marker { display: none; }
   .relnotes { white-space: pre-wrap; font-size: 12px; color: var(--muted); margin: 8px 0 2px; max-height: 220px; overflow: auto; }
+  .cmd { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .cmd code { flex: 1; font-size: 11.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow-x: auto; white-space: nowrap; user-select: all; }
   .rtag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
   .rtag.ok { background: color-mix(in srgb, #1a8f5a 16%, transparent); color: #1a8f5a; }
   .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 12px 12px 0; }
@@ -5650,6 +5652,8 @@ async function loadSw(m, fresh) {
   const busy = d.i && d.i.update && ['checking', 'downloading', 'waiting', 'restarting'].includes(d.i.update.state);
   if (ws === 'machine' && mtab === 'sw') swTimer = setTimeout(() => { const a = activeMachine(); if (a && a.via === 'bridge') loadSw(a); }, busy || !d.i ? 2000 : 10000);
 }
+const SW_CMD = 'curl -fsSL https://raw.githubusercontent.com/yannickstorm/pen-plotter/main/bridge/update.sh | sudo bash';
+const swCmd = () => `<div class="cmd"><code>${SW_CMD}</code><button class="btn sm" data-sw="copy">Copy</button></div>`;
 const SW_STATE = {checking: 'looking for a new release…', downloading: 'downloading…', waiting: 'a new release is ready — it installs as soon as the plotter is idle', restarting: 'restarting…',
   current: 'up to date', available: 'a new release is available', error: 'the last update failed', idle: 'not checked yet'};
 function renderSw() {
@@ -5659,7 +5663,7 @@ function renderSw() {
   if (!d) { loadSw(m); return setHTML(el, '<div class="empty">…</div>'); }
   if (!d.i) return setHTML(el, `<div class="card"><h3>Bridge software</h3><p class="note" style="margin-top:0">${esc(d.err || '…')}</p></div>`);
   const i = d.i, u = i.update;
-  if (!u) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">This bridge is older than 1.2 and cannot update itself. Update it once by hand (bridge README, “Automatic updates”); after that it keeps itself current and this tab works.</p></div>`);
+  if (!u) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">This bridge is older than 1.2 and cannot update itself yet. Update it once from a terminal on the Pi — the script shows every step and what went wrong, if anything. After that it keeps itself current and this tab works.</p>${swCmd()}</div>`);
   if (!u.enabled && u.mode == null) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">Updates are switched off on this bridge (<code>--no-update</code>).</p></div>`);
   const hours = [[1, 'every hour'], [6, 'every 6 hours'], [24, 'every day'], [168, 'every week']], opt = (v, t, cur) => `<option value="${v}" ${cur ? 'selected' : ''}>${t}</option>`;
   const rel = (d.rel || []).map(r => {
@@ -5676,7 +5680,8 @@ function renderSw() {
       <p class="note">${{auto: 'A new release is installed as soon as the plotter is idle — never during a plot.', notify: 'The bridge looks for new releases and shows them here; you decide when to install.', off: 'The bridge never looks by itself. You can still check and install from here.'}[u.mode] || ''}</p>
       <label class="field"><span>Look for new releases</span><select id="swHours" ${u.mode === 'off' ? 'disabled' : ''}>${hours.map(([h, t]) => opt(h, t, Math.abs(u.hours - h) < 0.01)).join('')}${hours.some(([h]) => Math.abs(u.hours - h) < 0.01) ? '' : opt(u.hours, `every ${+u.hours.toFixed(2)} h`, true)}</select></label></div>
     <div class="card"><h3>Releases</h3>${d.relErr ? `<p class="note" style="margin-top:0;color:var(--danger)">${esc(d.relErr)}</p>` : ''}${rel || (d.relErr ? '' : '<p class="note" style="margin-top:0">…</p>')}
-      <p class="note">Installing restarts the bridge (a few seconds; Plot Studio reconnects) and is refused while a plot is running. The previous files are kept as <code>bridge.py.prev</code>. Going back to an old release also takes its features back.</p></div>`);
+      <p class="note">Installing restarts the bridge (a few seconds; Plot Studio reconnects) and is refused while a plot is running. The previous files are kept as <code>bridge.py.prev</code>. Going back to an old release also takes its features back.</p>
+      <details class="alt"><summary><span class="note" style="margin:0">Does not update by itself? Update from a terminal on the Pi</span></summary>${swCmd()}<p class="note">Shows every step and the exact reason if one fails. <code>sudo /opt/plotter-bridge/update.sh --tag v1.3.0</code> installs a specific release.</p></details></div>`);
   const h = $('swHours'); if (h) h.onchange = () => swConfig(m, {hours: +h.value});
 }
 async function swConfig(m, c) {
@@ -5686,7 +5691,8 @@ async function swConfig(m, c) {
 $('swPane').addEventListener('click', async e => {
   const b = e.target.closest('[data-sw]'), m = activeMachine(); if (!b || !m) return;
   const a = b.dataset.sw;
-  if (a === 'mode') swConfig(m, {mode: b.dataset.v});
+  if (a === 'copy') { try { await navigator.clipboard.writeText(SW_CMD); toast('Copied — paste it into a terminal on the Pi'); } catch { toast('Select the command and copy it', true); } }
+  else if (a === 'mode') swConfig(m, {mode: b.dataset.v});
   else if (a === 'check') { try { await bcall(m, 'update', {}); toast('Looking for a new bridge release…'); } catch (er) { toast(er.message, true); } setTimeout(() => loadSw(m, true), 1200); }
   else if (a === 'install') {
     const v = b.dataset.tag.replace(/^v/, '');
