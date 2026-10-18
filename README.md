@@ -6,7 +6,7 @@ Tools for a CoreXY pen plotter running GRBL 1.1 with a servo pen (`M3 S0` = pen 
 |---|---|
 | `server.py` | Local web controller backend (stdlib HTTP + pyserial). `python3 server.py [--port /dev/ttyUSB0] [--http 8000]` |
 | `index.html` | Controller UI at `http://127.0.0.1:8000/` — jog, pen, console, stream G-code |
-| `studio.html` | **Plot Studio** at `/studio` — converts SVG, images, DXF, G-code, text and patterns into multi-pen line art and G-code; plots pen by pen through the server. Includes the plot-range styles, with real street maps (OpenStreetMap) and contour maps (Terrarium elevation) that can be moved and zoomed on the sheet (double-click the map) and reload by themselves |
+| `studio.html` | **Plot Studio** at `/studio` — converts SVG, images, DXF, G-code, text and patterns into multi-pen line art and G-code; plots pen by pen through the server. Includes the plot-range styles, with real street maps (OpenStreetMap), contour maps (Terrarium elevation) and a real star map (**Sternenhimmel**: pick an address, date and time; it plots the stars, constellations, Milky Way, planets and Moon for that moment) that can be moved and zoomed on the sheet (double-click the map) and reload by themselves |
 | `bridge/` | **Plotter Bridge** for a Raspberry Pi or another computer next to the plotter: streams jobs over USB, serves a live monitor at `/` and Plot Studio at `/studio`, and keeps plotting when the browser closes. Standard library only. See [`bridge/README.md`](bridge/README.md) |
 | `build_artifact.py` | Builds the hosted copy of Plot Studio: `python3 build_artifact.py OUT.html [example-image]` |
 | `send.py` | Minimal command-line G-code sender |
