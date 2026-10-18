@@ -5,6 +5,7 @@ as a person using the page: pointer capture, hit testing, default actions.
 """
 import asyncio
 import functools
+import glob
 import http.server
 import json
 import shutil
@@ -43,7 +44,8 @@ class Browser:
         self.width, self.height, self.mobile = width, height, mobile
         self.port = free_port()
         self.profile = tempfile.mkdtemp(prefix="cdp-")
-        chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
+        chrome = (shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
+                  or next(iter(sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))), None))
         if not chrome:
             raise RuntimeError("google-chrome / chromium not found")
         self.proc = subprocess.Popen([chrome, "--headless=new", "--disable-gpu", "--no-sandbox", f"--remote-debugging-port={self.port}",
@@ -81,6 +83,9 @@ class Browser:
                 self.pending.pop(m["id"]).set_result(m)
             elif m.get("method") == "Runtime.exceptionThrown":
                 self.errors.append(m["params"]["exceptionDetails"].get("exception", {}).get("description", str(m["params"])))
+            elif m.get("method") == "Page.javascriptDialogOpening":   # "Leave site?" and the like: answer yes, as a person would
+                self.msg_id += 1
+                await self.ws.send(json.dumps({"id": self.msg_id, "method": "Page.handleJavaScriptDialog", "params": {"accept": True}}))
             elif m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
                 self.errors.append(" ".join(str(a.get("value", a.get("description", ""))) for a in m["params"]["args"]))
             else:

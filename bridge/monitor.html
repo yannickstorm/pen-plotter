@@ -102,13 +102,24 @@
   #toast.show { opacity: 1; transform: translateX(-50%); }
   #toast.bad { background: var(--danger); color: #fff; }
   .gate { max-width: 380px; margin: 12vh auto; padding: 0 16px; }
+  .card.recover { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 14%, transparent); }
+  .steps { margin: 12px 0 0; padding: 0; list-style: none; counter-reset: st; display: flex; flex-direction: column; gap: 12px; }
+  .steps li { counter-increment: st; display: grid; grid-template-columns: 24px 1fr; gap: 8px; font-size: 13px; }
+  .steps li::before { content: counter(st); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--sans); background: var(--raise); color: var(--muted); }
+  .steps .row { margin-top: 6px; }
+  .poscheck { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .poscheck b { font: 500 12.5px var(--mono); color: var(--fg); }
+  .ok-t { color: var(--ok); } .warn-t { color: var(--warn); }
+  .picker { display: inline-flex; align-items: center; gap: 6px; }
+  .picker .btn { width: 34px; padding: 0; }
+  .picker span { font: 500 13px var(--mono); min-width: 110px; text-align: center; }
 </style>
 </head>
 <body>
 <header>
   <div class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 17c3-6 6-6 9 0s6 6 9 0"/><path d="M3 9c3-6 6-6 9 0s6 6 9 0" opacity=".5"/></svg></div>
   <div class="grow"><h1>Plotter Monitor</h1><small id="host">connecting…</small></div>
-  <a class="btn sm" href="studio" id="lnkStudio">Plot Studio</a>
+  <a class="btn sm studioLink" href="studio" id="lnkStudio">Plot Studio</a>
   <div class="chip" id="chip"><i></i><span id="state">—</span></div>
 </header>
 
@@ -122,6 +133,22 @@
 
 <main id="main" hidden>
   <div class="col">
+    <section class="card recover" id="rec" hidden>
+      <h2>Unfinished plot <small id="recWhen"></small></h2>
+      <p class="jobname" id="recName"></p>
+      <div class="sub" id="recWhy"></div>
+      <ol class="steps">
+        <li><div>Check the paper hasn't moved and the pen is still in its holder.</div></li>
+        <li><div>Make sure the plotter knows where the pen is.
+          <div class="poscheck" id="recPos"></div>
+          <div class="row"><button class="btn sm" id="recHome" hidden>Home ($H)</button><button class="btn sm" id="recZero" title="Move the pen to the origin corner by hand first">Pen is at 0, 0</button><button class="btn sm" id="recKeep" hidden></button></div></div></li>
+        <li><div>Continue from
+          <div class="row"><span class="picker"><button class="btn" id="recPrev" title="One stroke earlier">−</button><span id="recAt"></span><button class="btn" id="recNext" title="One stroke later">+</button></span></div>
+          <div class="poscheck" id="recAtInfo"></div></div></li>
+      </ol>
+      <div class="row end"><button class="btn primary" id="recGo">Resume plot</button><button class="btn danger" id="recDrop">Discard</button></div>
+    </section>
+
     <section class="card">
       <h2>Current plot <small id="jobId"></small></h2>
       <p class="jobname" id="jobName">Nothing plotting</p>
@@ -165,7 +192,9 @@
         <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
           <div class="field">Step (mm)<div class="seg" id="steps"><button>1</button><button class="on">10</button><button>50</button></div></div>
           <div class="field">Pen<div class="row"><button class="btn sm" id="bUp">Up</button><button class="btn sm" id="bDown">Down</button></div></div>
-          <div class="row" style="gap:6px;font-size:11px;color:var(--muted)">S up <input class="num" id="sUp" value="0"> down <input class="num" id="sDown" value="35"></div>
+          <div class="field">Origin<div class="row"><button class="btn sm" id="bZero" title="Make the pen's current position X0 Y0 (kept through resets)">Set 0,0 here</button></div></div>
+          <div class="sub" style="font-size:11.5px" id="penVals">Pen up S0 · down S35</div>
+          <div class="sub" style="font-size:11.5px">Settings are kept on this bridge — change them in <a href="studio" class="studioLink" style="color:var(--accent)">Plot Studio</a>.</div>
         </div>
       </div>
     </section>
@@ -194,7 +223,18 @@
 const $ = id => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 let token = store.get('bridgeToken') || '';
-let st = null, seq = 0, job = null, jobId = null, bed = [310, 210], polling = false, firstLog = true;
+let st = null, seq = 0, job = null, jobKey = null, bed = [310, 210], polling = false, firstLog = true;
+let prof = { up: 0, down: 35 }, machRev = -1, machName = '';   // the machine settings, kept on the bridge and edited in Plot Studio
+async function loadMachine() {
+  try {
+    const m = (await call('machine')).machine; machRev = m.rev; machName = m.name;
+    if (m.profile) Object.assign(prof, m.profile);
+    $('penVals').textContent = `Pen up S${prof.up} · down S${prof.down}`;
+    if (prof.bedW) bed = [prof.bedW, prof.bedH];
+    if (st) render(st); drawPreview();
+  } catch {}
+}
+let resumeLine = null;   // where "Resume plot" continues from (a line index; the default is the start of the interrupted stroke)
 
 function toast(m, bad) { const t = $('toast'); t.textContent = m; t.className = 'show' + (bad ? ' bad' : ''); clearTimeout(toast.t); toast.t = setTimeout(() => t.className = '', bad ? 5000 : 2200); }
 async function call(path, body) {
@@ -218,10 +258,16 @@ async function poll() {
     const s = await call('status?since=' + seq);
     $('main').hidden = false; $('gate').hidden = true;
     st = s; render(s);
+    if (s.machine_rev != null && s.machine_rev !== machRev) loadMachine();
     if (s.log && s.log.length) addLog(s.log);
     seq = s.seq;
-    const jid = s.job ? s.job.id : null;
-    if (jid !== jobId) { jobId = jid; job = jid ? (await call('job')).job : null; drawPreview(); }
+    const key = s.job ? `${s.job.id}:${s.job.state}:${s.job.resume_at}` : null;
+    if (key !== jobKey) {
+      const sameJob = job && s.job && job.id === s.job.id;
+      jobKey = key; job = s.job ? (await call('job')).job : null;
+      if (!sameJob || resumeLine == null || !s.job.resumable) resumeLine = s.job && s.job.resumable ? s.job.resume_at : null;
+      renderRecover(s); drawPreview();
+    }
   } catch (e) {
     if (e.message !== 'Token required') { $('state').textContent = 'Bridge offline'; $('chip').className = 'chip alarm'; }
   }
@@ -231,26 +277,26 @@ async function poll() {
 
 function render(s) {
   const state = s.connected ? s.state : 'Disconnected';
-  $('host').textContent = `${s.host} · bridge ${s.bridge}`;
+  $('host').textContent = `${machName || s.host} · bridge ${s.bridge}`;
   $('state').textContent = s.job && s.job.running ? `${state} · ${Math.round(s.job.progress * 100)}%` : state;
   $('chip').className = 'chip ' + ({ Idle: 'idle', Run: 'run', Jog: 'run', Hold: 'hold', Door: 'hold', Alarm: 'alarm', Disconnected: 'alarm' }[state] || '');
   $('pX').textContent = s.connected ? s.pos[0].toFixed(2) : '—';
   $('pY').textContent = s.connected ? s.pos[1].toFixed(2) : '—';
   $('portInfo').textContent = s.connected ? `${s.port.split('/').pop()} · ${s.baud}` : 'not connected';
-  if (s.work) bed = s.work;
+  if (prof.bedW) bed = [prof.bedW, prof.bedH]; else if (s.work) bed = s.work;
   const j = s.job, running = j && j.running, held = state === 'Hold';
   $('jobId').textContent = j ? `#${j.id}` : '';
   $('jobName').textContent = j ? j.name : 'Nothing plotting';
   $('jobSub').textContent = !j ? 'Send a plot from Plot Studio or drop a G-code file below.'
-    : running ? (held ? (j.paused ? 'Paused — press Resume to continue' : 'Waiting at a pause (M0) — change the pen, then Resume') : 'Plotting…')
-    : j.error ? 'Stopped' : `Finished at ${new Date(j.ended * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    : running ? (held ? (j.paused ? 'Paused — press Resume to continue' : 'Waiting at a pause (M0) — change the pen, then Resume') : j.resume_from ? `Plotting… (resumed at line ${j.resume_from + 1})` : 'Plotting…')
+    : j.state === 'finished' ? `Finished at ${clock(j.ended)}` : j.resumable ? 'Not finished — it can be resumed (see above)' : 'Stopped';
   const pct = j ? j.progress : 0;
   $('bar').firstElementChild.style.width = (pct * 100) + '%';
   $('bar').className = 'bar' + (j && j.error ? ' err' : j && !running ? ' done' : '');
   $('sPct').textContent = j ? Math.round(pct * 100) + '%' : '—';
   $('sEl').textContent = j ? fmt(j.elapsed) : '—';
   $('sEta').textContent = running ? (j.eta != null ? fmt(j.eta) : '…') : '—';
-  $('sLines').textContent = j ? `${j.sent}/${j.total}` : '—';
+  $('sLines').textContent = j ? `${j.done}/${j.total}` : '—';
   $('msg').innerHTML = (j && j.error ? `<div class="callout bad">${esc(j.error)}</div>` : '')
     + (s.alarm ? `<div class="callout bad">${esc(s.alarm)} — check the machine, then unlock or home it.</div>` : '')
     + (!s.connected && s.error ? `<div class="callout">${esc(s.error)}</div>` : '');
@@ -261,7 +307,35 @@ function render(s) {
   const busy = !s.connected || running;
   document.querySelectorAll('#jog .btn, #bUp, #bDown').forEach(b => b.disabled = busy);
   $('bConn').hidden = s.connected; $('bDisc').hidden = !s.connected;
+  $('bZero').disabled = busy;
+  renderRecover(s);
   if (running) drawPreview();
+}
+const clock = t => t ? new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+const strokes = () => (job && job.strokes) || [];
+function renderRecover(s) {
+  const j = s && s.job, show = !!(j && j.resumable && job && job.id === j.id);
+  $('rec').hidden = !show;
+  if (!show) return;
+  $('recName').textContent = j.name;
+  $('recWhen').textContent = j.ended ? 'stopped ' + clock(j.ended) : '';
+  $('recWhy').textContent = `${j.error || 'Stopped'} · ${Math.round(j.progress * 100)}% drawn (${j.done.toLocaleString()} of ${j.total.toLocaleString()} lines)`;
+  // position: does the controller still agree with where the pen stopped?
+  const was = j.pos, now = s.connected ? s.pos : null, same = was && now && Math.hypot(was[0] - now[0], was[1] - now[1]) < 0.05, fresh = s.pos_fresh !== false;
+  $('recPos').innerHTML = !s.connected ? '<span class="warn-t">Connect the plotter first.</span>' : !fresh ? 'Reading the position…'
+    : !was ? `Position now <b>X ${now[0].toFixed(2)} Y ${now[1].toFixed(2)}</b>`
+    : same ? `<span class="ok-t">✓ Unchanged</span> — the pen is where the plot stopped (<b>X ${now[0].toFixed(2)} Y ${now[1].toFixed(2)}</b>).`
+    : `<span class="warn-t">The plotter reads <b>X ${now[0].toFixed(2)} Y ${now[1].toFixed(2)}</b> but the pen stopped at <b>X ${was[0].toFixed(2)} Y ${was[1].toFixed(2)}</b></span> — it probably restarted. ${s.homing ? 'Home it, or' : 'Move the pen to the origin by hand and press “Pen is at 0, 0”, or'} if nobody moved the pen, press “Pen hasn't moved”.`;
+  $('recHome').hidden = !s.homing;
+  $('recKeep').hidden = !was || same || !fresh;
+  if (was) $('recKeep').textContent = `Pen hasn't moved (X ${was[0].toFixed(1)} Y ${was[1].toFixed(1)})`;
+  const S = strokes(), at = resumeLine ?? j.resume_at, k = S.filter(v => v <= at).length;
+  $('recAt').textContent = S.includes(at) ? `stroke ${k} of ${S.length}` : `line ${at + 1}`;
+  $('recAtInfo').textContent = at < j.done ? `Line ${at + 1} — ${(j.done - at).toLocaleString()} lines already drawn are traced again` : at > j.done ? `Line ${at + 1} — skips ${(at - j.done).toLocaleString()} lines` : `Line ${at + 1}, where it stopped`;
+  $('recPrev').disabled = !S.some(v => v < at);
+  $('recNext').disabled = !S.some(v => v > at);
+  const busy = !s.connected || s.state === 'Alarm';
+  ['recGo', 'recHome', 'recZero', 'recKeep'].forEach(id => $(id).disabled = busy || (id !== 'recGo' && !fresh));
 }
 
 function addLog(entries) {
@@ -289,16 +363,22 @@ function drawPreview() {
   ctx.fillStyle = css('--paper'); ctx.fillRect(ox, oy - bed[1] * k, bed[0] * k, bed[1] * k);
   $('pvInfo').textContent = `${bed[0]} × ${bed[1]} mm`;
   if (!job) return;
-  const done = st && st.job && st.job.id === job.id ? st.job.sent : 0, finished = st && st.job && !st.job.running && !st.job.error;
+  const sj = st && st.job && st.job.id === job.id ? st.job : null, done = sj ? sj.done : 0, finished = sj && sj.state === 'finished';
+  const from = sj && sj.resumable ? (resumeLine ?? sj.resume_at) : done;   // lines from..done will be traced again
   const M = job.moves; ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(1, 0.45 * k);
-  for (const pass of [0, 1]) {
-    ctx.beginPath(); ctx.strokeStyle = pass ? css('--ink') : css('--todo');
+  for (const pass of [0, 1, 2]) {   // to do, drawn, drawn but traced again on resume
+    ctx.beginPath(); ctx.strokeStyle = [css('--todo'), css('--ink'), css('--accent')][pass];
     for (let i = 1; i < M.length; i++) {
       const m = M[i]; if (!m[3]) continue;
-      const isDone = finished || m[0] < done; if (isDone !== !!pass) continue;
+      const l = m[0], kind = finished || l < Math.min(from, done) ? 1 : l < done ? 2 : 0;
+      if (kind !== pass) continue;
       const a = P(M[i - 1][1], M[i - 1][2]), b = P(m[1], m[2]); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
     }
     ctx.stroke();
+  }
+  if (sj && sj.resumable) {   // where the resumed plot starts
+    let q = null; for (const m of M) { if (m[0] >= from) break; q = m; }
+    if (q) { const [rx, ry] = P(q[1], q[2]); ctx.strokeStyle = css('--warn'); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(rx, ry, 8, 0, 7); ctx.stroke(); }
   }
   if (st && st.connected) {
     const [hx, hy] = P(st.pos[0], st.pos[1]);
@@ -310,16 +390,24 @@ new ResizeObserver(drawPreview).observe($('pv'));
 
 // ---------- controls ----------
 $('bPause').onclick = () => act(st && st.state === 'Hold' ? 'resume' : 'pause');
-$('bStop').onclick = () => { if (confirm('Stop the plot? The machine is reset and the pen lifted.')) act('stop', { penUp: `M3 S${$('sUp').value}` }); };
+$('bStop').onclick = () => { if (confirm('Stop the plot? The machine is reset and the pen lifted.')) act('stop', { penUp: `M3 S${prof.up}` }); };
 $('bUnlock').onclick = () => act('unlock');
+$('bZero').onclick = () => act('origin', { x: 0, y: 0 });
+$('recHome').onclick = () => act('home');
+$('recZero').onclick = () => { if (confirm('Is the pen exactly at the origin (0, 0)? This position becomes X0 Y0.')) act('origin', { x: 0, y: 0 }); };
+$('recKeep').onclick = () => { const p = st.job.pos; act('origin', { x: p[0], y: p[1] }); };
+const stepResume = d => { const S = strokes(), at = resumeLine ?? st.job.resume_at; const n = d < 0 ? S.filter(v => v < at).pop() : S.find(v => v > at); if (n != null) { resumeLine = n; renderRecover(st); drawPreview(); } };
+$('recPrev').onclick = () => stepResume(-1);
+$('recNext').onclick = () => stepResume(1);
+$('recGo').onclick = async () => { $('recGo').disabled = true; try { await call('job/resume', { from: resumeLine ?? st.job.resume_at }); toast('Resumed'); } catch (e) { toast(e.message, true); } };
+$('recDrop').onclick = () => { if (confirm('Discard the unfinished plot? It can no longer be resumed.')) act('job/discard'); };
 $('bHome').onclick = () => act('home');
 let step = 10;
 $('steps').onclick = e => { if (e.target.tagName !== 'BUTTON') return; step = +e.target.textContent; [...$('steps').children].forEach(b => b.classList.toggle('on', b === e.target)); };
 document.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { const [x, y] = b.dataset.j.split(',').map(Number); act('jog', { x: x * step, y: y * step, feed: 3000 }); });
 $('bOrigin').onclick = () => act('send', { line: 'G90 G0 X0 Y0' });
-for (const id of ['sUp', 'sDown']) { const v = store.get('mon.' + id); if (v) $(id).value = v; $(id).onchange = () => store.set('mon.' + id, $(id).value); }
-$('bUp').onclick = () => act('send', { line: `M3 S${$('sUp').value}` });
-$('bDown').onclick = () => act('send', { line: `M3 S${$('sDown').value}` });
+$('bUp').onclick = () => act('send', { line: `M3 S${prof.up}` });
+$('bDown').onclick = () => act('send', { line: `M3 S${prof.down}` });
 $('sendF').onsubmit = e => { e.preventDefault(); const v = $('sendIn').value.trim(); if (!v) return; act('send', { line: v }); $('sendIn').value = ''; };
 
 async function loadPorts() {
@@ -334,8 +422,9 @@ $('bDisc').onclick = () => act('disconnect');
 
 async function runFile(f) {
   if (!f) return;
+  if (st && st.job && st.job.resumable && !confirm(`Start ${f.name}? The unfinished plot “${st.job.name}” can then no longer be resumed.`)) return;
   const text = await f.text();
-  try { await call('run', { gcode: text, name: f.name, penUp: $('sUp').value }); toast(`Started ${f.name}`); } catch (e) { toast(e.message, true); }
+  try { await call('run', { gcode: text, name: f.name, penUp: prof.up, dwell: prof.dwell }); toast(`Started ${f.name}`); } catch (e) { toast(e.message, true); }
 }
 $('file').onchange = e => { runFile(e.target.files[0]); e.target.value = ''; };
 const drop = $('drop');
@@ -343,6 +432,10 @@ drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); runFile(e.dataTransfer.files[0]); };
 
+// Plot Studio is hosted, not kept on the bridge: the link opens it with this bridge's address filled in
+fetch('api/info').then(r => r.json()).then(i => {
+  if (i.studio && !i.studio_local) document.querySelectorAll('.studioLink').forEach(a => { a.href = i.studio + '?bridge=' + encodeURIComponent(location.origin); a.target = '_blank'; a.rel = 'noopener'; });
+}).catch(() => {});
 poll(); loadPorts();
 </script>
 </body>
