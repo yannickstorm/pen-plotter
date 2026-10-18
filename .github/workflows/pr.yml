@@ -1,0 +1,63 @@
+name: Plot Studio PR build
+
+# Builds the hosted Plot Studio for every pull request, checks that it is sound, and attaches
+# the single-file page and the bridge package to the run so the change can be opened and tried.
+# Nothing is deployed from here; GitHub Pages is only deployed from main (pages.yml).
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the page
+        run: |
+          mkdir -p _site
+          python3 build_artifact.py _site/plot-studio.html
+      - name: Check the scripts
+        run: |
+          python3 -m py_compile server.py send.py build_artifact.py bridge/bridge.py
+          node .github/scripts/check_page.mjs _site/plot-studio.html
+      - name: Package the bridge
+        run: |
+          mkdir -p dist/plotter-bridge
+          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md studio.html dist/plotter-bridge/
+          tar -czf dist/plotter-bridge.tar.gz -C dist plotter-bridge
+      - id: page
+        uses: actions/upload-artifact@v4
+        with:
+          name: plot-studio-pr-${{ github.event.pull_request.number }}
+          path: _site/plot-studio.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plotter-bridge-pr-${{ github.event.pull_request.number }}
+          path: dist/plotter-bridge.tar.gz
+      - name: Comment on the pull request
+        # forks get a read-only token, so only comment on branches of this repository
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGE_URL: ${{ steps.page.outputs.artifact-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          body="<!-- plot-studio-pr-build -->
+          **Plot Studio built** for \`${SHA:0:7}\`.
+          - [Download plot-studio.html]($PAGE_URL) (single file, open it in a browser)
+          - [All build artifacts and logs]($RUN_URL)"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | contains("<!-- plot-studio-pr-build -->")) | .id' | head -1)
+          if [ -n "$id" ]; then gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else gh pr comment ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" --body "$body"; fi
