@@ -615,6 +615,59 @@ async def jog_old_grbl():
         await b.close()
 
 
+async def bridge_update_card():
+    """The Info tab of a bridge machine shows the bridge software and has a button to look for a new release."""
+    print("bridge update button")
+    import tempfile
+    import threading
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import new_bridge
+    P = new_bridge(tempfile.mkdtemp())
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    B.Handler.updater = B.Updater(P, "x/y", "http://127.0.0.1:1", 3600, tempfile.mkdtemp(), lambda: None)   # no GitHub here: a check ends in an error
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
+        check(await wait(b, "__studio.conn().kind === 'bridge'", 8000), "connected to the bridge")
+        await click(b, "#wsSeg [data-ws=machine]")
+        check(await wait(b, "!document.getElementById('swTab').hidden", 5000), "a bridge machine has a Software tab")
+        await click(b, "[data-mtab=sw]")
+        check(await wait(b, "document.getElementById('swPane').textContent.includes('Bridge software') && document.getElementById('swPane').textContent.includes('Releases')", 5000), "it shows the bridge version, the update settings and the releases")
+        check(await wait(b, "document.getElementById('swPane').textContent.includes('Cannot reach GitHub')", 8000), "…and says so when GitHub cannot be reached")
+        await click(b, "#swPane [data-sw=check]")
+        check(await wait(b, "document.getElementById('swPane').textContent.includes('the last update failed')", 12000), "“Check for updates now” asks the bridge and shows the result")
+        await click(b, "#swPane [data-sw=mode][data-v=notify]")
+        check(await wait(b, "document.querySelector('#swPane [data-sw=mode][data-v=notify]').classList.contains('on')", 5000) and B.Handler.updater.cfg["mode"] == "notify", "choosing “Tell me” is saved on the bridge")
+        await b.js("document.getElementById('swHours').value = '24'; document.getElementById('swHours').onchange()")
+        check(await wait(b, "document.getElementById('swHours').value === '24'", 5000) and B.Handler.updater.cfg["hours"] == 24, "the interval is saved on the bridge")
+        U, picked = B.Handler.updater, []
+        U.releases = lambda fresh=False: [{"tag": "v9.0.0", "version": "9.0.0", "name": "n", "published": "2026-01-01T00:00:00Z", "notes": "big news", "prerelease": False, "installable": True, "current": False, "newer": True},
+                                         {"tag": B.VERSION and "v" + B.VERSION, "version": B.VERSION, "name": "n", "published": None, "notes": "", "prerelease": False, "installable": True, "current": True, "newer": False},
+                                         {"tag": "v0.9.0", "version": "0.9.0", "name": "n", "published": None, "notes": "", "prerelease": False, "installable": True, "current": False, "newer": False}]
+        U.install = lambda tag: picked.append(tag)
+        await b.js("__studio.setWs('plot'); __studio.setWs('machine')")
+        await click(b, "[data-mtab=sw]")
+        check(await wait(b, "document.querySelectorAll('#swPane details.rel').length === 3", 8000), "the releases are listed")
+        check(await b.js("document.querySelector('#swPane [data-tag=\"v9.0.0\"]').textContent") == "Update to this" and await b.js("document.querySelector('#swPane [data-tag=\"v0.9.0\"]').textContent") == "Go back to this", "newer ones offer “Update to this”, older ones “Go back to this”")
+        await click(b, "#swPane [data-tag=\"v9.0.0\"]")
+        for _ in range(100):
+            if picked: break
+            await asyncio.sleep(0.05)
+        check(picked == ["v9.0.0"], f"the button installs that release ({picked})")
+        mon = await b.js("fetch('/').then(r => r.text()).then(t => t.includes('updNow'))")
+        check(mon, "the bridge monitor has the same button")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+        B.Handler.updater = None
+
+
+
 async def servo_test_card():
     print("servo wait test G-code")
     b = await Browser(1400, 900).start()
@@ -650,7 +703,7 @@ async def servo_test_card():
 
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

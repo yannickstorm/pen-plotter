@@ -27,7 +27,7 @@ Only Python 3 is needed on Linux and macOS (no packages). On Windows, run `pip i
    sudo ./install.sh
    ```
 
-   This copies `bridge.py` and `monitor.html` to `/opt/plotter-bridge` (and removes an old `studio.html` there: the studio is not kept on the bridge). The bridge then keeps itself up to date (see [Automatic updates](#automatic-updates)); to update by hand, download the new release (or `git pull`) and run `sudo ./install.sh` again.
+   This copies `bridge.py` and `monitor.html` to `/opt/plotter-bridge` (and removes an old `studio.html` there: the studio is not kept on the bridge). The bridge then keeps itself up to date (see [Updates](#updates)); to update by hand, download the new release (or `git pull`) and run `sudo ./install.sh` again.
 
    Add options at the end, e.g. `sudo ./install.sh --token s3cret --baud 115200`.
 4. Open `http://raspberrypi.local:8080/` (use the Pi's IP address if `.local` names don't work on your network).
@@ -137,11 +137,18 @@ All endpoints are under `/api/`, JSON in and out, with CORS enabled.
 
 `status` also carries `machine_rev` (to notice settings changes) and `grbl` (`version` and the settings the controller reported: `$22`, `$110`, `$111`, `$130`, `$131`…). It reports the job's `state` (`running`, `finished`, `stopped`, `failed`, `interrupted`), `done` (lines drawn), `resumable`, `resume_at` and `pos` (where the pen was when it stopped).
 
-## Automatic updates
+## Updates
 
-Every 6 hours (and a minute after start) the bridge asks GitHub for the newest **release** of `yannickstorm/pen-plotter`. If it is newer than the running version it downloads `plotter-bridge.tar.gz`, checks it (the sha256 GitHub lists for the file, then that the new `bridge.py` compiles and reports the release's version), replaces `bridge.py` and `monitor.html` (the old ones stay as `*.prev`) and restarts itself. It **never installs while a plot is running**: the update waits for the plotter to be idle. Pre-releases and drafts are ignored.
+Plot Studio's **Machine → Software** tab (for a bridge machine) lists the releases of `yannickstorm/pen-plotter` with their notes, installs any of them (a newer one, or an older one to go back), and sets how the bridge updates itself:
 
-- `GET api/info` shows `update: {current, latest, state, checked, error}`; `POST api/update` checks right now.
-- Switch it off with `--no-update` (or `BRIDGE_NO_UPDATE=1`); `--update-hours N` changes the interval; `--update-repo owner/name` follows another repository.
+- **Install** (default): every few hours (and a minute after start) the bridge looks for a newer release and installs it as soon as the plotter is idle.
+- **Tell me**: it looks, shows "a new release is available", and waits for you to press *Update*.
+- **Off**: it never looks by itself; you can still check and install from the tab.
+
+Installing downloads `plotter-bridge.tar.gz`, checks it (the sha256 GitHub lists for the file, then that the new `bridge.py` compiles and carries the release's version), replaces `bridge.py` and `monitor.html` (the old ones stay as `*.prev`) and restarts the bridge. It is **never done while a plot is running**: an automatic update waits, a manual install is refused. Pre-releases are listed but not installed.
+
+- The choice is kept on the bridge in `update.json` in the state folder (`--state`).
+- `GET api/releases` lists the releases; `POST api/update` checks now; `POST api/update/config {mode, hours}`; `POST api/update/install {tag}`; `GET api/info` carries `update: {current, latest, available, state, checked, error, mode, hours}`.
+- `--no-update` (or `BRIDGE_NO_UPDATE=1`) removes all of it; `--update-hours N` and `--update-repo owner/name` set the first-start defaults.
 - The install folder must be writable by the service user: `install.sh` does that. A bridge installed with an older `install.sh` needs one `sudo ./install.sh` first (or `sudo chown -R pi /opt/plotter-bridge`).
-- To go back: copy `bridge.py.prev` over `bridge.py` and add `--no-update`.
+- To go back by hand: copy `bridge.py.prev` over `bridge.py`.

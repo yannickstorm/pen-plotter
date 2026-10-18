@@ -262,6 +262,12 @@
   .statusbar b { color: var(--fg); font: 500 12px var(--mono); }
   .statusbar .warn { color: var(--warn); }
 
+  details.rel { border-top: 1px solid var(--line); padding: 8px 0; }
+  details.rel summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+  details.rel summary::-webkit-details-marker { display: none; }
+  .relnotes { white-space: pre-wrap; font-size: 12px; color: var(--muted); margin: 8px 0 2px; max-height: 220px; overflow: auto; }
+  .rtag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .rtag.ok { background: color-mix(in srgb, #1a8f5a 16%, transparent); color: #1a8f5a; }
   .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 12px 12px 0; }
   .tab, .mtab { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 9px; }
   .tab:hover, .mtab:hover { background: var(--panel-2); color: var(--fg); }
@@ -489,13 +495,14 @@
   </aside>
   <!-- machine settings -->
   <aside class="right" data-ws="machine">
-    <nav class="tabs"><button class="mtab on" data-mtab="ctl">Control</button><button class="mtab" data-mtab="set">Settings</button><button class="mtab" data-mtab="info">Info</button></nav>
+    <nav class="tabs" id="mtabs"><button class="mtab on" data-mtab="ctl">Control</button><button class="mtab" data-mtab="set">Settings</button><button class="mtab" data-mtab="info">Info</button><button class="mtab" data-mtab="sw" id="swTab" hidden>Software</button></nav>
     <div class="panes">
       <div class="pane on" id="ctlPane"><div class="card" id="moveCard"></div>
         <div class="card"><h3>Console <small id="conInfo"></small></h3><div class="console" id="conLog"></div>
           <form class="row" id="conForm" style="margin-top:8px;flex-wrap:nowrap"><input class="input mono grow" id="conIn" placeholder="G-code or $ command" autocomplete="off" spellcheck="false"><button class="btn sm">Send</button></form></div></div>
       <div class="pane" id="machPane"></div>
       <div class="pane" id="infoPane"></div>
+      <div class="pane" id="swPane"></div>
     </div>
   </aside>
   <!-- plot: live status + log -->
@@ -5613,14 +5620,81 @@ let mtab = 'ctl';
 function setMtab(t) {
   mtab = t;
   document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b.dataset.mtab === t));
-  for (const [k, id] of [['ctl', 'ctlPane'], ['set', 'machPane'], ['info', 'infoPane']]) $(id).classList.toggle('on', k === t);
+  for (const [k, id] of [['ctl', 'ctlPane'], ['set', 'machPane'], ['info', 'infoPane'], ['sw', 'swPane']]) $(id).classList.toggle('on', k === t);
   renderMachineViews();
 }
 document.querySelectorAll('.mtab').forEach(b => b.onclick = () => setMtab(b.dataset.mtab));
 function renderMachineViews() {
-  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderInfo(); }
+  const am = activeMachine(), isBridge = !!am && am.via === 'bridge';
+  $('swTab').hidden = !isBridge; $('mtabs').style.gridTemplateColumns = `repeat(${isBridge ? 4 : 3}, 1fr)`;
+  if (!isBridge && mtab === 'sw') return setMtab('ctl');
+  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderInfo(); if (mtab === 'sw') { clearTimeout(swTimer); renderSw(); const d = swd[am && am.id]; if (isBridge && (!d || Date.now() - d.at > 9000)) loadSw(am); } }
   renderConn(); if (ws === 'plot') renderQueue();
 }
+// ---------- Software tab: the bridge's releases, install one, and how it updates itself ----------
+const swd = {};   // machine id → {i: /api/info, rel: /api/releases, err, at}
+let swTimer = null;
+async function bcall(m, path, body) {
+  const r = await fetch(m.conn.base + '/api/' + path, {method: body ? 'POST' : 'GET', headers: {'X-Bridge-Token': m.conn.token || '', 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+async function loadSw(m, fresh) {
+  const d = swd[m.id] || (swd[m.id] = {});
+  d.at = Date.now();
+  try { d.i = await (await fetch(m.conn.base + '/api/info')).json(); d.err = null; } catch { d.i = null; d.err = 'The bridge does not answer.'; }
+  if (d.i && d.i.update) { try { d.rel = (await bcall(m, 'releases' + (fresh ? '?fresh=1' : ''))).releases; d.relErr = null; } catch (e) { d.relErr = e.message; } }
+  renderSw();
+  clearTimeout(swTimer);
+  const busy = d.i && d.i.update && ['checking', 'downloading', 'waiting', 'restarting'].includes(d.i.update.state);
+  if (ws === 'machine' && mtab === 'sw') swTimer = setTimeout(() => { const a = activeMachine(); if (a && a.via === 'bridge') loadSw(a); }, busy || !d.i ? 2000 : 10000);
+}
+const SW_STATE = {checking: 'looking for a new release…', downloading: 'downloading…', waiting: 'a new release is ready — it installs as soon as the plotter is idle', restarting: 'restarting…',
+  current: 'up to date', available: 'a new release is available', error: 'the last update failed', idle: 'not checked yet'};
+function renderSw() {
+  const el = $('swPane'), m = activeMachine();
+  if (!m || m.via !== 'bridge') return setHTML(el, '<div class="empty"><b>Bridge software</b>Only plotters connected through a Plotter Bridge have software to update.</div>');
+  const d = swd[m.id];
+  if (!d) { loadSw(m); return setHTML(el, '<div class="empty">…</div>'); }
+  if (!d.i) return setHTML(el, `<div class="card"><h3>Bridge software</h3><p class="note" style="margin-top:0">${esc(d.err || '…')}</p></div>`);
+  const i = d.i, u = i.update;
+  if (!u) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">This bridge is older than 1.2 and cannot update itself. Update it once by hand (bridge README, “Automatic updates”); after that it keeps itself current and this tab works.</p></div>`);
+  if (!u.enabled && u.mode == null) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">Updates are switched off on this bridge (<code>--no-update</code>).</p></div>`);
+  const hours = [[1, 'every hour'], [6, 'every 6 hours'], [24, 'every day'], [168, 'every week']], opt = (v, t, cur) => `<option value="${v}" ${cur ? 'selected' : ''}>${t}</option>`;
+  const rel = (d.rel || []).map(r => {
+    const act = r.current ? '<span class="rtag ok">installed</span>' : !r.installable ? '' : `<button class="btn sm ${r.newer ? 'primary' : ''}" data-sw="install" data-tag="${esc(r.tag)}" data-new="${r.newer ? 1 : 0}">${r.newer ? 'Update to this' : 'Go back to this'}</button>`;
+    const day = r.published ? new Date(r.published).toLocaleDateString() : '';
+    return `<details class="rel"><summary><b>${esc(r.version)}</b> <span class="note" style="margin:0">${esc(day)}${r.prerelease ? ' · pre-release' : ''}</span>${r.newer ? ' <span class="rtag">newer</span>' : ''}<span class="grow"></span>${act}</summary>
+      <div class="relnotes">${esc(r.notes || 'No release notes.')}</div></details>`;
+  }).join('');
+  setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3>
+      <p class="note" style="margin-top:0">${esc(SW_STATE[u.state] || u.state)}${u.latest ? ` · newest release ${esc(u.latest)}` : ''}${u.checked ? ` · checked ${new Date(u.checked * 1000).toLocaleTimeString()}` : ''}${u.error ? `<br><span style="color:var(--danger)">${esc(u.error)}</span>` : ''}</p>
+      <div class="row" style="margin-top:10px"><button class="btn sm" data-sw="check">Check for updates now</button></div></div>
+    <div class="card"><h3>Updating by itself</h3>
+      <div class="seg" id="swMode">${[['auto', 'Install'], ['notify', 'Tell me'], ['off', 'Off']].map(([v, t]) => `<button data-sw="mode" data-v="${v}" class="${u.mode === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <p class="note">${{auto: 'A new release is installed as soon as the plotter is idle — never during a plot.', notify: 'The bridge looks for new releases and shows them here; you decide when to install.', off: 'The bridge never looks by itself. You can still check and install from here.'}[u.mode] || ''}</p>
+      <label class="field"><span>Look for new releases</span><select id="swHours" ${u.mode === 'off' ? 'disabled' : ''}>${hours.map(([h, t]) => opt(h, t, Math.abs(u.hours - h) < 0.01)).join('')}${hours.some(([h]) => Math.abs(u.hours - h) < 0.01) ? '' : opt(u.hours, `every ${+u.hours.toFixed(2)} h`, true)}</select></label></div>
+    <div class="card"><h3>Releases</h3>${d.relErr ? `<p class="note" style="margin-top:0;color:var(--danger)">${esc(d.relErr)}</p>` : ''}${rel || (d.relErr ? '' : '<p class="note" style="margin-top:0">…</p>')}
+      <p class="note">Installing restarts the bridge (a few seconds; Plot Studio reconnects) and is refused while a plot is running. The previous files are kept as <code>bridge.py.prev</code>. Going back to an old release also takes its features back.</p></div>`);
+  const h = $('swHours'); if (h) h.onchange = () => swConfig(m, {hours: +h.value});
+}
+async function swConfig(m, c) {
+  try { await bcall(m, 'update/config', c); } catch (e) { toast('Could not save: ' + e.message, true); }
+  loadSw(m);
+}
+$('swPane').addEventListener('click', async e => {
+  const b = e.target.closest('[data-sw]'), m = activeMachine(); if (!b || !m) return;
+  const a = b.dataset.sw;
+  if (a === 'mode') swConfig(m, {mode: b.dataset.v});
+  else if (a === 'check') { try { await bcall(m, 'update', {}); toast('Looking for a new bridge release…'); } catch (er) { toast(er.message, true); } setTimeout(() => loadSw(m, true), 1200); }
+  else if (a === 'install') {
+    const v = b.dataset.tag.replace(/^v/, '');
+    if (!confirm(`${b.dataset.new === '1' ? 'Update' : 'Go back'} to bridge ${v}? The bridge restarts.`)) return;
+    try { await bcall(m, 'update/install', {tag: b.dataset.tag}); toast(`Installing ${v}…`); } catch (er) { return toast(er.message, true); }
+    setTimeout(() => loadSw(m, true), 2500);
+  }
+});
 function renderInfo() {
   const el = $('infoPane'), m = activeMachine(), st = server.st, here = m && conn.id === m.id && conn.kind;
   if (!m) return setHTML(el, '<div class="empty"><b>No machine selected</b>Pick one on the left, or add your plotter.</div>');
