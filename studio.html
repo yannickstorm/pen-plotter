@@ -62,6 +62,8 @@
   .mono { font-family: var(--mono); }
 
   /* ---------- top bar ---------- */
+  .verbar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; max-width: min(720px, calc(100vw - 24px)); padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--warn); box-shadow: var(--shadow, 0 8px 30px rgba(0,0,0,.25)); font-size: 12.5px; }
+  .verbar[hidden] { display: none; }
   .topbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .topbar .spacer { flex: 1; }
@@ -398,6 +400,7 @@
 </style>
 </head>
 <body data-ws="design">
+<div class="verbar" id="verBar" hidden></div>
 <header class="topbar">
   <div class="brand">
     <div class="brand-mark">
@@ -5421,12 +5424,40 @@ async function openDemo(m) {
   usb.adopt(await GrblSerial.saved(m.id));
   setConn({kind: 'demo', id: m.id});
 }
+// The oldest Plotter Bridge this Plot Studio works with. Rule: a change in the studio that needs a change in the bridge makes a new
+// MAJOR bridge release (2.0.0, …) and raises this in the same pull request; smaller, optional bridge features are minor releases that the
+// studio detects by itself. A bridge below this gets an "update it" prompt (bar at the bottom, machine card, Software tab).
+const BRIDGE_MIN = '1.2.0';
+const vkey = v => { const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(v || '')); return m ? [+m[1], +m[2], +m[3]] : null; };
+const vless = (a, b) => { const x = vkey(a), y = vkey(b); if (!x || !y) return false; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
+const bridgeOld = v => v != null && vless(v, BRIDGE_MIN);
+const bver = {};   // machine id → the version that bridge reports
+let verDismissed = '';
+function noteBridgeVersion(m, v) {
+  if (!m || v == null) return;
+  const first = bver[m.id] !== v; bver[m.id] = v;
+  if (first && bridgeOld(v) && conn.id === m.id) toast(`${m.name}: the bridge (${v}) is older than this Plot Studio needs (${BRIDGE_MIN}). Update it.`, true, {label: 'How', fn: openBridgeUpdate});
+  renderVerBar();
+}
+function openBridgeUpdate() { const m = activeMachine(); if (!m) return; setWs('machine'); selectMachine(m.id); setMtab('sw'); }
+function renderVerBar() {
+  const m = conn.kind === 'bridge' ? machineById(conn.id) : null, v = m && bver[m.id], old = bridgeOld(v), el = $('verBar');
+  if (!old || verDismissed === m.id + v) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<span><b>${esc(m.name)}</b>: its bridge (${esc(v)}) is older than this Plot Studio needs (${BRIDGE_MIN} or newer) — some functions will not work until it is updated.</span><button class="btn sm primary" data-vb="go">Update it</button><button class="btn ghost icon sm" data-vb="x" aria-label="Dismiss">✕</button>`;
+}
+$('verBar').addEventListener('click', e => {
+  const b = e.target.closest('[data-vb]'); if (!b) return;
+  if (b.dataset.vb === 'go') openBridgeUpdate();
+  else { const m = machineById(conn.id); if (m) verDismissed = m.id + bver[m.id]; renderVerBar(); }
+});
 async function openBridge(m) {
   const base = normBridge(m.conn.base), token = m.conn.token || '';
   try { await bridgeFetch(base, token, 'status'); }
   catch (e) { throw new Error(e.message === 'Failed to fetch' ? `No bridge answered at ${bridgeLabel(base)} — is it running and on the same network?` : e.message); }
   m.conn.base = base;
   setConn({kind: 'bridge', base, token, id: m.id});
+  fetch(base + '/api/info').then(r => r.json()).then(i => noteBridgeVersion(m, i.version)).catch(() => {});
   const reg = machineById(m.id);
   if (reg) { try { await syncProfile(reg); } catch (e) { toast('Could not read the settings from the bridge: ' + e.message, true); } }
 }
@@ -5550,6 +5581,7 @@ function cardHTML(m) {
       ${running ? `<div class="mc-bar"><div style="width:${j.progress * 100}%"></div></div>` : ''}
       ${m.err ? `<div class="mc-err">${esc(m.err)}</div>` : ''}
       ${m.err && /token/i.test(m.err) ? `<div class="row" style="margin-top:6px;flex-wrap:nowrap"><input class="input" type="password" placeholder="Access token" data-tok="${m.id}" autocomplete="off"><button class="btn sm primary" data-mc="token" data-id="${m.id}">Connect</button></div>` : ''}
+      ${m.via === 'bridge' && bridgeOld(bver[m.id]) ? `<div class="mc-hint">Bridge ${esc(bver[m.id])} is too old for this Plot Studio · <a href="#" data-mc="upd" data-id="${m.id}">Update</a></div>` : ''}
       ${!m.ready ? `<div class="mc-hint">Not set up yet · <a href="#" data-mc="setup" data-id="${m.id}">Run setup</a></div>` : ''}
     </div>
     <div class="mc-act">${!s.on && !m.err ? `<button class="btn sm ${on ? 'primary' : ''}" data-mc="connect" data-id="${m.id}">Connect</button>` : ''}
@@ -5571,11 +5603,12 @@ function renderMachineList() {
 $('machList').addEventListener('click', async e => {
   const b = e.target.closest('[data-mc]'); if (!b) return;
   const c = b.dataset.mc, m = machineById(b.dataset.id);
-  if (c === 'setup') e.preventDefault();
+  if (c === 'setup' || c === 'upd') e.preventDefault();
   if (c === 'card') { if (e.target.closest('input,a,button')) return; if (m) { if (conn.id === m.id) { selectMachine(m.id); setMtab('ctl'); } else activate(m); } }
   else if (c === 'connect' && m) activate(m);
   else if (c === 'token' && m) { const i = $('machList').querySelector(`[data-tok="${m.id}"]`); m.conn.token = i ? i.value : ''; saveMachines(); activate(m); }
   else if (c === 'menu' && m) openMachMenu(m, b);
+  else if (c === 'upd' && m) { selectMachine(m.id); setMtab('sw'); }
   else if (c === 'setup' && m) openWizard(m);
   else if (c === 'add') openWizard();
   else if (c === 'demo') { await connectDemo(); setMtab('ctl'); }
@@ -5609,6 +5642,7 @@ async function pollOthers() {   // status of the bridges that are in the list bu
       try {
         const r = await fetch(m.conn.base + '/api/status', {headers: {'X-Bridge-Token': m.conn.token || ''}, signal: ac.signal});
         mstat[m.id] = r.ok ? {up: true, st: await r.json(), at: Date.now()} : {up: r.status === 401, auth: r.status === 401, st: null, at: Date.now()};
+        if (bver[m.id] == null) fetch(m.conn.base + '/api/info').then(x => x.json()).then(i => { bver[m.id] = i.version; renderMachineList(); }).catch(() => {});
       } catch { mstat[m.id] = {up: false, st: null, at: Date.now()}; }
       clearTimeout(t);
     }));
@@ -5663,7 +5697,7 @@ function renderSw() {
   if (!d) { loadSw(m); return setHTML(el, '<div class="empty">…</div>'); }
   if (!d.i) return setHTML(el, `<div class="card"><h3>Bridge software</h3><p class="note" style="margin-top:0">${esc(d.err || '…')}</p></div>`);
   const i = d.i, u = i.update;
-  if (!u) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">This bridge is older than 1.2 and cannot update itself yet. Update it once from a terminal on the Pi — the script shows every step and what went wrong, if anything. After that it keeps itself current and this tab works.</p>${swCmd()}</div>`);
+  if (!u) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0;color:var(--warn)">${bridgeOld(i.version) ? `This Plot Studio needs bridge ${BRIDGE_MIN} or newer. ` : ''}</p><p class="note" style="margin-top:0">This bridge is older than 1.2 and cannot update itself yet. Update it once from a terminal on the Pi — the script shows every step and what went wrong, if anything. After that it keeps itself current and this tab works.</p>${swCmd()}</div>`);
   if (!u.enabled && u.mode == null) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">Updates are switched off on this bridge (<code>--no-update</code>).</p></div>`);
   const hours = [[1, 'every hour'], [6, 'every 6 hours'], [24, 'every day'], [168, 'every week']], opt = (v, t, cur) => `<option value="${v}" ${cur ? 'selected' : ''}>${t}</option>`;
   const rel = (d.rel || []).map(r => {
@@ -5673,6 +5707,7 @@ function renderSw() {
       <div class="relnotes">${esc(r.notes || 'No release notes.')}</div></details>`;
   }).join('');
   setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3>
+      ${bridgeOld(i.version) ? `<p class="note" style="margin-top:0;color:var(--warn)">This Plot Studio needs bridge ${BRIDGE_MIN} or newer — install the newest release below.</p>` : ''}
       <p class="note" style="margin-top:0">${esc(SW_STATE[u.state] || u.state)}${u.latest ? ` · newest release ${esc(u.latest)}` : ''}${u.checked ? ` · checked ${new Date(u.checked * 1000).toLocaleTimeString()}` : ''}${u.error ? `<br><span style="color:var(--danger)">${esc(u.error)}</span>` : ''}</p>
       <div class="row" style="margin-top:10px"><button class="btn sm" data-sw="check">Check for updates now</button></div></div>
     <div class="card"><h3>Updating by itself</h3>
@@ -6347,7 +6382,7 @@ let booted = false;
   } else autoConnect();
 })();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
-window.__studio = {conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
+window.__studio = {bver, noteBridgeVersion, bridgeOld, BRIDGE_MIN, conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
   servoTestPlan, servoTestGcode, chainSegs, servoHit, setServoPreview: v => { servoPreview = v; }, segText, machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
   cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};

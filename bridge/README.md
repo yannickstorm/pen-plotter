@@ -169,3 +169,13 @@ curl -fsSL https://raw.githubusercontent.com/yannickstorm/pen-plotter/main/bridg
 6. that the new bridge really answers with the new version — if not it shows the service log and the command to go back.
 
 `--force` reinstalls the same version. A failure at steps 1–4 changes nothing. Typical reasons: no internet or wrong clock on the Pi (step 2/3), a tag that does not exist (404, step 2), `/opt/plotter-bridge` not writable by the service user (step 5: run `sudo chown -R pi /opt/plotter-bridge`, or re-run `install.sh`).
+
+## Versions and compatibility
+
+Releases are numbered `MAJOR.MINOR.PATCH` (the tag `v1.3.1` sets the bridge's version).
+
+- **A change in Plot Studio that needs a change in the bridge makes a new major release** of the bridge (`v2.0.0`, …). In the same pull request, raise `BRIDGE_MIN` in `studio.html` to that version (e.g. `'2.0.0'`).
+- Optional bridge features are minor releases; the studio detects what a bridge can do and works without them.
+- Fixes are patch releases.
+
+Plot Studio reads the version from `api/info` when it connects. A bridge older than `BRIDGE_MIN` gets a bar at the bottom ("its bridge is older than this Plot Studio needs — Update it"), a hint on its machine card and a note in **Machine → Software**, which offers the update. Because the studio is hosted and always the newest, this is how a Pi that was not updated is noticed.
