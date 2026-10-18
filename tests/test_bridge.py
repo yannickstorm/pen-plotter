@@ -535,6 +535,7 @@ def studio_and_https(tmp):
     if real_find('studio.html'):
         st, _, body = get('/studio')
         check(st == 200 and b'Plot Studio' in body, 'running from a clone: /studio serves the repo copy')
+
     srv.shutdown()
 
     if not shutil.which('openssl'):
@@ -592,7 +593,16 @@ def self_update(tmp):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
         def do_GET(self):
-            if self.path.endswith('/releases/latest'):
+            if '/releases?' in self.path:
+                data = json.dumps([{'tag_name': t, 'name': 'Release ' + t, 'published_at': '2026-01-01T00:00:00Z', 'body': 'notes ' + t, 'prerelease': t.endswith('rc1'), 'draft': False,
+                                    'assets': [{'name': 'plotter-bridge.tar.gz'}]} for t in rel['listed']]).encode()
+            elif '/releases/tags/' in self.path:
+                t = self.path.rsplit('/', 1)[1]; blob = rel['by_tag'][t]; port = self.server.server_address[1]
+                data = json.dumps({'tag_name': t, 'assets': [{'name': 'plotter-bridge.tar.gz', 'browser_download_url': f'http://127.0.0.1:{port}/dl/{t}',
+                                   'digest': 'sha256:' + hashlib.sha256(blob).hexdigest()}]}).encode()
+            elif self.path.startswith('/dl/'):
+                data = rel['by_tag'][self.path[4:]]
+            elif self.path.endswith('/releases/latest'):
                 blob = rel['blob']; port = self.server.server_address[1]
                 data = json.dumps({'tag_name': rel['tag'], 'assets': [{'name': 'plotter-bridge.tar.gz', 'browser_download_url': f'http://127.0.0.1:{port}/dl',
                                     'digest': rel.get('digest', 'sha256:' + hashlib.sha256(blob).hexdigest())}]}).encode()
@@ -632,6 +642,35 @@ def self_update(tmp):
     check(restarts == [1] and 'VERSION = \'9.9.9\'' in open(folder + '/bridge.py').read(), 'when idle it is installed and the bridge restarts')
     check(open(folder + '/bridge.py.prev').read() == 'old' and open(folder + '/monitor.html').read() == '<p>new monitor', 'the old file is kept as .prev; the monitor is updated too')
     check(sorted(os.listdir(folder)) == ['bridge.py', 'bridge.py.prev', 'monitor.html', 'monitor.html.prev'] and not os.path.exists(tmp + '/escape.py'), 'nothing else is written')
+    # the release list, the mode, a manual install (also of an older release)
+    restarts.clear()
+    rel.update(listed=['v1.0.0', 'v9.9.9', 'v9.9.9-rc1', 'v1.2.0'], by_tag={'v1.0.0': tarball('1.0.0'), 'v9.9.9': tarball('9.9.9')}, tag='v9.9.9', blob=tarball('9.9.9'))
+    state = tmp + '/ustate'; os.makedirs(state)
+    u = B.Updater(P, 'x/y', api, 3600, folder, lambda: restarts.append(1), state)
+    lst = u.releases()
+    check([r['tag'] for r in lst][:3] == ['v9.9.9', 'v1.2.0', 'v1.0.0'], f"releases are listed newest first (pre-releases last) ({[r['tag'] for r in lst]})")
+    check(next(r for r in lst if r['tag'] == 'v1.0.0')['current'] and next(r for r in lst if r['tag'] == 'v9.9.9')['newer'] and not next(r for r in lst if r['tag'].endswith('rc1'))['installable'],
+          'the running one is marked, newer ones too, a pre-release tag cannot be installed')
+    u.configure({'mode': 'notify', 'hours': 12})
+    check(B.Updater(P, 'x/y', api, 3600, folder, None, state).cfg == {'mode': 'notify', 'hours': 12.0}, 'the mode and interval are kept across restarts')
+    try:
+        u.configure({'mode': 'sometimes'}); check(False, 'a bad mode is rejected')
+    except ValueError:
+        check(True, 'a bad mode is rejected')
+    open(folder + '/bridge.py', 'w').write('old')
+    check(u.check() is None and not restarts and u.info()['state'] == 'available' and u.info()['available'] and open(folder + '/bridge.py').read() == 'old',
+          'mode notify: a new release is reported, not installed')
+    P.job = {'running': True}
+    try:
+        u.install('v9.9.9'); check(False, 'a manual install is refused while a plot is running')
+    except RuntimeError:
+        check(not restarts, 'a manual install is refused while a plot is running')
+    P.job = None
+    check(u.install('v9.9.9') == 'v9.9.9' and restarts == [1] and "VERSION = '9.9.9'" in open(folder + '/bridge.py').read(), 'a manual install puts the chosen release in place and restarts')
+    restarts.clear()
+    check(u.install('v1.0.0') == 'v1.0.0' and "VERSION = '1.0.0'" in open(folder + '/bridge.py').read(), 'an older release can be installed too (going back)')
+    u.configure({'mode': 'off'}); u.wake.clear()
+
     srv.shutdown()
 
 

@@ -118,7 +118,7 @@
 <body>
 <header>
   <div class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 17c3-6 6-6 9 0s6 6 9 0"/><path d="M3 9c3-6 6-6 9 0s6 6 9 0" opacity=".5"/></svg></div>
-  <div class="grow"><h1>Plotter Monitor</h1><small id="host">connecting…</small></div>
+  <div class="grow"><h1>Plotter Monitor</h1><small id="host">connecting…</small> <small id="upd"></small></div>
   <a class="btn sm studioLink" href="studio" id="lnkStudio">Plot Studio</a>
   <div class="chip" id="chip"><i></i><span id="state">—</span></div>
 </header>
@@ -436,6 +436,16 @@ drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); runFile(
 fetch('api/info').then(r => r.json()).then(i => {
   if (i.studio && !i.studio_local) document.querySelectorAll('.studioLink').forEach(a => { a.href = i.studio + '?bridge=' + encodeURIComponent(location.origin); a.target = '_blank'; a.rel = 'noopener'; });
 }).catch(() => {});
+function showUpdate() {
+  fetch('api/info').then(r => r.json()).then(i => {
+    const u = i.update, el = document.getElementById('upd');
+    if (!u || !u.enabled) { el.textContent = 'v' + i.version + (u ? ' · updates off' : ''); return; }
+    const t = {checking: 'looking for an update…', downloading: 'downloading update…', waiting: 'update ready, installs when idle', restarting: 'restarting…', error: 'update failed: ' + (u.error || ''), current: 'up to date'}[u.state] || '';
+    el.innerHTML = 'v' + i.version + (t ? ' · ' + t : '') + ' · <a href="#" id="updNow">check for updates</a>';
+    document.getElementById('updNow').onclick = e => { e.preventDefault(); fetch('api/update', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Bridge-Token': token}, body: '{}'}).then(() => { el.textContent = 'checking…'; [1500, 4000, 9000].forEach(ms => setTimeout(showUpdate, ms)); }).catch(() => {}); };
+  }).catch(() => {});
+}
+showUpdate();
 poll(); loadPorts();
 </script>
 </body>
