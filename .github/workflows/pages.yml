@@ -1,14 +1,18 @@
 name: Plot Studio site
 
-# Builds the hosted Plot Studio (studio.html with the Great Wave example embedded),
-# deploys it to GitHub Pages from main, and publishes a release when a v* tag is pushed
-# or the workflow is run with a release tag. The release carries the single-file page
-# and plotter-bridge.tar.gz, the bridge for the Raspberry Pi with studio.html included.
+# Builds the hosted Plot Studio (studio.html with the Great Wave example embedded) and deploys it to
+# GitHub Pages: main at the root, and every open pull request from this repository at /pr-<number>/
+# as a temporary preview (it goes away when the pull request closes). Open a preview with ?demo to
+# plot the example on the built-in demo plotter.
+# A v* tag, or a run with a release tag, also publishes a release carrying the single-file page and
+# plotter-bridge.tar.gz, the bridge for the Raspberry Pi (Plot Studio is not part of it: it is hosted here).
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -16,32 +20,61 @@ on:
         required: false
         default: ''
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+permissions: {}           # each job asks for what it needs
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages            # one deploy at a time: each one carries main and all open previews
   cancel-in-progress: false
 
 jobs:
   build:
+    # pull requests from forks get no preview (their code would run with this repository's token)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
-      - name: Build the page
+        with:
+          fetch-depth: 0
+      - name: Build the site (main + open pull requests)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p _site
-          python3 build_artifact.py _site/index.html
-          # the page's "Save offline copy" button fetches this file
-          cp _site/index.html _site/plot-studio.html
+          set -euo pipefail
+          build() {   # build <git ref> <folder>: that version's own build script, so each preview is exactly its branch
+            local dir; dir=$(mktemp -d)
+            git worktree add --detach "$dir" "$1" >/dev/null
+            mkdir -p "_site/$2"
+            if grep -q -- --standalone "$dir/build_artifact.py"; then
+              python3 "$dir/build_artifact.py" "_site/$2/index.html" --standalone
+            else   # an older branch: its script makes the claude.ai copy (no <head>), so give it one with the viewport
+              python3 "$dir/build_artifact.py" "_site/$2/index.html"
+              sed -i '1i <!doctype html>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">' "_site/$2/index.html"
+            fi
+            cp "_site/$2/index.html" "_site/$2/plot-studio.html"   # the page's "Download Plot Studio" button fetches this
+          }
+          git fetch --quiet origin main
+          build origin/main .
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 50 --json number,headRefOid,isCrossRepository \
+            --jq '.[] | select(.isCrossRepository | not) | "\(.number) \(.headRefOid)"' |
+          while read -r n sha; do
+            git fetch --quiet origin "pull/$n/head"
+            build "$sha" "pr-$n"
+            echo "preview: pr-$n ($sha)"
+          done
+          ls -R _site | head -40
+      - name: Build the release page
+        run: |
+          mkdir -p dist
+          python3 build_artifact.py dist/plot-studio.html --standalone
       - name: Package the bridge
         env:
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           mkdir -p dist/plotter-bridge
-          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md studio.html dist/plotter-bridge/
+          cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/README.md dist/plotter-bridge/
           if [[ "$TAG" == v* ]]; then
             sed -i "s/^VERSION = .*/VERSION = '${TAG#v}'/" dist/plotter-bridge/bridge.py
           fi
@@ -53,19 +86,22 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: plot-studio
-          path: _site/plot-studio.html
+          path: dist/plot-studio.html
       - uses: actions/upload-artifact@v4
         with:
           name: plotter-bridge
           path: dist/plotter-bridge.tar.gz
 
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' && format('{0}pr-{1}/?demo', steps.deployment.outputs.page_url, github.event.number) || steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
@@ -74,6 +110,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
