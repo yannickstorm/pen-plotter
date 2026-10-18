@@ -1,14 +1,21 @@
 name: Plot Studio site
 
-# Builds the hosted Plot Studio (studio.html with the Great Wave example embedded),
-# deploys it to GitHub Pages from main, and publishes a release when a v* tag is pushed
-# or the workflow is run with a release tag. The release carries the single-file page
-# and plotter-bridge.tar.gz, the bridge for the Raspberry Pi with studio.html included.
+# One workflow for the hosted Plot Studio (studio.html with the Great Wave example embedded):
+#  · push to main      → deploys to GitHub Pages (the branch gh-pages, root)
+#  · pull request      → deploys a preview to <pages url>/pr-preview/pr-<number>/ and comments the link;
+#                        a new push to the same PR cancels the running build and starts again;
+#                        closing the PR removes the preview
+#  · v* tag, or a run with a release tag → also publishes a release with the single-file page and
+#                        plotter-bridge.tar.gz (the bridge for the Raspberry Pi, studio.html included)
+#
+# Pages must be set to "Deploy from a branch → gh-pages / (root)" in the repository settings.
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -18,24 +25,33 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
+  pull-requests: write
 
+# one run per pull request (a newer push cancels the older one); deploys from main and tags queue instead
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: false
+  group: pages-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Build the page
         run: |
           mkdir -p _site
           python3 build_artifact.py _site/index.html
           # the page's "Save offline copy" button fetches this file
           cp _site/index.html _site/plot-studio.html
+          touch _site/.nojekyll
+      - name: Check the scripts
+        run: |
+          python3 -m py_compile server.py send.py build_artifact.py bridge/bridge.py
+          node .github/scripts/check_page.mjs _site/index.html
       - name: Package the bridge
         env:
           TAG: ${{ inputs.release_tag || github.ref_name }}
@@ -47,9 +63,11 @@ jobs:
           fi
           chmod +x dist/plotter-bridge/install.sh dist/plotter-bridge/bridge.py
           tar -czf dist/plotter-bridge.tar.gz -C dist plotter-bridge
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
+          name: site
           path: _site
+          include-hidden-files: true
       - uses: actions/upload-artifact@v4
         with:
           name: plot-studio
@@ -60,15 +78,42 @@ jobs:
           path: dist/plotter-bridge.tar.gz
 
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+      - uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: _site
+          clean-exclude: pr-preview/   # keep the open pull requests' previews
+
+  preview:
+    # forks only get a read-only token, so they cannot publish a preview
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: _site
+          action: deploy
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          action: remove
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''

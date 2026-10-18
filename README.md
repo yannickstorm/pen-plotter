@@ -15,4 +15,4 @@ Tools for a CoreXY pen plotter running GRBL 1.1 with a servo pen (`M3 S0` = pen 
 
 Plot Studio also works opened directly as a file or hosted; without the server it exports G-code / SVG / HPGL instead of plotting.
 
-**Online:** <https://yannickstorm.github.io/pen-plotter/>. GitHub Pages deploys it from `main` (`.github/workflows/pages.yml`). Over HTTPS in Chrome or Edge it can plot straight to a plotter on USB through Web Serial. Each release also carries `plot-studio.html`, a single file that works offline. To publish a release, push a `v*` tag or run the workflow with a release tag.
+**Online:** <https://yannickstorm.github.io/pen-plotter/>. GitHub Pages deploys it from `main` (`.github/workflows/pages.yml`); every pull request gets its own preview at `/pr-preview/pr-<number>/`, rebuilt on each push and removed when the PR closes. Pages must be set to *Deploy from a branch → gh-pages* in the repository settings. Over HTTPS in Chrome or Edge it can plot straight to a plotter on USB through Web Serial. Each release also carries `plot-studio.html`, a single file that works offline. To publish a release, push a `v*` tag or run the workflow with a release tag.
