@@ -674,9 +674,64 @@ def self_update(tmp):
     srv.shutdown()
 
 
+def update_script(tmp):
+    print("update.sh shows what it does and what fails")
+    import hashlib, io, os, subprocess, tarfile
+    src = open(B.__file__, 'rb').read().decode()
+    def tarball(version):
+        body = re.sub(r"^VERSION = .*$", f"VERSION = '{version}'", src, flags=re.M).encode()
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode='w:gz') as t:
+            for name, data in {'plotter-bridge/bridge.py': body, 'plotter-bridge/monitor.html': b'<p>new', 'plotter-bridge/install.sh': b'#!/bin/sh\n'}.items():
+                ti = tarfile.TarInfo(name); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
+        return buf.getvalue()
+    rel = {'1.5.0': tarball('1.5.0'), '1.6.0': tarball('1.6.0'), 'bad': tarball('1.5.0')}
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            port = self.server.server_address[1]
+            if '/releases/' in self.path:
+                tag = 'latest' if self.path.endswith('latest') else self.path.rsplit('/', 1)[1]
+                if tag == 'latest': tag = 'v1.5.0'
+                v = tag.lstrip('v')
+                if v not in rel and v != 'mismatch':
+                    self.send_response(404); self.send_header('Content-Length', '0'); self.end_headers(); return
+                blob = rel.get(v) or rel['1.6.0']
+                digest = '0' * 64 if v == 'bad' else hashlib.sha256(blob).hexdigest()
+                data = json.dumps({'tag_name': 'v' + v if v != 'mismatch' else 'v1.7.0', 'assets': [{'name': 'plotter-bridge.tar.gz', 'browser_download_url': f'http://127.0.0.1:{port}/dl/{v}', 'digest': 'sha256:' + digest}]}).encode()
+            else:
+                data = rel.get(self.path[4:]) or rel['1.6.0']
+            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
+    srv = ThreadingHTTPServer(('127.0.0.1', 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    dest = tmp + '/opt'; os.makedirs(dest)
+    open(dest + '/bridge.py', 'w').write("VERSION = '1.0.0'\n"); open(dest + '/monitor.html', 'w').write('old')
+    env = dict(os.environ, BRIDGE_DEST=dest, BRIDGE_UPDATE_API=f'http://127.0.0.1:{srv.server_address[1]}', BRIDGE_SKIP_INSTALL='1', NO_COLOR='1')
+    script = os.path.join(os.path.dirname(B.__file__), 'update.sh')
+    def run(*args): r = subprocess.run(['bash', script, *args], env=env, capture_output=True, text=True, timeout=60); return r.returncode, r.stdout + r.stderr
+    rc, out = run('--tag', 'v1.5.0')
+    check(rc == 0 and 'updated: 1.0.0 → 1.5.0' in out and re.search(r"^VERSION = '1.5.0'", open(dest + '/bridge.py').read(), re.M), f'the newest release is installed ({rc}) {out[-600:] if rc else ""}')
+    check(all(f'[{i}]' in out for i in range(1, 6)) and 'checksum matches' in out, 'every step is shown, the checksum too')
+    check(open(dest + '/monitor.html').read() == '<p>new' and os.path.exists(dest + '/bridge.py.prev') and open(dest + '/monitor.html.prev').read() == 'old', 'new files in place, old ones kept as .prev')
+    rc, out = run('--tag', 'v1.5.0')
+    check(rc == 0 and 'Already up to date' in out, 'the same version is left alone')
+    rc, out = run('--tag', 'v1.5.0', '--force')
+    check(rc == 0 and 'updated' in out, '--force reinstalls it')
+    rc, out = run('--tag', 'v9.9.9')
+    check(rc == 1 and 'Update failed at step 2' in out and 'GitHub did not answer' in out and '404' in out, 'a missing release is explained (step 2, GitHub, 404)')
+    rc, out = run('--tag', 'vbad')
+    check(rc == 1 and 'does not match the checksum' in out, 'a corrupt download is refused')
+    rc, out = run('--tag', 'vmismatch')
+    check(rc == 1 and "says it is version '1.6.0', not 1.7.0" in out, 'a bridge.py that reports another version is refused')
+    check(re.search(r"^VERSION = '1.5.0'", open(dest + '/bridge.py').read(), re.M), 'after the failures the installed bridge is untouched')
+    env['BRIDGE_UPDATE_API'] = 'http://127.0.0.1:1'
+    rc, out = run('--tag', 'v1.6.0')
+    check(rc == 1 and 'GitHub did not answer' in out and 'ping' in out, 'no network: it says so and what to try')
+    srv.shutdown()
+
+
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, self_update):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, self_update, update_script):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

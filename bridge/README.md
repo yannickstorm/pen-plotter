@@ -27,7 +27,7 @@ Only Python 3 is needed on Linux and macOS (no packages). On Windows, run `pip i
    sudo ./install.sh
    ```
 
-   This copies `bridge.py` and `monitor.html` to `/opt/plotter-bridge` (and removes an old `studio.html` there: the studio is not kept on the bridge). The bridge then keeps itself up to date (see [Updates](#updates)); to update by hand, download the new release (or `git pull`) and run `sudo ./install.sh` again.
+   This copies `bridge.py` and `monitor.html` to `/opt/plotter-bridge` (and removes an old `studio.html` there: the studio is not kept on the bridge). The bridge then keeps itself up to date (see [Updates](#updates)); to update by hand use [`update.sh`](#updating-from-a-terminal).
 
    Add options at the end, e.g. `sudo ./install.sh --token s3cret --baud 115200`.
 4. Open `http://raspberrypi.local:8080/` (use the Pi's IP address if `.local` names don't work on your network).
@@ -152,3 +152,20 @@ Installing downloads `plotter-bridge.tar.gz`, checks it (the sha256 GitHub lists
 - `--no-update` (or `BRIDGE_NO_UPDATE=1`) removes all of it; `--update-hours N` and `--update-repo owner/name` set the first-start defaults.
 - The install folder must be writable by the service user: `install.sh` does that. A bridge installed with an older `install.sh` needs one `sudo ./install.sh` first (or `sudo chown -R pi /opt/plotter-bridge`).
 - To go back by hand: copy `bridge.py.prev` over `bridge.py`.
+
+### Updating from a terminal
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yannickstorm/pen-plotter/main/bridge/update.sh | sudo bash
+```
+
+(or `sudo /opt/plotter-bridge/update.sh` once it is installed). It is the way to get a bridge older than 1.2 onto a version that updates itself, and the thing to run when automatic updates do not work. It prints each step, what it found and — if something fails — which step and why, with what to try:
+
+1. what is installed now, and the service options it will keep (`--token`, `--http-port`, …);
+2. the release on GitHub (`--tag v1.3.0` for a specific one, also an older one; default: the newest);
+3. the download and its sha256 checksum;
+4. that the new `bridge.py` compiles and reports the release's version;
+5. installing (the old files stay as `*.prev`) and restarting the service;
+6. that the new bridge really answers with the new version — if not it shows the service log and the command to go back.
+
+`--force` reinstalls the same version. A failure at steps 1–4 changes nothing. Typical reasons: no internet or wrong clock on the Pi (step 2/3), a tag that does not exist (404, step 2), `/opt/plotter-bridge` not writable by the service user (step 5: run `sudo chown -R pi /opt/plotter-bridge`, or re-run `install.sh`).
