@@ -27,7 +27,7 @@ Only Python 3 is needed on Linux and macOS (no packages). On Windows, run `pip i
    sudo ./install.sh
    ```
 
-   This copies `bridge.py` and `monitor.html` to `/opt/plotter-bridge` (and removes an old `studio.html` there: the studio is not kept on the bridge). To update later: download the new release (or `git pull`), then run `sudo ./install.sh` again.
+   This copies `bridge.py` and `monitor.html` to `/opt/plotter-bridge` (and removes an old `studio.html` there: the studio is not kept on the bridge). The bridge then keeps itself up to date (see [Automatic updates](#automatic-updates)); to update by hand, download the new release (or `git pull`) and run `sudo ./install.sh` again.
 
    Add options at the end, e.g. `sudo ./install.sh --token s3cret --baud 115200`.
 4. Open `http://raspberrypi.local:8080/` (use the Pi's IP address if `.local` names don't work on your network).
@@ -136,3 +136,12 @@ All endpoints are under `/api/`, JSON in and out, with CORS enabled.
 | `POST job/discard` | forget the job and its checkpoint |
 
 `status` also carries `machine_rev` (to notice settings changes) and `grbl` (`version` and the settings the controller reported: `$22`, `$110`, `$111`, `$130`, `$131`…). It reports the job's `state` (`running`, `finished`, `stopped`, `failed`, `interrupted`), `done` (lines drawn), `resumable`, `resume_at` and `pos` (where the pen was when it stopped).
+
+## Automatic updates
+
+Every 6 hours (and a minute after start) the bridge asks GitHub for the newest **release** of `yannickstorm/pen-plotter`. If it is newer than the running version it downloads `plotter-bridge.tar.gz`, checks it (the sha256 GitHub lists for the file, then that the new `bridge.py` compiles and reports the release's version), replaces `bridge.py` and `monitor.html` (the old ones stay as `*.prev`) and restarts itself. It **never installs while a plot is running**: the update waits for the plotter to be idle. Pre-releases and drafts are ignored.
+
+- `GET api/info` shows `update: {current, latest, state, checked, error}`; `POST api/update` checks right now.
+- Switch it off with `--no-update` (or `BRIDGE_NO_UPDATE=1`); `--update-hours N` changes the interval; `--update-repo owner/name` follows another repository.
+- The install folder must be writable by the service user: `install.sh` does that. A bridge installed with an older `install.sh` needs one `sudo ./install.sh` first (or `sudo chown -R pi /opt/plotter-bridge`).
+- To go back: copy `bridge.py.prev` over `bridge.py` and add `--no-update`.

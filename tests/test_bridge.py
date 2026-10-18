@@ -12,7 +12,7 @@ import tempfile
 import threading
 import time
 import urllib.request
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'bridge'))
@@ -577,9 +577,67 @@ def studio_and_https(tmp):
         proc.wait(5)
 
 
+def self_update(tmp):
+    print("bridge updates itself from a release")
+    import hashlib, io, os, tarfile
+    src = open(B.__file__, 'rb').read().decode()
+    def tarball(version, extra=None):
+        body = re.sub(r"^VERSION = .*$", f"VERSION = '{version}'", src, flags=re.M).encode()
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode='w:gz') as t:
+            for name, data in {'plotter-bridge/bridge.py': body, 'plotter-bridge/monitor.html': b'<p>new monitor', 'plotter-bridge/evil.sh': b'rm -rf /', '../escape.py': b'x', **(extra or {})}.items():
+                ti = tarfile.TarInfo(name); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
+        return buf.getvalue()
+    rel = {}
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            if self.path.endswith('/releases/latest'):
+                blob = rel['blob']; port = self.server.server_address[1]
+                data = json.dumps({'tag_name': rel['tag'], 'assets': [{'name': 'plotter-bridge.tar.gz', 'browser_download_url': f'http://127.0.0.1:{port}/dl',
+                                    'digest': rel.get('digest', 'sha256:' + hashlib.sha256(blob).hexdigest())}]}).encode()
+            else:
+                data = rel['blob']
+            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
+    srv = ThreadingHTTPServer(('127.0.0.1', 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    api = f'http://127.0.0.1:{srv.server_address[1]}'
+    P = new_bridge(tmp + '/state')
+    folder = tmp + '/install'; os.makedirs(folder)
+    open(folder + '/bridge.py', 'w').write('old'); open(folder + '/monitor.html', 'w').write('old monitor')
+    restarts = []
+    def fresh(): return B.Updater(P, 'x/y', api, 3600, folder, lambda: restarts.append(1))
+    B.UPDATE_RETRY = 0.05
+
+    rel.update(tag='v%d.%d.%d' % (tuple(int(x) for x in B.VERSION.split('.'))), blob=tarball(B.VERSION))
+    check(fresh().check() is None and not restarts, 'the same version is left alone')
+    rel.update(tag='v0.0.1', blob=tarball('0.0.1'))
+    check(fresh().check() is None and not restarts, 'an older release is ignored')
+    rel.update(tag='v9.9.9-rc1', blob=tarball('9.9.9'))
+    check(fresh().check() is None and not restarts, 'a pre-release tag is ignored')
+
+    rel.update(tag='v9.9.9', blob=tarball('9.9.9'), digest='sha256:' + '0' * 64)
+    u = fresh(); check(u.check() is None and u.info()['state'] == 'error' and open(folder + '/bridge.py').read() == 'old', 'a download that does not match its checksum is rejected')
+    rel.pop('digest')
+    rel['blob'] = tarball('9.9.8')
+    u = fresh(); check(u.check() is None and open(folder + '/bridge.py').read() == 'old', 'a bridge.py that reports another version is rejected')
+    rel['blob'] = tarball('9.9.9', {'plotter-bridge/bridge.py': b'def (:'})
+    u = fresh(); check(u.check() is None and open(folder + '/bridge.py').read() == 'old', 'a bridge.py that does not even compile is rejected')
+
+    rel['blob'] = tarball('9.9.9')
+    P.job = {'running': True}
+    u = fresh(); th = threading.Thread(target=u.check, daemon=True); th.start()
+    time.sleep(0.6)
+    check(u.info()['state'] == 'waiting' and open(folder + '/bridge.py').read() == 'old' and not restarts, 'while a plot is running the update waits')
+    P.job = None; th.join(10)
+    check(restarts == [1] and 'VERSION = \'9.9.9\'' in open(folder + '/bridge.py').read(), 'when idle it is installed and the bridge restarts')
+    check(open(folder + '/bridge.py.prev').read() == 'old' and open(folder + '/monitor.html').read() == '<p>new monitor', 'the old file is kept as .prev; the monitor is updated too')
+    check(sorted(os.listdir(folder)) == ['bridge.py', 'bridge.py.prev', 'monitor.html', 'monitor.html.prev'] and not os.path.exists(tmp + '/escape.py'), 'nothing else is written')
+    srv.shutdown()
+
+
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, self_update):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

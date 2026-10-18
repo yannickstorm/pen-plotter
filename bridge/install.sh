@@ -11,6 +11,7 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$DEST"
 cp "$SRC/bridge.py" "$SRC/monitor.html" "$DEST/"
 rm -f "$DEST/studio.html"              # Plot Studio is not kept on the bridge: use the hosted one, it is always the newest
+chown -R "$RUN_AS" "$DEST"            # the bridge updates itself from new releases: it must be able to replace its own files
 usermod -aG dialout "$RUN_AS"          # access to /dev/ttyUSB* and /dev/ttyACM*
 
 cat > /etc/systemd/system/plotter-bridge.service <<EOF
@@ -37,4 +38,4 @@ systemctl --no-pager --lines=5 status plotter-bridge || true
 echo
 echo "Plotter Bridge is running:  http://$(hostname).local:8080/"
 echo "Logs:     journalctl -u plotter-bridge -f"
-echo "Update:   copy new files, run this script again"
+echo "Updates:  the bridge installs new releases by itself (switch off: add --no-update); or copy new files and run this script again"

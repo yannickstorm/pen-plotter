@@ -19,7 +19,7 @@ can be resumed from the stroke it was drawing.
 Only the Python 3 standard library is needed on Linux and macOS. On Windows,
 install pyserial (pip install pyserial); it is also used on Linux/macOS when present.
 """
-import argparse, collections, glob, json, math, os, re, select, socket, ssl, sys, threading, time, uuid
+import argparse, collections, glob, hashlib, json, math, os, re, select, shutil, socket, ssl, sys, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -986,11 +986,137 @@ def find_file(name):
     return next((p for p in (os.path.join(HERE, name), os.path.join(os.path.dirname(HERE), name)) if os.path.exists(p)), None)
 
 
+UPDATE_REPO = 'yannickstorm/pen-plotter'
+UPDATE_API = 'https://api.github.com'
+UPDATE_ASSET = 'plotter-bridge.tar.gz'
+UPDATE_FILES = ('bridge.py', 'monitor.html')      # the only files an update may write
+UPDATE_EVERY = 6 * 3600
+UPDATE_RETRY = 600                                # a downloaded update waits for the plotter to be idle: look again this often
+
+
+def version_key(v):
+    """'v1.2.3' -> (1, 2, 3); None when it is not a plain release number (pre-releases are never installed)."""
+    m = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)', str(v).strip())
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+class Updater:
+    """Looks for a newer GitHub release now and then, installs it next to bridge.py and restarts, but never while a plot is running.
+    Everything it installs comes from the release's plotter-bridge.tar.gz over https; bridge.py is checked (it must run and report the
+    release's version) before it replaces the old one, and the old files are kept as *.prev."""
+
+    def __init__(self, plotter, repo=UPDATE_REPO, api=UPDATE_API, every=UPDATE_EVERY, folder=HERE, restart=None):
+        self.plotter, self.repo, self.api, self.every, self.folder = plotter, repo, api.rstrip('/'), every, folder
+        self.restart = restart or self._exec
+        self.lock = threading.Lock()
+        self.s = {'enabled': True, 'current': VERSION, 'latest': None, 'state': 'idle', 'checked': None, 'error': None}
+
+    def info(self):
+        return dict(self.s)
+
+    def _get(self, url, limit=32 * 1024 * 1024):
+        import urllib.request
+        req = urllib.request.Request(url, headers={'User-Agent': f'PlotterBridge/{VERSION}', 'Accept': 'application/vnd.github+json'})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError('download too large')
+        return data
+
+    def idle(self):
+        p = self.plotter
+        with p.lock:
+            return not (p.job and p.job['running']) and not p.manual
+
+    def check(self):
+        """Look for a newer release and install it. Returns the new version, or None. Safe to call from any thread."""
+        if not self.lock.acquire(blocking=False):
+            return None
+        try:
+            self.s.update(state='checking', error=None)
+            rel = json.loads(self._get(f'{self.api}/repos/{self.repo}/releases/latest'))
+            tag = rel.get('tag_name') or ''
+            new, cur = version_key(tag), version_key(VERSION)
+            self.s.update(latest=tag.lstrip('v') or None, checked=time.time())
+            if not new or not cur or new <= cur:
+                self.s['state'] = 'current'
+                return None
+            asset = next((a for a in rel.get('assets', []) if a.get('name') == UPDATE_ASSET), None)
+            if not asset:
+                raise ValueError(f'release {tag} has no {UPDATE_ASSET}')
+            self.s['state'] = 'downloading'
+            blob = self._get(asset['browser_download_url'])
+            want = (asset.get('digest') or '').removeprefix('sha256:')
+            if want and hashlib.sha256(blob).hexdigest() != want:
+                raise ValueError('the download does not match the release checksum')
+            files = self._unpack(blob)
+            self._verify(files, '.'.join(map(str, new)))
+            self.s['state'] = 'waiting'          # downloaded and checked; installed as soon as no plot is running
+            while not self.idle():
+                time.sleep(UPDATE_RETRY)
+            self._install(files)
+            self.s['state'] = 'restarting'
+            self.plotter.say('sys', f'Updated Plotter Bridge {VERSION} → {tag.lstrip("v")}; restarting')
+            self.restart()
+            return tag
+        except Exception as e:
+            self.s.update(state='error', error=str(e))
+            self.plotter.say('err', f'Bridge update failed: {e}')
+            return None
+        finally:
+            self.lock.release()
+
+    def _unpack(self, blob):
+        import io, tarfile
+        out = {}
+        with tarfile.open(fileobj=io.BytesIO(blob), mode='r:gz') as t:
+            for m in t.getmembers():
+                name = os.path.basename(m.name)
+                if m.isfile() and name in UPDATE_FILES and name not in out and m.size < 16 * 1024 * 1024:
+                    out[name] = t.extractfile(m).read()
+        if 'bridge.py' not in out:
+            raise ValueError('the release has no bridge.py')
+        return out
+
+    def _verify(self, files, version):
+        import subprocess, tempfile
+        compile(files['bridge.py'], 'bridge.py', 'exec')
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'bridge.py')
+            with open(p, 'wb') as f:
+                f.write(files['bridge.py'])
+            r = subprocess.run([sys.executable, p, '--version'], capture_output=True, text=True, timeout=30)
+        if r.returncode or r.stdout.strip() != version:
+            raise ValueError(f'the new bridge.py does not run or reports {r.stdout.strip() or "no version"} instead of {version}')
+
+    def _install(self, files):
+        for name, data in files.items():
+            dst = os.path.join(self.folder, name)
+            tmp = dst + '.new'
+            with open(tmp, 'wb') as f:
+                f.write(data)
+            if os.path.exists(dst):
+                shutil.copy2(dst, dst + '.prev')
+            os.replace(tmp, dst)
+
+    def _exec(self):
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    def start(self):
+        def loop():
+            time.sleep(60)                        # let the plotter connect first
+            while True:
+                self.check()
+                time.sleep(self.every)
+        threading.Thread(target=loop, daemon=True, name='updater').start()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f'PlotterBridge/{VERSION}'
     plotter: Plotter = None
     token = None
     studio_url = STUDIO_URL
+    updater = None
 
     def log_message(self, *a):
         pass
@@ -1040,7 +1166,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == '/api/info':
             m = self.plotter.machine.get()
             return self._send(200, {'name': 'plotter-bridge', 'version': VERSION, 'host': socket.gethostname(), 'auth': bool(self.token),
-                                    'id': m['id'], 'machine': m['name'], 'studio': self.studio_url, 'studio_local': bool(find_file('studio.html'))})
+                                    'id': m['id'], 'machine': m['name'], 'studio': self.studio_url, 'studio_local': bool(find_file('studio.html')),
+                                    'update': self.updater.info() if self.updater else {'enabled': False, 'current': VERSION}})
         if not u.path.startswith('/api/'):
             return self._send(404, {'error': 'Not found'})
         if not self._authed(q):
@@ -1100,6 +1227,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {'ok': True, 'id': P.resume_job(int(start) if start not in (None, '') else None)})
             elif cmd == 'job/discard':
                 P.discard_job()
+            elif cmd == 'update':   # look for a new release now
+                if not self.updater:
+                    raise RuntimeError('Automatic updates are switched off on this bridge')
+                threading.Thread(target=self.updater.check, daemon=True).start()
             elif cmd == 'origin':
                 if P.job and P.job['running']:
                     raise RuntimeError('A plot is running')
@@ -1154,7 +1285,14 @@ def main():
     ap.add_argument('--key', default=os.environ.get('BRIDGE_KEY'), help='its private key (PEM); omit if the certificate file holds it too')
     ap.add_argument('--studio-url', default=os.environ.get('BRIDGE_STUDIO_URL', STUDIO_URL), help='where Plot Studio is hosted (default: %(default)s)')
     ap.add_argument('--name', default=os.environ.get('BRIDGE_NAME'), help='name of this plotter in Plot Studio (default: the computer’s name)')
+    ap.add_argument('--no-update', action='store_true', default=bool(os.environ.get('BRIDGE_NO_UPDATE')), help='do not look for new releases')
+    ap.add_argument('--update-repo', default=os.environ.get('BRIDGE_UPDATE_REPO', UPDATE_REPO), help='GitHub repository to take releases from (default: %(default)s)')
+    ap.add_argument('--update-hours', type=float, default=float(os.environ.get('BRIDGE_UPDATE_HOURS', 6)), help='hours between checks for a new release (default: %(default)s)')
+    ap.add_argument('--version', action='store_true', help='print the version and exit')
     a = ap.parse_args()
+    if a.version:
+        print(VERSION)
+        return
 
     try:
         store = JobStore(a.state)
@@ -1169,6 +1307,9 @@ def main():
             plotter.connect()
         except Exception as e:
             print(f'[sys] {e} — will keep looking', flush=True)
+    if not a.no_update:
+        Handler.updater = Updater(plotter, a.update_repo, every=max(0.1, a.update_hours) * 3600)
+        Handler.updater.start()
     srv = ThreadingHTTPServer((a.host, a.http_port), Handler)
     srv.daemon_threads = True
     scheme = 'http'
