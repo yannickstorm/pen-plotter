@@ -245,6 +245,10 @@
   .pill { padding: 5px 10px; border-radius: 8px; font: 11.5px var(--mono); color: var(--muted);
     background: color-mix(in srgb, var(--panel) 85%, transparent); backdrop-filter: blur(8px); border: 1px solid var(--line); white-space: nowrap; }
   .pill b { color: var(--fg); font-weight: 500; }
+  #hudSheet { display: inline-flex; align-items: center; gap: 8px; padding-right: 5px; pointer-events: auto; }
+  #hudSheet[hidden] { display: none; }
+  #hudSheet button { font: 600 11px var(--sans); color: var(--danger); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 8px; cursor: pointer; }
+  #hudSheet button:hover { background: var(--raise); }
   .tools { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px); border: 1px solid var(--line); }
   .tools button { height: 28px; min-width: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
   .tools button:hover { color: var(--fg); background: var(--raise); }
@@ -3468,7 +3472,8 @@ function render() {
   for (let y = P.y + 10; y < P.y + P.h; y += 10) { c.moveTo(P.x, y); c.lineTo(P.x + P.w, y); }
   c.stroke();
   if (S.paper.margin > 0) { c.setLineDash([4 / k, 4 / k]); c.strokeStyle = 'rgba(91,71,245,.35)'; c.strokeRect(U.x, U.y, U.w, U.h); c.setLineDash([]); }
-  drawSheet(c, k);   // what is already plotted on this sheet, under the new drawing
+  c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }   // from the plotter's frame to the paper's
+  drawSheet(c, k); c.restore();   // what is already plotted on this sheet, under the new drawing
   // clip drawing to the plottable area (what will actually be plotted)
   c.save();
   const R = S.paper.clip ? U : P; c.beginPath(); c.rect(Math.max(R.x, 0), Math.max(R.y, 0), Math.min(R.x + R.w, M.bedW) - Math.max(R.x, 0), Math.min(R.y + R.h, M.bedH) - Math.max(R.y, 0)); c.clip();
@@ -6085,10 +6090,12 @@ $('moveCard').addEventListener('click', e => {
 $('conForm').onsubmit = e => { e.preventDefault(); const v = $('conIn').value.trim(); if (!v) return; act('send', {line: v}); $('conIn').value = ''; };
 
 // ---------- the sheet: what is already drawn on the paper ----------
-// When a pen job ends (finished, stopped, or cut short) the lines it drew are kept here, per machine, in paper coordinates
-// (X not mirrored), until they are cleared. Design shows them faded under the drawing and the live view (Machine, Plot) under the
-// head, so the next design can be placed around what is already on the sheet. They are kept in this browser (IndexedDB).
-const sheet = {inks: [], gone: [], show: lsGet('plotstudio.sheetshow') !== false, checked: '', loaded: false};   // inks: {key, mid, sid, project, color, width, at, sig, pts}; gone: cleared jobs, which must not come back from the plotter's memory of its last job
+// When a pen job ends (finished, stopped, or cut short) the lines it drew are kept here, per machine, exactly as the plotter drew
+// them (machine coordinates: where the pen really went), until they are cleared. The live view (Machine, Plot) is in the same
+// frame and shows them as they are, under the head. Design is in paper coordinates and maps them through the settings that are
+// current (the X mirror, about the paper's centre), so the next design can be placed around what is already on the sheet — and
+// changing the mirror or the paper afterwards cannot make the history appear twice. They are kept in this browser (IndexedDB).
+const sheet = {inks: [], gone: [], show: lsGet('plotstudio.sheetshow') !== false, checked: '', loaded: false};   // inks: {v: 2, key, mid, sid, project, color, width, at, sig, pts}; gone: cleared jobs, which must not come back from the plotter's memory of its last job
 const sheetMid = () => activeId || conn.id || '';
 const sheetInks = () => sheet.inks.filter(e => e.mid === sheetMid());
 function sheetPath(e) {   // pts is x,y,x,y… with a NaN pair wherever the pen lifted
@@ -6101,15 +6108,15 @@ function sheetPath(e) {   // pts is x,y,x,y… with a NaN pair wherever the pen 
   }
   return e._p = p;
 }
-function sheetDrawn(moves, done, meta) {   // the pen-down moves of lines before `done`, from machine coordinates back to paper coordinates
-  const P = paperRect(), m = meta && 'mirror' in meta ? meta.mirror : S.machine.mirrorX ? 2 * (P.x + P.w / 2) : null, out = [];
+function sheetDrawn(moves, done) {   // the pen-down moves of the lines before `done`, as the plotter drew them
+  const out = [];
   let down = false;
   for (let i = 1; i < moves.length; i++) {
     const b = moves[i]; if (b[0] >= done) break;
     if (!b[3]) { down = false; continue; }
     const a = moves[i - 1];
-    if (!down) { if (out.length) out.push(NaN, NaN); out.push(m == null ? a[1] : m - a[1], a[2]); }
-    out.push(m == null ? b[1] : m - b[1], b[2]); down = true;
+    if (!down) { if (out.length) out.push(NaN, NaN); out.push(a[1], a[2]); }
+    out.push(b[1], b[2]); down = true;
   }
   return Float32Array.from(out);
 }
@@ -6122,11 +6129,11 @@ function sheetCommit() {   // the job on the plotter has ended: keep what it dre
   sheet.checked = key + sig;
   const meta = j.meta || {};
   if (meta.outline || sheet.gone.includes(key)) return;
-  const pts = sheetDrawn(live.moves, j.state === 'finished' ? Infinity : j.done, meta);
+  const pts = sheetDrawn(live.moves, j.state === 'finished' ? Infinity : j.done);
   if (!pts.length) return;
   const i = sheet.inks.findIndex(e => e.key === key), pen = penById(meta.penId) || {};
   if (i >= 0 && sheet.inks[i].sig === sig) return;   // seen before (this page was reloaded)
-  const ink = {key, mid, sid: meta.sid || key, project: meta.project || j.name, color: meta.color || live.color || '#1b1b1f', width: +meta.width || pen.width || 0.4, at: Date.now(), sig, pts};
+  const ink = {v: 2, key, mid, sid: meta.sid || key, project: meta.project || j.name, color: meta.color || live.color || '#1b1b1f', width: +meta.width || pen.width || 0.4, at: Date.now(), sig, pts};
   if (i >= 0) sheet.inks[i] = ink; else sheet.inks.push(ink);
   sheetChanged();
 }
@@ -6168,7 +6175,7 @@ function renderSheetCard() {   // Design → Paper, and Machine
 }
 function renderSheetUI() {
   const L = sheetInks(), pill = $('hudSheet');
-  if (pill) { const n = sheetDesigns(L).length; pill.hidden = !(L.length && sheet.show); pill.innerHTML = `on the sheet <b>${n} design${n === 1 ? '' : 's'}</b>`; }
+  if (pill) { const n = sheetDesigns(L).length; pill.hidden = !(L.length && sheet.show); pill.innerHTML = `<span>on the sheet <b>${n} design${n === 1 ? '' : 's'}</b></span><button type="button" data-s="clear" title="Forget what has been plotted on this sheet (for a fresh sheet of paper)">Clear</button>`; }
   renderSheetCard();
   if (session && ws === 'plot') renderQueue();
 }
@@ -6290,9 +6297,8 @@ async function startPen() {
   if (ol) return startOutline(ol);
   if (conn.kind === 'demo' && !session.done.size && demo && demo.ink.length && confirm('Put a fresh sheet on the demo plotter?')) clearSheet({quiet: true});
   if (conn.kind === 'demo') demo.inkColor = pp.pen.color;
-  const P = paperRect();   // what a finished job needs to put its lines back on the paper: the pen's width, and the mirror (about the paper's centre) the G-code was made with
   const r = await act('run', {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
-    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel(), sid: session.id, width: pp.pen.width, mirror: S.machine.mirrorX ? 2 * (P.x + P.w / 2) : null}});
+    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel(), sid: session.id, width: pp.pen.width}});
   if (r && isLocal() && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
   pollServer();
 }
@@ -6462,10 +6468,7 @@ function renderLive() {
   c.lineCap = 'round'; c.lineJoin = 'round';
   const lw = w => Math.max(w || 0.4, 0.8 / k);
   // what is already plotted on this sheet (the demo plotter's own paper below shows its ink already)
-  if (!(conn.kind === 'demo' && demo && demo.ink.length)) {
-    c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
-    drawSheet(c, k); c.restore();
-  }
+  if (!(conn.kind === 'demo' && demo && demo.ink.length)) drawSheet(c, k);   // (this view is in the plotter's frame, like the history)
   // the design, faint, for context (in machine coordinates: mirrored like the G-code)
   if (ws === 'plot' && plan) {
     c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
@@ -6583,7 +6586,7 @@ let booted = false;
   const saved = await IDB.get('autosave');
   for (const m of machines) if (m.via !== 'bridge') { const j = await GrblSerial.saved(m.id); offline[m.id] = j && j.m; }
   const kept = await IDB.get('sheet');   // what was plotted on the sheets so far
-  if (kept && Array.isArray(kept.inks)) { sheet.inks = kept.inks.filter(e => e && e.pts && e.pts.length); sheet.gone = kept.gone || []; }
+  if (kept && Array.isArray(kept.inks)) { sheet.inks = kept.inks.filter(e => e && e.v === 2 && e.pts && e.pts.length); sheet.gone = kept.gone || []; }   // (v 1 kept paper coordinates, from before this was settled)
   sheet.loaded = true; renderSheetUI(); draw();
   if (saved && saved.items && saved.items.length && !items.length) {
     try { await applyProject(saved); projTitle = saved.title || ''; renderProjName(); toast('Restored your last session', false, {label: 'Start new', fn: () => newProject()}); }

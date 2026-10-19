@@ -439,12 +439,13 @@ async def on_bridge():
 
 
 # ---------- tracing the outline, and the sheet that remembers what was plotted ----------
-# every point of `pts` (paper coordinates, NaN between strokes) must be a point of the pen's planned paths
-PTS_ON_PLAN = """((pid) => { const T = __studio, pp = T.plan().pens.find(p => p.pen.id === pid), P = [];
+# every point of `pts` (machine coordinates, NaN between strokes) must, mapped to paper coordinates, be a point of the pen's planned paths
+PTS_ON_PLAN = """((pid) => { const T = __studio, pp = T.plan().pens.find(p => p.pen.id === pid), P = [], S = T.S, c = S.paper.x + S.paper.w / 2;
   for (const q of pp.paths) for (const v of q) P.push(v);
   const ink = T.sheetInks().filter(e => e.color === pp.pen.color), bad = [];
   let n = 0; for (const e of ink) for (let i = 0; i < e.pts.length; i += 2) { if (isNaN(e.pts[i])) continue; n++;
-    if (!P.some(v => Math.hypot(v[0] - e.pts[i], v[1] - e.pts[i + 1]) < 0.01)) bad.push([e.pts[i], e.pts[i + 1]]); }
+    const x = S.machine.mirrorX ? 2 * c - e.pts[i] : e.pts[i];
+    if (!P.some(v => Math.hypot(v[0] - x, v[1] - e.pts[i + 1]) < 0.01)) bad.push([x, e.pts[i + 1]]); }
   return {n, bad: bad.length, passes: ink.length}; })"""
 # the darkest pixel around a point of the sheet (page px of the canvas): paper is light, ink is not
 DARKEST = """((x, y) => { const T = __studio, c = document.getElementById('cv').getContext('2d'), d = devicePixelRatio || 1, [px, py] = T.toPx(x, y);
@@ -485,12 +486,11 @@ async def outline_and_sheet():
           return {x: +L.find(l => /X/.test(l)).match(/X(-?[\\d.]+)/)[1], want: 2 * (P.x + P.w / 2) - b.x0}; })()""")
         check(abs(m["x"] - m["want"]) < 1e-3, "with X mirrored it is mirrored about the paper centre, like the pens' G-code")
 
-        # the sheet keeps a job's pen-down moves, mirrored back to paper coordinates
+        # the sheet keeps a job's pen-down moves, as the plotter drew them
         r = await b.js("""(() => { const T = __studio, moves = [[0, 0, 0, 0], [1, 10, 5, 0], [2, 40, 5, 1], [3, 40, 20, 1], [4, 90, 20, 0], [5, 80, 30, 0], [6, 70, 30, 1], [7, 90, 40, 1]];
-          const f = (done, meta) => Array.from(T.sheetDrawn(moves, done, meta)).map(v => isNaN(v) ? null : v);
-          return {all: f(Infinity, {mirror: null}), mirrored: f(Infinity, {mirror: 200}), half: f(4, {mirror: null})}; })()""")
+          const f = done => Array.from(T.sheetDrawn(moves, done)).map(v => isNaN(v) ? null : v);
+          return {all: f(Infinity), half: f(4)}; })()""")
         check(r["all"] == [10, 5, 40, 5, 40, 20, None, None, 80, 30, 70, 30, 90, 40], f"a stroke is its points, and a pen lift is a gap {r['all']}")
-        check(r["mirrored"][:2] == [190, 5], "a mirrored job comes back un-mirrored (200 − 10)")
         check(r["half"] == [10, 5, 40, 5, 40, 20], "a plot that stopped early only keeps the lines before the stop")
 
         # on the demo plotter, with the option off nothing changes
@@ -575,11 +575,13 @@ async def outline_and_sheet():
         await asyncio.sleep(0.4)
         check(await b.js(f"{DARKEST}({pts['a'][0]}, {pts['a'][1]})") < 225, "…and on shows it again")
 
-        # it is kept: a reload brings it back
+        # it is kept: a reload brings it back (an entry of the first version, which kept paper coordinates, is let go)
         await asyncio.sleep(0.5)
+        await b.js("__studio.IDB.set('sheet', {inks: [...__studio.sheet.inks.map(({_p, ...e}) => e), {key: 'legacy', mid: __studio.sheetMid(), pts: Float32Array.of(1, 2, 3, 4)}], gone: []})")
+        await asyncio.sleep(0.3)
         await b.goto(base + "/studio.html")
         check(await wait(b, "__studio.booted()", 10000), "reloaded")
-        check(await b.js("__studio.sheet.inks.length") == 2 and await b.js("__studio.sheet.inks.every(e => e.pts instanceof Float32Array && e.pts.length > 6)"), "what was plotted is still remembered after a reload")
+        check(await b.js("__studio.sheet.inks.length") == 2 and await b.js("__studio.sheet.inks.every(e => e.v === 2 && e.pts instanceof Float32Array && e.pts.length > 6)"), "what was plotted is still remembered after a reload")
         check(await b.js("__studio.sheetInks().length") == 2 and await b.js("!document.getElementById('hudSheet').hidden"), "…on this machine's sheet, not connected")
 
         # a sheet belongs to its machine; Clear (with Undo) only clears this one
@@ -624,7 +626,7 @@ async def outline_and_sheet():
 
 
 async def sheet_mirrored():
-    """A machine with X mirrored plots mirrored G-code; the sheet has to put the lines back where the design had them."""
+    """A machine with X mirrored plots mirrored G-code. The sheet keeps what the plotter drew, and Design shows it where the design had it."""
     print("the sheet with X mirrored in the output")
     b = await Browser(1400, 900).start()
     base = serve()
@@ -633,6 +635,7 @@ async def sheet_mirrored():
         await b.js("__studio.addKind('star'); __studio.items().at(-1).cx = 80")   # away from the paper's centre, so the mirror moves it
         await b.js(SETTLE)
         await b.js("__studio.S.machine.mirrorX = true")
+        before = await b.js("(() => { const T = __studio, p = T.plan().pens[0].paths[0], P = T.S.paper; return {x: (p[0][0] + p[1][0]) / 2, y: (p[0][1] + p[1][1]) / 2, cx: P.x + P.w / 2}; })()")   # a point on the design, in paper coordinates
         await click(b, "#wsSeg [data-ws=machine]")
         await click(b, "[data-mc=demo]")
         await wait(b, "__studio.server().st && __studio.server().st.connected", 8000)
@@ -641,13 +644,18 @@ async def sheet_mirrored():
         await click(b, "[data-p=go]")
         check(await wait(b, "__studio.curJob() && __studio.curJob().state === 'finished'", 30000), "plotted with X mirrored")
         await wait(b, "__studio.sheet.inks.length === 1", 5000)
-        r = await b.js("""(async () => { const T = __studio, d = (await T.usb().api('job')).job, pl = T.plan().pens[0].paths[0][0], i = d.moves.findIndex(m => m[3]), cx = T.S.paper.x + T.S.paper.w / 2;
-          return {job: d.moves[i - 1].slice(1, 3), plan: pl, mirrored: [2 * cx - pl[0], pl[1]], sheet: [T.sheet.inks[0].pts[0], T.sheet.inks[0].pts[1]], meta: d.meta.mirror, cx}; })()""")
-        check(abs(r["job"][0] - r["mirrored"][0]) < 0.01 and abs(r["job"][0] - r["plan"][0]) > 50, f"the job is mirrored about the paper centre ({r['plan'][0]:.1f} → {r['job'][0]:.1f})")
-        check(abs(r["sheet"][0] - r["plan"][0]) < 0.01 and abs(r["sheet"][1] - r["plan"][1]) < 0.01, f"…and the sheet has it where the design had it {r['sheet']}")
-        check(abs(r["meta"] - 2 * r["cx"]) < 1e-9, "the job carries the mirror it was made with")
+        r = await b.js("""(async () => { const T = __studio, d = (await T.usb().api('job')).job, i = d.moves.findIndex(m => m[3]);
+          return {job: d.moves[i - 1].slice(1, 3), sheet: [T.sheet.inks[0].pts[0], T.sheet.inks[0].pts[1]]}; })()""")
+        check(abs(r["job"][0] - (2 * before["cx"] - before["x"])) < 60 and abs(r["job"][0] - before["x"]) > 50, f"the job is mirrored about the paper centre ({before['x']:.0f} → {r['job'][0]:.0f})")
+        check(abs(r["sheet"][0] - r["job"][0]) < 0.01 and abs(r["sheet"][1] - r["job"][1]) < 0.01, f"the sheet has it as the plotter drew it {r['sheet']}")
         on_plan = await b.js(f"{PTS_ON_PLAN}(__studio.pens()[0].id)")
-        check(on_plan["n"] > 3 and on_plan["bad"] == 0, f"every point is at a planned place {on_plan}")
+        check(on_plan["n"] > 3 and on_plan["bad"] == 0, f"…which is, in paper coordinates, every planned place {on_plan}")
+        await click(b, "#wsSeg [data-ws=design]")
+        await b.js("__studio.items().length = 0")
+        await b.js(SETTLE)
+        await asyncio.sleep(0.5)
+        dark = await b.js(f"{DARKEST}({2 * before['cx'] - r['sheet'][0]}, {r['sheet'][1]})")
+        check(dark < 225, f"Design shows it at paper coordinates, where the design had it {dark}")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()
@@ -685,11 +693,69 @@ async def outline_in_machine():
         await wait(b, "__studio.sheet.inks.length === 1", 5000)
         await click(b, "#wsSeg [data-ws=machine]")
         check(await b.js("!document.getElementById('sheetMach').hidden && document.getElementById('sheetMach').textContent.includes('On the sheet')"), "Machine lists what is on the sheet")
-        await click(b, "#sheetMach [data-s=clear]")
-        check(await b.js("__studio.sheetInks().length") == 0 and await b.js("document.getElementById('sheetMach').hidden"), "Clear works from Machine")
+        check(await b.js("(e => !e.hidden && e.textContent.includes('1 design') && !!e.querySelector('[data-s=clear]'))(document.getElementById('hudSheet'))"), "the label on the bed has a Clear button right there")
+        await click(b, "#hudSheet [data-s=clear]")
+        check(await b.js("__studio.sheetInks().length") == 0 and await b.js("document.getElementById('sheetMach').hidden && document.getElementById('hudSheet').hidden"), "it clears the sheet from the bed's label")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()
+
+
+async def history_not_doubled():
+    """Machine and Plot show the plotter's own frame, so the history must sit exactly where the job drew — also when the X mirror
+    (or the paper) is changed after plotting. Design maps it through the settings that are current."""
+    print("the history is not doubled when the mirror setting changes")
+    import tempfile
+    import threading
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.02)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
+        await wait(b, "__studio.conn().kind === 'bridge' && __studio.server().st && __studio.server().st.connected", 8000)
+        await b.js("__studio.addKind('star'); const s = __studio.items().at(-1); s.cx = 80; s.cy = 100; s.w = 60;")   # well away from the paper's centre: its mirror image is elsewhere
+        await b.js(SETTLE)
+        await click(b, "#wsSeg [data-ws=plot]")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().state === 'finished'", 30000), "plotted, X not mirrored")
+        await wait(b, "__studio.sheet.inks.length === 1", 5000)
+        pt = await b.js("""(() => { const T = __studio, M = T.live.moves, i = M.findIndex(m => m[3]), P = T.S.paper;   // where the pen went down: machine coordinates
+          const a = M[i - 1], c = M[i]; return {x: (a[1] + c[1]) / 2, y: (a[2] + c[2]) / 2, cx: P.x + P.w / 2}; })()""")
+        mirrored = 2 * pt["cx"] - pt["x"]
+        check(abs(mirrored - pt["x"]) > 60, f"(the point and its mirror image are far apart: {pt['x']:.0f} and {mirrored:.0f})")
+        await asyncio.sleep(0.4)
+        here = await b.js(f"{DARKEST}({pt['x']}, {pt['y']})")
+        check(here < 190, f"Plot: the history is where the job drew it {here}")
+
+        await b.js("__studio.S.machine.mirrorX = true")   # the machine's direction is corrected afterwards
+        await asyncio.sleep(0.5)
+        both = [await b.js(f"{DARKEST}({x}, {pt['y']})") for x in (pt["x"], mirrored)]
+        check(both[0] < 190, f"Plot: still where the job drew it {both[0]}")
+        check(both[1] > 215, f"Plot: and no second copy at the mirrored place, off to the side {both[1]}")
+        await click(b, "#wsSeg [data-ws=machine]")
+        await asyncio.sleep(0.5)
+        both = [await b.js(f"{DARKEST}({x}, {pt['y']})") for x in (pt["x"], mirrored)]
+        check(both[0] < 190 and both[1] > 215, f"Machine: the same, one copy {both}")
+
+        # Design is in paper coordinates: with the mirror now on, the ink that the machine drew at x sits at the mirror image
+        await click(b, "#wsSeg [data-ws=design]")
+        await b.js("__studio.items().length = 0")
+        await b.js(SETTLE)
+        await asyncio.sleep(0.5)
+        both = [await b.js(f"{DARKEST}({x}, {pt['y']})") for x in (pt["x"], mirrored)]
+        check(both[1] < 190 and both[0] > 215, f"Design: shown where the paper's coordinates put it under the current setting, once {both}")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+        srv.shutdown()
+        P.disconnect()
 
 
 async def setv(b, sel, value):
@@ -976,7 +1042,7 @@ async def servo_test_card():
 
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("doubled", history_not_doubled), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
