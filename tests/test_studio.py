@@ -422,11 +422,229 @@ async def on_bridge():
         miss = [i for i in range(1, len(M)) if M[i][3] and (round(M[i - 1][1], 2), round(M[i - 1][2], 2), round(M[i][1], 2), round(M[i][2], 2)) not in have]
         check(not miss, f"every line is on the paper ({len(miss)} missing)")
         check(await b.js("__studio.session().done.size === 1"), "the pen is marked done")
+        check(await wait(b, "__studio.sheet.inks.length === 1", 5000), "what it drew is on the sheet (the moves and the job's meta come back from the bridge)")
+        on_plan = await b.js(f"{PTS_ON_PLAN}(__studio.pens()[0].id)")
+        check(on_plan["n"] > 3 and on_plan["bad"] == 0, f"…at the planned places on the paper {on_plan}")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()
         srv.shutdown()
         P.disconnect()
+
+
+# ---------- tracing the outline, and the sheet that remembers what was plotted ----------
+# every point of `pts` (paper coordinates, NaN between strokes) must be a point of the pen's planned paths
+PTS_ON_PLAN = """((pid) => { const T = __studio, pp = T.plan().pens.find(p => p.pen.id === pid), P = [];
+  for (const q of pp.paths) for (const v of q) P.push(v);
+  const ink = T.sheetInks().filter(e => e.color === pp.pen.color), bad = [];
+  let n = 0; for (const e of ink) for (let i = 0; i < e.pts.length; i += 2) { if (isNaN(e.pts[i])) continue; n++;
+    if (!P.some(v => Math.hypot(v[0] - e.pts[i], v[1] - e.pts[i + 1]) < 0.01)) bad.push([e.pts[i], e.pts[i + 1]]); }
+  return {n, bad: bad.length, passes: ink.length}; })"""
+# the darkest pixel around a point of the sheet (page px of the canvas): paper is light, ink is not
+DARKEST = """((x, y) => { const T = __studio, c = document.getElementById('cv').getContext('2d'), d = devicePixelRatio || 1, [px, py] = T.toPx(x, y);
+  const im = c.getImageData(Math.round(px * d) - 2, Math.round(py * d) - 2, 5, 5).data; let best = 255;
+  for (let i = 0; i < im.length; i += 4) best = Math.min(best, (im[i] + im[i + 1] + im[i + 2]) / 3);
+  return best; })"""
+
+
+async def outline_and_sheet():
+    print("outline trace and the sheet's memory")
+    b = await Browser(1400, 900).start()
+    base = serve()
+    try:
+        await b.goto(base + "/studio.html")
+        # two pens with objects far apart: the box has to hold both
+        await b.js("""(() => { const T = __studio; T.pens().push({id: 'p2', name: 'Red', color: '#d6336c', width: 0.5, on: true, down: '', feed: ''});
+          T.addKind('star'); const s = T.items().at(-1); s.cx = 70; s.cy = 60;
+          T.addKind('rect'); const r = T.items().at(-1); r.opts.pen = 'p2'; r.cx = 220; r.cy = 150; return 1; })()""")
+        await b.js(SETTLE)
+        box = await b.js("""(() => { const T = __studio; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+          for (const pp of T.plan().pens) for (const p of pp.paths) for (const [x, y] of p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+          return {mine: T.plotBox(), x0, y0, x1, y1, pens: T.activePens().length}; })()""")
+        check(box["pens"] == 2, "two pens have something to plot")
+        check(all(abs(box["mine"][k] - box[k]) < 1e-9 for k in ("x0", "y0", "x1", "y1")), f"the box is the extent of every pen's lines {box['mine']}")
+        check(box["x0"] < 75 and box["x1"] > 240 and box["y0"] < 45 and box["y1"] > 160, "…so it holds both objects, wherever they are")
+
+        # the G-code: pen up the whole way, the four corners, back to the first one
+        g = await b.js("""(() => { const T = __studio, b = T.plotBox(), L = T.cleanLines(T.gcodeOutline(b, 't')), M = T.S.machine;
+          const xy = L.map(l => { const x = l.match(/X(-?[\\d.]+)/), y = l.match(/Y(-?[\\d.]+)/); return x && y ? [+x[1], +y[1]] : null; }).filter(Boolean);
+          return {xy, down: L.filter(l => /M0?3\\s*S/.test(l) && !l.includes('S' + M.up)), time: T.outlineTime(b)}; })()""")
+        corners = [[box["x0"], box["y0"]], [box["x1"], box["y0"]], [box["x1"], box["y1"]], [box["x0"], box["y1"]], [box["x0"], box["y0"]]]
+        check(all(abs(p[0] - c[0]) < 1e-3 and abs(p[1] - c[1]) < 1e-3 for p, c in zip(g["xy"][:5], corners)), f"it goes round the four corners and back to the first {g['xy'][:5]}")
+        check(not g["down"], "the pen never goes down")
+        check(g["xy"][-1] == [0, 0] and len(g["xy"]) == 6, "and ends at the park position")
+        check(0 < g["time"] < 60, f"its time is estimated ({g['time']:.1f} s)")
+        m = await b.js("""(() => { const T = __studio, b = T.plotBox(), P = T.S.paper; T.S.machine.mirrorX = true;
+          const L = T.cleanLines(T.gcodeOutline(b, 't')); T.S.machine.mirrorX = false;
+          return {x: +L.find(l => /X/.test(l)).match(/X(-?[\\d.]+)/)[1], want: 2 * (P.x + P.w / 2) - b.x0}; })()""")
+        check(abs(m["x"] - m["want"]) < 1e-3, "with X mirrored it is mirrored about the paper centre, like the pens' G-code")
+
+        # the sheet keeps a job's pen-down moves, mirrored back to paper coordinates
+        r = await b.js("""(() => { const T = __studio, moves = [[0, 0, 0, 0], [1, 10, 5, 0], [2, 40, 5, 1], [3, 40, 20, 1], [4, 90, 20, 0], [5, 80, 30, 0], [6, 70, 30, 1], [7, 90, 40, 1]];
+          const f = (done, meta) => Array.from(T.sheetDrawn(moves, done, meta)).map(v => isNaN(v) ? null : v);
+          return {all: f(Infinity, {mirror: null}), mirrored: f(Infinity, {mirror: 200}), half: f(4, {mirror: null})}; })()""")
+        check(r["all"] == [10, 5, 40, 5, 40, 20, None, None, 80, 30, 70, 30, 90, 40], f"a stroke is its points, and a pen lift is a gap {r['all']}")
+        check(r["mirrored"][:2] == [190, 5], "a mirrored job comes back un-mirrored (200 − 10)")
+        check(r["half"] == [10, 5, 40, 5, 40, 20], "a plot that stopped early only keeps the lines before the stop")
+
+        # on the demo plotter, with the option off nothing changes
+        await click(b, "#wsSeg [data-ws=machine]")
+        await click(b, "[data-mc=demo]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo plotter connects")
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "#wsSeg [data-ws=plot]")
+        check(await b.js("document.querySelectorAll('#queueCard .step').length") == 2 and await b.js("document.querySelector('[data-p=go]').textContent") == "Plot Black", "option off: the queue is just the pens")
+        check(await b.js("__studio.outlineInfo()") is None, "…and no outline is planned")
+
+        # option on: an Outline step first
+        await click(b, "[data-p=outline]")
+        check(await b.js("localStorage.getItem('plotstudio.outline')") == "true", "turning it on is remembered in this browser")
+        check(await b.js("document.querySelectorAll('#queueCard .step').length") == 3 and await b.js("document.querySelector('#queueCard .step').textContent.includes('Outline')"), "an Outline step comes first in the queue")
+        check(await b.js("document.querySelector('[data-p=go]').textContent") == "Trace outline" and await b.js("document.querySelector('#queueCard .step.cur').textContent.includes('Outline')"), "it is the current step, and the first press traces it")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().meta && __studio.curJob().meta.outline", 4000), "the trace runs as its own short job")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "…and finishes")
+        t = await b.js("""(async () => { const T = __studio, d = (await T.usb().api('job')).job, b = T.plotBox(), seen = d.moves.map(m => [m[1], m[2], m[3]]);
+          const has = (x, y) => seen.some(s => Math.abs(s[0] - x) < 0.01 && Math.abs(s[1] - y) < 0.01);
+          return {pen: seen.filter(s => s[2]).length, corners: [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].map(c => has(...c)), ink: T.demo().ink.length, sheet: T.sheet.inks.length}; })()""")
+        check(t["pen"] == 0 and t["ink"] == 0, "the pen stayed up: nothing is on the demo plotter's paper")
+        check(all(t["corners"]), "the head went to every corner of the box")
+        check(t["sheet"] == 0, "and the sheet remembers nothing of it")
+        await wait(b, "__studio.session().outline && __studio.session().outline.state === 'traced'", 3000)
+        check(await wait(b, "document.querySelector('[data-p=go]').textContent === 'Plot Black'", 3000) and await b.js("__studio.session().done.size") == 0, "traced → the button now plots the first pen")
+        check("traced" in await b.js("document.querySelector('#queueCard .step').textContent"), "and the outline step says so")
+
+        # moving the design changes the box: it has to be traced again — or skipped
+        await b.js("__studio.items()[0].cx += 12")
+        await b.js(SETTLE)
+        check(await wait(b, "__studio.outlineInfo().state === 'pending' && document.querySelector('[data-p=go]').textContent === 'Trace outline'", 4000), "moving the design makes the outline pending again")
+        await click(b, "[data-p=skip]")
+        check(await b.js("__studio.outlineInfo().state") == "skipped" and await b.js("__studio.session().skipped.size") == 0, "Skip skips just the outline, not a pen")
+        check(await wait(b, "document.querySelector('[data-p=go]').textContent === 'Plot Black'", 3000), "…and the first pen is next")
+
+        # the first pen is cut short, then resumed: the sheet keeps what was drawn, then all of it, as one entry
+        await b.js("__studio.demo().speed = 2")   # slow enough to catch it mid-stroke
+        await click(b, "[data-p=go]")
+        await plot_until_crash(b, 0.4)
+        await b.js("__studio.demo().crash()")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().state === 'interrupted'", 5000), "the first pen is cut short")
+        check(await wait(b, "__studio.sheet.inks.length === 1", 5000), "what it had drawn is on the sheet")
+        part = await b.js("({n: __studio.sheet.inks[0].pts.length, sig: __studio.sheet.inks[0].sig, mine: __studio.sheet.inks[0].mid === __studio.sheetMid()})")
+        await wait(b, "__studio.live.strokes", 5000)
+        await click(b, "[data-p=rhome]")
+        await wait(b, "__studio.demo().offset[0] === 0", 5000)
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "[data-p=rgo]")
+        check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed, and finished")
+        check(await wait(b, "__studio.sheet.inks[0] && __studio.sheet.inks[0].sig.startsWith('finished')", 5000), "the sheet is updated when it finishes")
+        full = await b.js("({n: __studio.sheet.inks.length, pts: __studio.sheet.inks[0].pts.length})")
+        check(part["sig"].startswith("interrupted") and part["mine"], f"it had kept the part ({part['n'] // 2} points) for this machine")
+        check(full["n"] == 1 and full["pts"] > part["n"], f"and now has all of it, in the same entry ({full['pts'] // 2} points)")
+
+        # the second pen: plainly (the outline is not traced again)
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob().meta.penId === 'p2' && __studio.curJob().state === 'finished'", 30000), "the second pen plots")
+        await wait(b, "__studio.sheet.inks.length === 2", 5000)
+        on_plan = [await b.js(f"{PTS_ON_PLAN}({pid!r})") for pid in await b.js("__studio.pens().map(p => p.id)")]
+        check(all(o["n"] > 3 and o["bad"] == 0 and o["passes"] == 1 for o in on_plan), f"each pen's drawn lines are back at their planned places on the paper {on_plan}")
+        check(await b.js("__studio.sheet.inks.some(e => e.width === 0.5) && __studio.sheet.inks.every(e => e.width > 0)"), "with the pens' widths")
+        check(await b.js("document.getElementById('queueCard').textContent.includes('On the sheet') && document.getElementById('queueCard').textContent.includes('1 design')"), "Plot lists what is on the sheet: one design")
+
+        # Design: it shows, faded, under the drawing — here with nothing designed yet
+        await click(b, "#wsSeg [data-ws=design]")
+        await b.js("__studio.items().length = 0")
+        await b.js(SETTLE)
+        pts = await b.js("({a: [__studio.sheet.inks[0].pts[0], __studio.sheet.inks[0].pts[1]], b: [__studio.sheet.inks[1].pts[0], __studio.sheet.inks[1].pts[1]]})")
+        await asyncio.sleep(0.4)
+        dark = [await b.js(f"{DARKEST}({p[0]}, {p[1]})") for p in (pts["a"], pts["b"])]
+        check(all(d < 225 for d in dark), f"both pens' lines show on the paper in Design {dark}")
+        check(await b.js("!document.getElementById('hudSheet').hidden && document.getElementById('hudSheet').textContent.includes('1 design')"), "a label says what they are")
+        await click(b, "[data-tab=doc]")
+        check(await b.js("!document.getElementById('sheetDoc').hidden && document.getElementById('sheetDoc').textContent.includes('Clear')"), "the Paper pane lists it, with a Clear button")
+        await click(b, "#sheetDoc [data-s=show]")
+        await asyncio.sleep(0.4)
+        hidden = [await b.js(f"{DARKEST}({p[0]}, {p[1]})") for p in (pts["a"], pts["b"])]
+        check(all(h > max(dark) + 8 for h in hidden), f"“Show it” off hides it {hidden}")
+        await click(b, "#sheetDoc [data-s=show]")
+        await asyncio.sleep(0.4)
+        check(await b.js(f"{DARKEST}({pts['a'][0]}, {pts['a'][1]})") < 225, "…and on shows it again")
+
+        # it is kept: a reload brings it back
+        await asyncio.sleep(0.5)
+        await b.goto(base + "/studio.html")
+        check(await wait(b, "__studio.booted()", 10000), "reloaded")
+        check(await b.js("__studio.sheet.inks.length") == 2 and await b.js("__studio.sheet.inks.every(e => e.pts instanceof Float32Array && e.pts.length > 6)"), "what was plotted is still remembered after a reload")
+        check(await b.js("__studio.sheetInks().length") == 2 and await b.js("!document.getElementById('hudSheet').hidden"), "…on this machine's sheet, not connected")
+
+        # a sheet belongs to its machine; Clear (with Undo) only clears this one
+        await b.js("__studio.sheet.inks.push({...__studio.sheet.inks[0], key: 'other:1:1', mid: 'another-plotter', _p: null})")
+        check(await b.js("__studio.sheetInks().length") == 2 and await b.js("__studio.sheet.inks.length") == 3, "another machine's lines are not on this sheet")
+        await click(b, "[data-tab=doc]")
+        await click(b, "#sheetDoc [data-s=clear]")
+        check(await b.js("__studio.sheetInks().length") == 0 and await b.js("__studio.sheet.inks.map(e => e.mid)") == ["another-plotter"], "Clear forgets this machine's sheet and leaves the other one alone")
+        check(await b.js("document.getElementById('sheetDoc').hidden && document.getElementById('hudSheet').hidden"), "the label and the list go")
+        await click(b, "#toast button")
+        check(await b.js("__studio.sheetInks().length") == 2, "Undo brings it back")
+
+        # the plotter still has its last job: reconnecting must not add it a second time
+        await click(b, "#wsSeg [data-ws=machine]")
+        await click(b, "[data-mc=connect]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo plotter connects again")
+        await click(b, "#wsSeg [data-ws=plot]")
+        await wait(b, "__studio.live.moves && __studio.curJob() && !__studio.curJob().offline", 8000)
+        await asyncio.sleep(0.5)
+        check(await b.js("__studio.sheetInks().length") == 2, "its last job is not added to the sheet again")
+
+        # Clear on the demo plotter also puts a fresh sheet on it; and a cleared job does not come back from the plotter's own memory of it
+        check(await b.js("__studio.demo().ink.length") > 0, "the demo plotter has ink on its paper")
+        await click(b, "#wsSeg [data-ws=design]")
+        await click(b, "[data-tab=doc]")
+        await click(b, "#sheetDoc [data-s=clear]")
+        check(await b.js("__studio.sheetInks().length") == 0 and await b.js("__studio.demo().ink.length") == 0, "Clear: the sheet is empty, and so is the demo plotter's paper")
+        await asyncio.sleep(0.6)
+        await b.goto(base + "/studio.html")
+        check(await wait(b, "__studio.booted()", 10000), "reloaded again")
+        check(await b.js("__studio.sheetInks().length") == 0, "the clear was kept")
+        await click(b, "#wsSeg [data-ws=machine]")
+        await click(b, "[data-mc=connect]")
+        await wait(b, "__studio.server().st && __studio.server().st.connected", 8000)
+        await click(b, "#wsSeg [data-ws=plot]")
+        await wait(b, "__studio.live.moves && __studio.curJob() && !__studio.curJob().offline", 8000)
+        await asyncio.sleep(0.6)
+        check(await b.js("__studio.curJob().state") == "finished" and await b.js("__studio.sheetInks().length") == 0, "the plotter reports its last job again, and it stays off the sheet")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def sheet_mirrored():
+    """A machine with X mirrored plots mirrored G-code; the sheet has to put the lines back where the design had them."""
+    print("the sheet with X mirrored in the output")
+    b = await Browser(1400, 900).start()
+    base = serve()
+    try:
+        await b.goto(base + "/studio.html")
+        await b.js("__studio.addKind('star'); __studio.items().at(-1).cx = 80")   # away from the paper's centre, so the mirror moves it
+        await b.js(SETTLE)
+        await b.js("__studio.S.machine.mirrorX = true")
+        await click(b, "#wsSeg [data-ws=machine]")
+        await click(b, "[data-mc=demo]")
+        await wait(b, "__studio.server().st && __studio.server().st.connected", 8000)
+        await b.js("__studio.demo().speed = 200")
+        await click(b, "#wsSeg [data-ws=plot]")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().state === 'finished'", 30000), "plotted with X mirrored")
+        await wait(b, "__studio.sheet.inks.length === 1", 5000)
+        r = await b.js("""(async () => { const T = __studio, d = (await T.usb().api('job')).job, pl = T.plan().pens[0].paths[0][0], i = d.moves.findIndex(m => m[3]), cx = T.S.paper.x + T.S.paper.w / 2;
+          return {job: d.moves[i - 1].slice(1, 3), plan: pl, mirrored: [2 * cx - pl[0], pl[1]], sheet: [T.sheet.inks[0].pts[0], T.sheet.inks[0].pts[1]], meta: d.meta.mirror, cx}; })()""")
+        check(abs(r["job"][0] - r["mirrored"][0]) < 0.01 and abs(r["job"][0] - r["plan"][0]) > 50, f"the job is mirrored about the paper centre ({r['plan'][0]:.1f} → {r['job'][0]:.1f})")
+        check(abs(r["sheet"][0] - r["plan"][0]) < 0.01 and abs(r["sheet"][1] - r["plan"][1]) < 0.01, f"…and the sheet has it where the design had it {r['sheet']}")
+        check(abs(r["meta"] - 2 * r["cx"]) < 1e-9, "the job carries the mirror it was made with")
+        on_plan = await b.js(f"{PTS_ON_PLAN}(__studio.pens()[0].id)")
+        check(on_plan["n"] > 3 and on_plan["bad"] == 0, f"every point is at a planned place {on_plan}")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
 
 
 async def setv(b, sel, value):
@@ -713,7 +931,7 @@ async def servo_test_card():
 
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

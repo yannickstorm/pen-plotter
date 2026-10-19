@@ -239,7 +239,7 @@
   .canvas-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
   .canvas-wrap.drop { outline: 2px dashed var(--accent); outline-offset: -8px; }
   .hud { position: absolute; display: flex; gap: 6px; align-items: center; }
-  .hud.tl { left: 12px; top: 12px; pointer-events: none; }
+  .hud.tl { left: 12px; top: 12px; right: 150px; flex-wrap: wrap; pointer-events: none; }   /* wraps before the zoom buttons */
   .hud.tr { right: 12px; top: 12px; }
   .hud.bl { left: 12px; bottom: 12px; right: 12px; flex-wrap: wrap; }
   .pill { padding: 5px 10px; border-radius: 8px; font: 11.5px var(--mono); color: var(--muted);
@@ -340,6 +340,17 @@
   .step .sw { width: 28px; height: 28px; border-radius: 8px; }
   .step b { display: block; font-weight: 600; }
   .step span { font-size: 11.5px; color: var(--muted); }
+  .step .sw.ol { display: grid; place-items: center; background: var(--panel); border: 1px dashed var(--muted); color: var(--muted); }
+  .step .sw.ol svg { width: 16px; height: 16px; }
+  .sheetbox { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .sheetbox:only-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  .sheetbox h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 12.5px; font-weight: 600; }
+  .sheetbox h4 small { font-weight: 500; color: var(--muted); }
+  .sheetrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; min-width: 0; }
+  .sheetrow b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sheetrow > span:last-child { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .sheetrow .dots { display: inline-flex; gap: 2px; flex: none; }
+  .sheetrow .dots i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line-2); }
   .bar { height: 5px; border-radius: 999px; background: var(--raise); overflow: hidden; margin-top: 6px; }
   .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #ff7ab6); transition: width .3s; }
   .callout { padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); font-size: 12.5px; }
@@ -453,7 +464,7 @@
   <section class="stage">
     <div class="canvas-wrap" id="wrap">
       <canvas id="cv"></canvas>
-      <div class="hud tl"><div class="pill">paper <b id="hudPaper">—</b></div><div class="pill">cursor <b id="hudCur">—</b></div></div>
+      <div class="hud tl"><div class="pill">paper <b id="hudPaper">—</b></div><div class="pill">cursor <b id="hudCur">—</b></div><div class="pill" id="hudSheet" hidden></div></div>
       <div class="hud tr">
         <div class="tools">
           <button id="zOut" title="Zoom out">−</button>
@@ -3307,19 +3318,49 @@ function gcodePen(pp, M, paperCx) {
   }
   return L;
 }
-function gcodeFor(list, title) {
+function gcodeJob(title, body) {   // what every job starts and ends with; body(L, park, paperCx) adds the moves in between
   const M = S.machine, P = paperRect(), cx = P.x + P.w / 2, park = `${M.travelG0 ? 'G0' : 'G1'} X${(M.mirrorX ? 2 * cx - M.parkX : M.parkX).toFixed(M.decimals)} Y${M.parkY.toFixed(M.decimals)}${M.travelG0 ? '' : ` F${M.travel}`}`;
   const L = [`; ${title}`, `; made with Plot Studio · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
     `; pen up M3 S${M.up}, default pen down M3 S${M.down}${M.mirrorX ? ' · X mirrored about the paper centre' : ''}`, 'G21', 'G90', `M3 S${M.up}`];
   if (M.dwell > 0) L.push(`G4 P${M.dwell}`);
   if (M.header.trim()) L.push(...M.header.trim().split('\n'));
-  list.forEach((pp, k) => {
-    if (k > 0) { L.push(park, `M0 ; pause — load pen "${pp.pen.name}", then resume (cycle start ~)`); }
-    L.push(...gcodePen(pp, M, cx));
-  });
+  body(L, park, cx);
   if (M.park) L.push(park);
   if (M.footer.trim()) L.push(...M.footer.trim().split('\n'));
   return L.join('\n') + '\n';
+}
+function gcodeFor(list, title) {
+  return gcodeJob(title, (L, park, cx) => list.forEach((pp, k) => {
+    if (k > 0) { L.push(park, `M0 ; pause — load pen "${pp.pen.name}", then resume (cycle start ~)`); }
+    L.push(...gcodePen(pp, S.machine, cx));
+  }));
+}
+// The square around everything that will be plotted, all pens together (paper coordinates). Tracing it with the pen up
+// shows where the design will land before any ink is used.
+let boxCache = {plan: null, box: null};
+function plotBox() {
+  if (boxCache.plan !== plan) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const pp of activePens()) for (const p of pp.paths) for (const [x, y] of p) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    boxCache = {plan, box: x0 === Infinity ? null : {x0, y0, x1, y1}};
+  }
+  return boxCache.box;
+}
+function outlineSig(box) {   // what the plotter would trace: a different box, or the X mirror about a different paper centre, is a different outline
+  const M = S.machine, P = paperRect();
+  return [box.x0, box.y0, box.x1, box.y1].map(v => v.toFixed(2)).join() + (M.mirrorX ? `|m${(P.x + P.w / 2).toFixed(2)}` : '');
+}
+function gcodeOutline(box, title) {   // the pen stays up: round the box and back to its first corner
+  return gcodeJob(title, (L, park, cx) => {
+    const M = S.machine, f = v => v.toFixed(M.decimals), X = x => f(M.mirrorX ? 2 * cx - x : x);
+    const tv = M.travelG0 ? 'G0' : 'G1', tf = M.travelG0 ? '' : ` F${M.travel}`;
+    L.push('; the square round everything to plot, pen up');
+    [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1], [box.x0, box.y0]].forEach(([x, y], i) => L.push(`${tv} X${X(x)} Y${f(y)}${i ? '' : tf}`));
+  });
+}
+function outlineTime(box) {   // seconds: from the park position to the first corner, once round, and back
+  const M = S.machine, w = box.x1 - box.x0, h = box.y1 - box.y0;
+  return ((Math.hypot(box.x0 - M.parkX, box.y0 - M.parkY) + 2 * (w + h) + (M.park ? Math.hypot(box.x0 - M.parkX, box.y0 - M.parkY) : 0)) / M.travel * 60) * 1.1 + 2 * M.dwell;
 }
 const activePens = () => plan ? plan.pens.filter(pp => pp.paths.length) : [];
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'plot';
@@ -3425,6 +3466,7 @@ function render() {
   for (let y = P.y + 10; y < P.y + P.h; y += 10) { c.moveTo(P.x, y); c.lineTo(P.x + P.w, y); }
   c.stroke();
   if (S.paper.margin > 0) { c.setLineDash([4 / k, 4 / k]); c.strokeStyle = 'rgba(91,71,245,.35)'; c.strokeRect(U.x, U.y, U.w, U.h); c.setLineDash([]); }
+  drawSheet(c, k);   // what is already plotted on this sheet, under the new drawing
   // clip drawing to the plottable area (what will actually be plotted)
   c.save();
   const R = S.paper.clip ? U : P; c.beginPath(); c.rect(Math.max(R.x, 0), Math.max(R.y, 0), Math.min(R.x + R.w, M.bedW) - Math.max(R.x, 0), Math.min(R.y + R.h, M.bedH) - Math.max(R.y, 0)); c.clip();
@@ -4259,6 +4301,7 @@ function renderDoc() {
     </div>
     ${P.preset !== 'bed' && (P.x + P.w > S.machine.bedW + 0.01 || P.y + P.h > S.machine.bedH + 0.01 || P.x < 0 || P.y < 0) ? '<div class="callout" style="margin-top:10px">This paper reaches past the bed — lines outside the bed are always clipped.</div>' : ''}
     </div>
+    <div class="card" id="sheetDoc" hidden></div>
     <div class="card"><h3>Path optimisation</h3><div class="fields" id="of">
       ${fieldHTML(['check', 'order', 'Reorder paths to minimise travel'], O)}
       ${fieldHTML(['num', 'merge', 'Join gaps under', {unit: 'mm', step: 0.05, min: 0}], O)}
@@ -4274,6 +4317,7 @@ function renderDoc() {
   $('pColors').querySelectorAll('[data-pc]').forEach(b => { b.classList.toggle('on', b.dataset.pc.toLowerCase() === paperColor().toLowerCase()); b.onclick = () => setPaper(b.dataset.pc, true); });
   $('pColor').oninput = e => setPaper(e.target.value, false); $('pColor').onchange = e => setPaper(e.target.value, true);
   bindForm($('of'), O, () => { saveSettings(); computePlan(); renderStatus(); renderPens(); draw(); });
+  renderSheetCard();
 }
 
 // =====================================================================
@@ -5267,7 +5311,7 @@ function loadProfile(m) {   // make a machine's settings the studio's working se
 function selectMachine(id) {
   const m = machineById(id); activeId = m ? id : null; saveMachines();
   if (m && m.profile) loadProfile(m); else renderMach();
-  renderMachineViews();
+  renderMachineViews(); renderSheetUI(); draw();   // each machine has its own sheet
 }
 let pushTimer = null, syncing = false;
 function commitProfile() {   // the working settings were edited: keep them with the machine (and on its bridge)
@@ -5534,6 +5578,8 @@ function afterStatus() {
   if (ws === 'plot') { trackSession(); renderRecover(); renderQueue(); renderLiveCard(); }
   else trackSession();
   if (ws !== 'design') { renderStatus(); syncLive(); draw(); }
+  else if (server.st && server.st.job) syncLive();   // the job's moves are needed to remember what it drew, wherever the plot ended
+  sheetCommit();
 }
 function addLog(entries) {
   for (const id of ['conLog', 'plotLog']) {
@@ -6027,6 +6073,108 @@ $('moveCard').addEventListener('click', e => {
 });
 $('conForm').onsubmit = e => { e.preventDefault(); const v = $('conIn').value.trim(); if (!v) return; act('send', {line: v}); $('conIn').value = ''; };
 
+// ---------- the sheet: what is already drawn on the paper ----------
+// When a pen job ends (finished, stopped, or cut short) the lines it drew are kept here, per machine, in paper coordinates
+// (X not mirrored), until they are cleared. Design shows them faded under the drawing and the live view (Machine, Plot) under the
+// head, so the next design can be placed around what is already on the sheet. They are kept in this browser (IndexedDB).
+const sheet = {inks: [], gone: [], show: lsGet('plotstudio.sheetshow') !== false, checked: '', loaded: false};   // inks: {key, mid, sid, project, color, width, at, sig, pts}; gone: cleared jobs, which must not come back from the plotter's memory of its last job
+const sheetMid = () => activeId || conn.id || '';
+const sheetInks = () => sheet.inks.filter(e => e.mid === sheetMid());
+function sheetPath(e) {   // pts is x,y,x,y… with a NaN pair wherever the pen lifted
+  if (e._p) return e._p;
+  const p = new Path2D(), a = e.pts; let down = false;
+  for (let i = 0; i < a.length; i += 2) {
+    if (isNaN(a[i])) { down = false; continue; }
+    if (down) p.lineTo(a[i], a[i + 1]); else p.moveTo(a[i], a[i + 1]);
+    down = true;
+  }
+  return e._p = p;
+}
+function sheetDrawn(moves, done, meta) {   // the pen-down moves of lines before `done`, from machine coordinates back to paper coordinates
+  const P = paperRect(), m = meta && 'mirror' in meta ? meta.mirror : S.machine.mirrorX ? 2 * (P.x + P.w / 2) : null, out = [];
+  let down = false;
+  for (let i = 1; i < moves.length; i++) {
+    const b = moves[i]; if (b[0] >= done) break;
+    if (!b[3]) { down = false; continue; }
+    const a = moves[i - 1];
+    if (!down) { if (out.length) out.push(NaN, NaN); out.push(m == null ? a[1] : m - a[1], a[2]); }
+    out.push(m == null ? b[1] : m - b[1], b[2]); down = true;
+  }
+  return Float32Array.from(out);
+}
+const saveSheet = () => IDB.set('sheet', {inks: sheet.inks.map(({_p, ...e}) => e), gone: sheet.gone});
+function sheetCommit() {   // the job on the plotter has ended: keep what it drew (again, if it was resumed since)
+  const j = server.st && server.st.job;
+  if (!sheet.loaded || !j || j.running || !conn.kind || !live.moves || live.jobId !== j.id) return;
+  const mid = conn.id || sheetMid(), key = `${mid}:${j.id}:${j.started}`, sig = `${j.state}:${j.done}`;
+  if (sheet.checked === key + sig) return;
+  sheet.checked = key + sig;
+  const meta = j.meta || {};
+  if (meta.outline || sheet.gone.includes(key)) return;
+  const pts = sheetDrawn(live.moves, j.state === 'finished' ? Infinity : j.done, meta);
+  if (!pts.length) return;
+  const i = sheet.inks.findIndex(e => e.key === key), pen = penById(meta.penId) || {};
+  if (i >= 0 && sheet.inks[i].sig === sig) return;   // seen before (this page was reloaded)
+  const ink = {key, mid, sid: meta.sid || key, project: meta.project || j.name, color: meta.color || live.color || '#1b1b1f', width: +meta.width || pen.width || 0.4, at: Date.now(), sig, pts};
+  if (i >= 0) sheet.inks[i] = ink; else sheet.inks.push(ink);
+  sheetChanged();
+}
+function clearSheet({quiet = false} = {}) {   // a fresh sheet of paper: forget what was plotted on this machine's (the demo plotter's paper is cleared too)
+  const mid = sheetMid(), cut = sheet.inks.filter(e => e.mid === mid), j = server.st && server.st.job, demoNow = conn.kind === 'demo' && demo;
+  if (demoNow) demo.newSheet();
+  if (!cut.length) return quiet ? undefined : toast('Nothing is remembered on the sheet');
+  sheet.inks = sheet.inks.filter(e => e.mid !== mid);
+  sheet.gone.push(...cut.map(e => e.key));
+  if (j && !j.running && conn.kind) sheet.gone.push(`${conn.id || mid}:${j.id}:${j.started}`);   // the last job is still on the plotter's books: it must not be added again
+  sheet.gone = sheet.gone.slice(-300);
+  sheetChanged();
+  if (!quiet) toast(`Cleared what was plotted on the sheet (${cut.length} pen pass${cut.length === 1 ? '' : 'es'})`, false, demoNow ? null : {label: 'Undo', fn: () => {
+    sheet.inks.push(...cut); sheet.gone = sheet.gone.filter(k => !cut.some(e => e.key === k)); sheetChanged();
+  }});
+}
+function sheetDesigns(L) {   // one entry per design: its name, the pens' colours, when
+  const m = new Map();
+  for (const e of L) {
+    const k = e.sid + '|' + e.project, d = m.get(k) || {project: e.project, colors: [], at: 0};
+    if (!d.colors.includes(e.color)) d.colors.push(e.color);
+    d.at = Math.max(d.at, e.at); m.set(k, d);
+  }
+  return [...m.values()].sort((a, b) => b.at - a.at);
+}
+function sheetBoxHTML(card = false) {   // the list and the Clear button, in the Plot queue and in the Paper pane
+  const L = sheetInks(); if (!L.length) return '';
+  const D = sheetDesigns(L), more = D.length - 4;
+  return `<div class="sheetbox">${card ? '<h3>On the sheet <small>already plotted</small></h3>' : `<h4>On the sheet <small>· ${D.length} design${D.length === 1 ? '' : 's'} plotted</small></h4>`}
+    ${D.slice(0, 4).map(d => `<div class="sheetrow"><span class="dots">${d.colors.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span><b>${esc(d.project)}</b><span>${esc(fmtWhen(d.at / 1000))}</span></div>`).join('')}
+    ${more > 0 ? `<div class="note" style="margin:2px 0 0">+ ${more} earlier</div>` : ''}
+    <label class="check" style="margin-top:8px"><input type="checkbox" data-s="show" ${sheet.show ? 'checked' : ''}>Show it in Design and on the bed</label>
+    <div class="row" style="margin-top:8px"><button class="btn sm danger" data-s="clear" title="Forget what has been plotted — for a fresh sheet of paper">Clear</button></div>
+    ${card ? '<p class="note">Kept in this browser. It is shown faded under the design, to place the next one around it. Clear it when you put a fresh sheet on the plotter.</p>' : ''}</div>`;
+}
+function renderSheetCard() {
+  const el = $('sheetDoc'); if (!el) return;
+  const h = sheetBoxHTML(true); el.hidden = !h; setHTML(el, h);
+}
+function renderSheetUI() {
+  const L = sheetInks(), pill = $('hudSheet');
+  if (pill) { const n = sheetDesigns(L).length; pill.hidden = !(L.length && sheet.show); pill.innerHTML = `on the sheet <b>${n} design${n === 1 ? '' : 's'}</b>`; }
+  renderSheetCard();
+  if (session && ws === 'plot') renderQueue();
+}
+function sheetChanged() { saveSheet(); renderSheetUI(); draw(); }
+function drawSheet(c, k) {   // under the drawing, at the pens' own widths
+  if (!sheet.show) return;
+  const L = sheetInks(); if (!L.length) return;
+  c.save(); c.lineCap = 'round'; c.lineJoin = 'round'; c.globalAlpha = 0.55;
+  for (const e of L) { c.strokeStyle = e.color; c.lineWidth = Math.max(e.width, 0.7 / k); c.stroke(sheetPath(e)); }
+  c.restore();
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-s="clear"]'); if (b && !b.disabled) clearSheet(); });
+document.addEventListener('change', e => {
+  const b = e.target.closest('[data-s="show"]'); if (!b) return;
+  sheet.show = b.checked; lsSet('plotstudio.sheetshow', sheet.show); renderSheetUI(); draw();
+});
+
 // ---------- Plot: pen queue ----------
 // A plot session is the active pens of the design, plotted one job per pen with a pen swap in between.
 // Which pens are done is remembered (per browser), and each job carries its pen in `meta`, so it survives a reload.
@@ -6035,15 +6183,24 @@ function ensureSession() {
   const a = activePens(), key = a.map(pp => pp.pen.id).join();
   if (!session || session.key !== key) {
     const sv = lsGet('plotstudio.session'), same = sv && sv.key === key;
-    session = {key, done: new Set(same ? sv.done : []), skipped: new Set(same ? sv.skipped : []), job: null};
+    session = {key, id: (same && sv.id) || uid(), done: new Set(same ? sv.done : []), skipped: new Set(same ? sv.skipped : []), outline: same ? sv.outline || null : null, job: null};
   }
   return a;
 }
-const saveSession = () => session && lsSet('plotstudio.session', {key: session.key, done: [...session.done], skipped: [...session.skipped]});
+const saveSession = () => session && lsSet('plotstudio.session', {key: session.key, id: session.id, done: [...session.done], skipped: [...session.skipped], outline: session.outline});
 let lastJobKey = null;
 function trackSession() {   // a finished job of one of our pens marks that pen done
   const j = server.st && server.st.job; if (!j) return;
   const key = `${conn.kind}:${j.id}:${j.state}`; if (key === lastJobKey) return; lastJobKey = key;
+  if (j.meta && j.meta.outline) {   // the pen has been round the box
+    if (j.state === 'finished') {
+      ensureSession();
+      const was = session.outline && session.outline.state === 'traced' && session.outline.sig === j.meta.sig;   // not again when the plotter reports its last job after a reload
+      session.outline = {state: 'traced', sig: j.meta.sig}; saveSession();
+      if (!was) toast('Outline traced — if it sits where you want it on the paper, start the first pen');
+    }
+    return;
+  }
   const pid = j.meta && j.meta.penId; if (!pid) return;
   ensureSession();
   if (j.state === 'finished' && !session.done.has(pid)) {
@@ -6054,32 +6211,50 @@ function trackSession() {   // a finished job of one of our pens marks that pen 
   }
 }
 function nextPen() { const a = ensureSession(); return a.find(pp => !session.done.has(pp.pen.id) && !session.skipped.has(pp.pen.id)) || null; }
+// "Trace the outline first" (a per-browser option): the pen goes round the box that holds every pen's lines before the first pen starts.
+let outlineOn = lsGet('plotstudio.outline') === true;
+function outlineInfo() {   // null when off or nothing to plot; state: pending | traced | skipped (for this box — move the design and it is pending again)
+  const box = outlineOn && session ? plotBox() : null; if (!box) return null;
+  const sig = outlineSig(box), o = session.outline;
+  return {box, sig, state: o && o.sig === sig ? o.state : 'pending'};
+}
+const outlineNext = () => { const ol = outlineInfo(); return ol && ol.state === 'pending' && !session.done.size && !session.skipped.size ? ol : null; };
+const OUTLINE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.5" stroke-linecap="round"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>';
 function renderQueue() {
   const a = ensureSession(), st = server.st || {}, on = !!st.connected, j = curJob(), running = !!(j && j.running), held = st.state === 'Hold';
-  const nx = nextPen(), jp = j && j.meta && j.meta.penId;
-  const steps = a.map((pp, i) => {
+  const nx = nextPen(), jp = j && j.meta && j.meta.penId, jo = !!(j && j.meta && j.meta.outline), ol = outlineInfo(), olNext = outlineNext();
+  const olRow = !ol ? '' : `<div class="step ${olNext && !running ? 'cur' : ''} ${ol.state === 'traced' ? 'done' : ''} ${ol.state === 'skipped' ? 'skip' : ''}">
+      <span class="sw ol">${OUTLINE_ICON}</span>
+      <div><b>Outline</b><span>${round(ol.box.x1 - ol.box.x0, 1)} × ${round(ol.box.y1 - ol.box.y0, 1)} mm · pen up · ~${fmtTime(outlineTime(ol.box))}</span>
+        ${jo && (running || j.resumable) ? `<div class="bigbar ${j.resumable ? 'bad' : ''}" style="margin:6px 0 0;height:5px"><div data-q="bar"></div></div>` : ''}</div>
+      <div class="row"><span class="st" ${jo && ol.state === 'pending' ? 'data-q="st"' : ''}>${ol.state === 'traced' ? '✓ traced' : ol.state === 'skipped' ? 'skipped' : ''}</span>${olNext ? '' : `<button class="btn ghost sm" data-p="otrace" ${!on || running || building || (j && j.resumable) ? 'disabled' : ''} title="Move the pen round the box now">${ol.state === 'pending' ? 'Trace' : '↺'}</button>`}</div></div>`;
+  const steps = olRow + a.map((pp, i) => {
     const id = pp.pen.id, mine = jp === id, d = session.done.has(id), sk = session.skipped.has(id);
-    return `<div class="step ${nx && nx.pen.id === id && !running ? 'cur' : ''} ${d ? 'done' : ''} ${sk ? 'skip' : ''} ${mine && j.resumable ? 'int' : ''}">
+    return `<div class="step ${nx && nx.pen.id === id && !running && !olNext ? 'cur' : ''} ${d ? 'done' : ''} ${sk ? 'skip' : ''} ${mine && j.resumable ? 'int' : ''}">
       <span class="sw" style="background:${pp.pen.color}"></span>
       <div><b>${i + 1}. ${esc(pp.pen.name)}</b><span>${fmtLen(pp.draw)} · ${pp.paths.length} lifts · ~${fmtTime(pp.time)}${pp.pen.down !== '' ? ` · down S${pp.pen.down}` : ''}</span>
         ${mine && (running || j.resumable) ? `<div class="bigbar ${j.resumable ? 'bad' : ''}" style="margin:6px 0 0;height:5px"><div data-q="bar"></div></div>` : ''}</div>
       <div class="row"><span class="st" ${mine && !d ? 'data-q="st"' : ''}>${d ? '✓ done' : sk ? 'skipped' : ''}</span>${d || sk ? `<button class="btn ghost sm" data-p="redo" data-id="${id}" title="Plot this pen again">↺</button>` : ''}</div></div>`;
   }).join('');
   const prompt = !a.length ? 'Nothing to plot yet — make something in Design.'
-    : running ? (held ? `Paused — press Resume to continue.` : jp ? `Plotting with <b>${esc((penById(jp) || {}).name || j.name)}</b>…` : `Plotting <b>${esc(j.name)}</b>…`)
+    : running ? (held ? `Paused — press Resume to continue.` : jo ? 'Tracing the outline — the pen stays up.' : jp ? `Plotting with <b>${esc((penById(jp) || {}).name || j.name)}</b>…` : `Plotting <b>${esc(j.name)}</b>…`)
     : j && j.resumable ? 'An unfinished plot is waiting — resume it above, or discard it.'
-    : !nx ? '<b>All done.</b> The pen is up and parked.' : `${session.done.size ? 'Swap to' : 'Load'} the <b style="color:${nx.pen.color}">●</b> <b>${esc(nx.pen.name)}</b> pen, then press Plot.`;
+    : olNext ? 'Press <b>Trace outline</b>: the pen stays up and goes round the box that holds every pen’s lines. Check it sits where you want it on the paper.'
+    : !nx ? '<b>All done.</b> The pen is up and parked.'
+    : `${ol && ol.state === 'traced' && !session.done.size ? '<b>Outline traced</b> — placed right? ' : ''}${session.done.size ? 'Swap to' : 'Load'} the <b style="color:${nx.pen.color}">●</b> <b>${esc(nx.pen.name)}</b> pen, then press Plot.`;
   setHTML($('queueCard'), `<h3>Plot <small>${a.length} pen${a.length === 1 ? '' : 's'}<span data-q="left"></span></small></h3>
     ${stripHTML()}
     ${S.machine.mirrorX ? '<div class="callout" style="margin-bottom:10px">X is mirrored in the output (Machine settings).</div>' : ''}
     <div style="display:flex;flex-direction:column;gap:8px">${steps}</div>
+    <label class="check" style="margin-top:10px" title="Before the first pen, move the pen (up) round the box that holds everything that will be plotted, to check the design is well placed"><input type="checkbox" data-p="outline" ${outlineOn ? 'checked' : ''}>Trace the outline first</label>
     <div class="callout" style="margin-top:10px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)">${prompt}</div>
     <div class="row" style="margin-top:10px">
       ${running ? `<button class="btn grow" data-p="pause">${held ? 'Resume' : 'Pause'}</button><button class="btn danger" data-p="stop">Stop</button>`
-        : `<button class="btn primary grow" data-p="go" ${!nx || !on || building || (j && j.resumable) ? 'disabled' : ''}>${nx ? `Plot ${esc(nx.pen.name)}` : 'Finished'}</button>
-           <button class="btn" data-p="skip" ${!nx ? 'disabled' : ''}>Skip</button>`}
+        : `<button class="btn primary grow" data-p="go" ${!nx || !on || building || (j && j.resumable) ? 'disabled' : ''}>${olNext ? 'Trace outline' : nx ? `Plot ${esc(nx.pen.name)}` : 'Finished'}</button>
+           <button class="btn" data-p="skip" ${!nx ? 'disabled' : ''} ${olNext ? 'title="Skip the outline"' : ''}>Skip</button>`}
     </div>
-    ${!running && (session.done.size || session.skipped.size) ? '<div class="row" style="margin-top:8px"><span class="grow"></span><button class="btn ghost sm" data-p="over">Start over</button></div>' : ''}
+    ${!running && (session.done.size || session.skipped.size || session.outline) ? '<div class="row" style="margin-top:8px"><span class="grow"></span><button class="btn ghost sm" data-p="over">Start over</button></div>' : ''}
+    ${sheetBoxHTML()}
     <p class="note">${conn.kind === 'bridge' ? 'Each pen is its own job. The bridge keeps plotting, and keeps its progress, if you close this tab.'
       : isLocal() ? 'Each pen is its own job. Keep this tab open while plotting — progress is saved as it goes, so a plot cut short can be resumed.' : 'Each pen is its own job.'}</p>`);
   // the numbers that change while plotting are filled in without rebuilding the buttons
@@ -6098,21 +6273,37 @@ async function startPen() {
   const pp = nextPen(); if (!pp) return;
   if (building) return toast('Still processing — try again in a moment', true);
   const j = server.st && server.st.job;
-  if (j && j.resumable && !confirm(`Start ${pp.pen.name}? The unfinished plot “${j.name}” can then no longer be resumed.`)) return;
-  if (conn.kind === 'demo' && !session.done.size && demo && demo.ink.length && confirm('Put a fresh sheet on the demo plotter?')) demo.newSheet();
+  const ol = outlineNext();
+  if (j && j.resumable && !confirm(`${ol ? 'Trace the outline' : 'Start ' + pp.pen.name}? The unfinished plot “${j.name}” can then no longer be resumed.`)) return;
+  if (ol) return startOutline(ol);
+  if (conn.kind === 'demo' && !session.done.size && demo && demo.ink.length && confirm('Put a fresh sheet on the demo plotter?')) clearSheet({quiet: true});
   if (conn.kind === 'demo') demo.inkColor = pp.pen.color;
+  const P = paperRect();   // what a finished job needs to put its lines back on the paper: the pen's width, and the mirror (about the paper's centre) the G-code was made with
   const r = await act('run', {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
-    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel()}});
+    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel(), sid: session.id, width: pp.pen.width, mirror: S.machine.mirrorX ? 2 * (P.x + P.w / 2) : null}});
   if (r && isLocal() && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
+  pollServer();
+}
+async function startOutline(ol) {   // its own short job: the pen stays up, nothing is drawn
+  if (building) return toast('Still processing — try again in a moment', true);
+  const name = `${projName()} — outline`;
+  await act('run', {gcode: gcodeOutline(ol.box, name), name, penUp: S.machine.up, dwell: S.machine.dwell, meta: {outline: true, sig: ol.sig, project: projLabel(), sid: session.id}});
   pollServer();
 }
 $('plotLeft').addEventListener('click', async e => {
   const b = e.target.closest('[data-p]'); if (!b || b.disabled) return;
   const p = b.dataset.p, st = server.st || {};
   if (p === 'go') startPen();
-  else if (p === 'skip') { const pp = nextPen(); if (pp) { session.skipped.add(pp.pen.id); saveSession(); renderQueue(); } }
+  else if (p === 'skip') {
+    const ol = outlineNext();
+    if (ol) session.outline = {state: 'skipped', sig: ol.sig};
+    else { const pp = nextPen(); if (pp) session.skipped.add(pp.pen.id); }
+    saveSession(); renderQueue();
+  }
   else if (p === 'redo') { session.done.delete(b.dataset.id); session.skipped.delete(b.dataset.id); saveSession(); renderQueue(); }
-  else if (p === 'over') { session.done.clear(); session.skipped.clear(); saveSession(); renderQueue(); }
+  else if (p === 'over') { session.done.clear(); session.skipped.clear(); session.outline = null; session.id = uid(); saveSession(); renderQueue(); }
+  else if (p === 'outline') { outlineOn = b.checked; lsSet('plotstudio.outline', outlineOn); renderQueue(); draw(); }
+  else if (p === 'otrace') { const ol = outlineInfo(); if (ol) startOutline(ol); }
   else if (p === 'machine') setWs('machine');
   else if (p === 'mconnect') { const am = activeMachine(); if (am) { await activate(am); pollServer(); } }
   else if (p === 'pause') { await act(st.state === 'Hold' ? 'resume' : 'pause'); pollServer(); }
@@ -6229,6 +6420,7 @@ async function syncLive() {
   for (let i = 1; i < M.length; i++) if (M[i][3]) { p.moveTo(M[i - 1][1], M[i - 1][2]); p.lineTo(M[i][1], M[i][2]); }
   live.todo = p; resumeKey = null;
   if (ws === 'plot') renderRecover();
+  sheetCommit();
   draw();
 }
 function liveDone(done) {   // the drawn part as one path, extended as the plot goes on
@@ -6256,6 +6448,11 @@ function renderLive() {
   c.stroke();
   c.lineCap = 'round'; c.lineJoin = 'round';
   const lw = w => Math.max(w || 0.4, 0.8 / k);
+  // what is already plotted on this sheet (the demo plotter's own paper below shows its ink already)
+  if (!(conn.kind === 'demo' && demo && demo.ink.length)) {
+    c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
+    drawSheet(c, k); c.restore();
+  }
   // the design, faint, for context (in machine coordinates: mirrored like the G-code)
   if (ws === 'plot' && plan) {
     c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
@@ -6267,6 +6464,14 @@ function renderLive() {
       if (live.color && j && j.meta && j.meta.penId === pen.id) continue;
       c.strokeStyle = pen.color; c.lineWidth = lw(pen.width); c.stroke(p);
     }
+    c.restore();
+  }
+  // the square the outline trace goes round
+  const ol = ws === 'plot' ? outlineInfo() : null;
+  if (ol) {
+    c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
+    c.strokeStyle = css('--accent'); c.lineWidth = 1.5 / k; c.setLineDash([6 / k, 4 / k]);
+    c.strokeRect(ol.box.x0, ol.box.y0, ol.box.x1 - ol.box.x0, ol.box.y1 - ol.box.y0);
     c.restore();
   }
   // the job: to do (faint), drawn (solid), drawn but traced again on resume (accent)
@@ -6364,6 +6569,9 @@ let booted = false;
   // what this browser kept: the project being worked on, and plots cut short (closed tab, crash, unplugged cable)
   const saved = await IDB.get('autosave');
   for (const m of machines) if (m.via !== 'bridge') { const j = await GrblSerial.saved(m.id); offline[m.id] = j && j.m; }
+  const kept = await IDB.get('sheet');   // what was plotted on the sheets so far
+  if (kept && Array.isArray(kept.inks)) { sheet.inks = kept.inks.filter(e => e && e.pts && e.pts.length); sheet.gone = kept.gone || []; }
+  sheet.loaded = true; renderSheetUI(); draw();
   if (saved && saved.items && saved.items.length && !items.length) {
     try { await applyProject(saved); projTitle = saved.title || ''; renderProjName(); toast('Restored your last session', false, {label: 'Start new', fn: () => newProject()}); }
     catch (e) { console.warn('could not restore the last session', e); }
@@ -6385,7 +6593,8 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 window.__studio = {bver, noteBridgeVersion, bridgeOld, BRIDGE_MIN, conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
   servoTestPlan, servoTestGcode, chainSegs, servoHit, setServoPreview: v => { servoPreview = v; }, segText, machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
-  cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds};
+  cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds,
+  sheet, sheetInks, sheetDrawn, clearSheet, plotBox, outlineInfo, gcodeOutline, outlineTime, sheetMid};
 </script>
 </body>
 </html>
