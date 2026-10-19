@@ -425,6 +425,12 @@ async def on_bridge():
         check(await wait(b, "__studio.sheet.inks.length === 1", 5000), "what it drew is on the sheet (the moves and the job's meta come back from the bridge)")
         on_plan = await b.js(f"{PTS_ON_PLAN}(__studio.pens()[0].id)")
         check(on_plan["n"] > 3 and on_plan["bad"] == 0, f"…at the planned places on the paper {on_plan}")
+        await click(b, "#wsSeg [data-ws=machine]")
+        await asyncio.sleep(0.5)
+        pt = await b.js("[__studio.sheet.inks[0].pts[0], __studio.sheet.inks[0].pts[1]]")
+        dark = await b.js(f"{DARKEST}({pt[0]}, {pt[1]})")
+        check(dark < 225, f"the Machine view shows what is on the sheet under the head {dark}")
+        check(await b.js("!document.getElementById('sheetMach').hidden && document.getElementById('sheetMach').textContent.includes('Clear')"), "…and lists it, with Clear")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()
@@ -642,6 +648,45 @@ async def sheet_mirrored():
         check(abs(r["meta"] - 2 * r["cx"]) < 1e-9, "the job carries the mirror it was made with")
         on_plan = await b.js(f"{PTS_ON_PLAN}(__studio.pens()[0].id)")
         check(on_plan["n"] > 3 and on_plan["bad"] == 0, f"every point is at a planned place {on_plan}")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def outline_in_machine():
+    """Machine view: the same outline trace and the same sheet list, for placing the paper or the pen by hand."""
+    print("outline trace and sheet in the Machine view")
+    b = await Browser(1400, 900).start()
+    base = serve()
+    try:
+        await b.goto(base + "/studio.html")
+        await click(b, "#wsSeg [data-ws=machine]")
+        check(await b.js("document.getElementById('outlineCard').textContent.includes('nothing to plot')") and await b.js("document.querySelector('[data-o=trace]').disabled"), "nothing designed yet: the Trace button is off")
+        await b.js("__studio.addKind('star'); __studio.items().at(-1).cx = 80")
+        await b.js(SETTLE)
+        await click(b, "[data-mc=demo]")
+        check(await wait(b, "__studio.server().st && __studio.server().st.connected", 8000), "demo plotter connects")
+        await b.js("__studio.demo().speed = 200")
+        check(await wait(b, "!document.querySelector('[data-o=trace]').disabled", 4000), "connected, with a design: the Trace button is on")
+        check(await b.js("document.getElementById('outlineCard').textContent.includes('×')"), "it says how big the box is")
+        await click(b, "[data-o=trace]")
+        check(await wait(b, "__studio.curJob() && __studio.curJob().meta && __studio.curJob().meta.outline && __studio.curJob().state === 'finished'", 30000), "it traces the outline")
+        t = await b.js("""(async () => { const T = __studio, d = (await T.usb().api('job')).job, b = T.plotBox(), seen = d.moves.map(m => [m[1], m[2], m[3]]);
+          const has = (x, y) => seen.some(s => Math.abs(s[0] - x) < 0.01 && Math.abs(s[1] - y) < 0.01);
+          return {pen: seen.filter(s => s[2]).length, corners: [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].map(c => has(...c)), ink: T.demo().ink.length}; })()""")
+        check(t["pen"] == 0 and t["ink"] == 0 and all(t["corners"]), "pen up, and it went to every corner of the box")
+        check(await b.js("__studio.sheet.inks.length") == 0, "nothing is added to the sheet")
+        check(await b.js("document.getElementById('sheetMach').hidden"), "the sheet list is hidden while nothing is on it")
+
+        # plot, then the list is in Machine too, with Clear
+        await click(b, "#wsSeg [data-ws=plot]")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "__studio.curJob().state === 'finished' && __studio.curJob().meta.penId", 30000), "plotted")
+        await wait(b, "__studio.sheet.inks.length === 1", 5000)
+        await click(b, "#wsSeg [data-ws=machine]")
+        check(await b.js("!document.getElementById('sheetMach').hidden && document.getElementById('sheetMach').textContent.includes('On the sheet')"), "Machine lists what is on the sheet")
+        await click(b, "#sheetMach [data-s=clear]")
+        check(await b.js("__studio.sheetInks().length") == 0 and await b.js("document.getElementById('sheetMach').hidden"), "Clear works from Machine")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()
@@ -931,7 +976,7 @@ async def servo_test_card():
 
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

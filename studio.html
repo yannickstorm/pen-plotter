@@ -514,6 +514,8 @@
     <nav class="tabs" id="mtabs"><button class="mtab on" data-mtab="ctl">Control</button><button class="mtab" data-mtab="set">Settings</button><button class="mtab" data-mtab="info">Info</button><button class="mtab" data-mtab="sw" id="swTab" hidden>Software</button></nav>
     <div class="panes">
       <div class="pane on" id="ctlPane"><div class="card" id="moveCard"></div>
+        <div class="card" id="outlineCard"></div>
+        <div class="card" id="sheetMach" hidden></div>
         <div class="card"><h3>Console <small id="conInfo"></small></h3><div class="console" id="conLog"></div>
           <form class="row" id="conForm" style="margin-top:8px;flex-wrap:nowrap"><input class="input mono grow" id="conIn" placeholder="G-code or $ command" autocomplete="off" spellcheck="false"><button class="btn sm">Send</button></form></div></div>
       <div class="pane" id="machPane"></div>
@@ -5574,7 +5576,7 @@ function setHTML(el, html) { if (el._html === html) return false; el._html = htm
 function afterStatus() {
   renderConn();
   if (wz) wzTick();
-  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderInfo(); }
+  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderOutlineCard(); renderInfo(); }
   if (ws === 'plot') { trackSession(); renderRecover(); renderQueue(); renderLiveCard(); }
   else trackSession();
   if (ws !== 'design') { renderStatus(); syncLive(); draw(); }
@@ -5710,7 +5712,7 @@ function renderMachineViews() {
   const am = activeMachine(), isBridge = !!am && am.via === 'bridge';
   $('swTab').hidden = !isBridge; $('mtabs').style.gridTemplateColumns = `repeat(${isBridge ? 4 : 3}, 1fr)`;
   if (!isBridge && mtab === 'sw') return setMtab('ctl');
-  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderInfo(); if (mtab === 'sw') { clearTimeout(swTimer); renderSw(); const d = swd[am && am.id]; if (isBridge && (!d || Date.now() - d.at > 9000)) loadSw(am); } }
+  if (ws === 'machine') { renderMachineList(); renderMoveCard(); renderOutlineCard(); renderInfo(); if (mtab === 'sw') { clearTimeout(swTimer); renderSw(); const d = swd[am && am.id]; if (isBridge && (!d || Date.now() - d.at > 9000)) loadSw(am); } }
   renderConn(); if (ws === 'plot') renderQueue();
 }
 // ---------- Software tab: the bridge's releases, install one, and how it updates itself ----------
@@ -6057,6 +6059,15 @@ function renderMoveCard() {
   $('mvState').textContent = on ? st.state : '';
   $('conInfo').textContent = on ? `${st.port || ''}${st.baud ? ' · ' + st.baud : ''}` : 'not connected';
 }
+function renderOutlineCard() {   // Machine: trace the square round the design, to place the paper or the pen by hand
+  const st = server.st || {}, on = !!st.connected, j = curJob(), running = !!(j && j.running), t = outlineTarget(), el = $('outlineCard');
+  const off = !t || !on || running || building || (j && j.resumable);
+  setHTML(el, `<h3>Outline <small>${t ? `${round(t.box.x1 - t.box.x0, 1)} × ${round(t.box.y1 - t.box.y0, 1)} mm` : 'nothing to plot'}</small></h3>
+    <div class="row"><button class="btn grow" data-o="trace" ${off ? 'disabled' : ''}>Trace outline</button></div>
+    <p class="note">${t ? `The pen stays up and goes round the box that holds every pen’s lines (~${fmtTime(outlineTime(t.box))}), to check where the design will land. The box is dashed on the bed.`
+      : 'Make something in Design to see where it will land.'}${t && !on ? ' Connect the plotter first.' : ''}</p>`);
+}
+$('outlineCard').addEventListener('click', e => { const b = e.target.closest('[data-o="trace"]'); if (b && !b.disabled) { const t = outlineTarget(); if (t) startOutline(t); } });
 const jog = (dx, dy) => act('jog', {x: dx * jogStep, y: dy * jogStep, feed: S.machine.travel});
 const travelTo = (x, y) => { const M = S.machine; return act('send', {line: [`M3 S${M.up}`, M.dwell > 0 ? `G4 P${M.dwell}` : '', `G90 G1 X${x.toFixed(2)} Y${y.toFixed(2)} F${M.travel}`].filter(Boolean).join('\n')}); };
 $('moveCard').addEventListener('click', e => {
@@ -6151,9 +6162,9 @@ function sheetBoxHTML(card = false) {   // the list and the Clear button, in the
     <div class="row" style="margin-top:8px"><button class="btn sm danger" data-s="clear" title="Forget what has been plotted — for a fresh sheet of paper">Clear</button></div>
     ${card ? '<p class="note">Kept in this browser. It is shown faded under the design, to place the next one around it. Clear it when you put a fresh sheet on the plotter.</p>' : ''}</div>`;
 }
-function renderSheetCard() {
-  const el = $('sheetDoc'); if (!el) return;
-  const h = sheetBoxHTML(true); el.hidden = !h; setHTML(el, h);
+function renderSheetCard() {   // Design → Paper, and Machine
+  const h = sheetBoxHTML(true);
+  for (const id of ['sheetDoc', 'sheetMach']) { const el = $(id); if (el) { el.hidden = !h; setHTML(el, h); } }
 }
 function renderSheetUI() {
   const L = sheetInks(), pill = $('hudSheet');
@@ -6213,10 +6224,11 @@ function trackSession() {   // a finished job of one of our pens marks that pen 
 function nextPen() { const a = ensureSession(); return a.find(pp => !session.done.has(pp.pen.id) && !session.skipped.has(pp.pen.id)) || null; }
 // "Trace the outline first" (a per-browser option): the pen goes round the box that holds every pen's lines before the first pen starts.
 let outlineOn = lsGet('plotstudio.outline') === true;
+function outlineTarget() { const box = plotBox(); return box ? {box, sig: outlineSig(box)} : null; }   // what a trace would go round; the Machine view traces it without the option
 function outlineInfo() {   // null when off or nothing to plot; state: pending | traced | skipped (for this box — move the design and it is pending again)
-  const box = outlineOn && session ? plotBox() : null; if (!box) return null;
-  const sig = outlineSig(box), o = session.outline;
-  return {box, sig, state: o && o.sig === sig ? o.state : 'pending'};
+  const t = outlineOn && session ? outlineTarget() : null; if (!t) return null;
+  const o = session.outline;
+  return {...t, state: o && o.sig === t.sig ? o.state : 'pending'};
 }
 const outlineNext = () => { const ol = outlineInfo(); return ol && ol.state === 'pending' && !session.done.size && !session.skipped.size ? ol : null; };
 const OUTLINE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.5" stroke-linecap="round"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>';
@@ -6286,6 +6298,7 @@ async function startPen() {
 }
 async function startOutline(ol) {   // its own short job: the pen stays up, nothing is drawn
   if (building) return toast('Still processing — try again in a moment', true);
+  ensureSession();
   const name = `${projName()} — outline`;
   await act('run', {gcode: gcodeOutline(ol.box, name), name, penUp: S.machine.up, dwell: S.machine.dwell, meta: {outline: true, sig: ol.sig, project: projLabel(), sid: session.id}});
   pollServer();
@@ -6467,7 +6480,7 @@ function renderLive() {
     c.restore();
   }
   // the square the outline trace goes round
-  const ol = ws === 'plot' ? outlineInfo() : null;
+  const ol = ws === 'plot' ? outlineInfo() : ws === 'machine' ? outlineTarget() : null;
   if (ol) {
     c.save(); if (M.mirrorX) { c.translate(2 * (P.x + P.w / 2), 0); c.scale(-1, 1); }
     c.strokeStyle = css('--accent'); c.lineWidth = 1.5 / k; c.setLineDash([6 / k, 4 / k]);
