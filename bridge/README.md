@@ -135,7 +135,7 @@ All endpoints are under `/api/`, JSON in and out, with CORS enabled.
 | `POST job/resume {from?}` | resume a stopped or interrupted job from line `from` (default: the start of the interrupted stroke) |
 | `POST job/discard` | forget the job and its checkpoint |
 
-`status` also carries `machine_rev` (to notice settings changes) and `grbl` (`version` and the settings the controller reported: `$22`, `$110`, `$111`, `$130`, `$131`…). It reports the job's `state` (`running`, `finished`, `stopped`, `failed`, `interrupted`), `done` (lines drawn), `resumable`, `resume_at` and `pos` (where the pen was when it stopped).
+`status` also carries `machine_rev` (to notice settings changes), `pins` (the input pins GRBL reports as triggered, e.g. `XY` for two closed limit switches; empty when none — changes are also logged) and `grbl` (`version` and the settings the controller reported: `$3`, `$5`, `$21`–`$27`, `$110`, `$111`, `$130`, `$131`…). A `$$` sent with `send` is printed in the log; the one sent on connect is not. It reports the job's `state` (`running`, `finished`, `stopped`, `failed`, `interrupted`), `done` (lines drawn), `resumable`, `resume_at` and `pos` (where the pen was when it stopped).
 
 ## Updates
 
