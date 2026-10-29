@@ -58,6 +58,7 @@ class FakeGrbl:
         self.wco = [0.0, 0.0]                 # G54, kept in EEPROM
         self.s = 0.0
         self.hold = False
+        self.pins = ''                        # limit switches held closed, e.g. 'XY' (reported as Pn:XY)
         self.dwell_until = 0.0
         self.ink = []
         self.done_n = 0                       # highest N whose line has fully run
@@ -137,7 +138,8 @@ class FakeGrbl:
     def _status(self):
         state = 'Hold:0' if self.hold else 'Run' if (self.cur or self.planner or self.dwell_until > time.time()) else 'Idle'
         ln = f'|Ln:{self.cur[2]}' if self.report_ln and self.cur and self.cur[2] else ''
-        return f'<{state}|MPos:{self.mpos[0]:.3f},{self.mpos[1]:.3f},0.000|FS:0,0{ln}|WCO:{self.wco[0]:.3f},{self.wco[1]:.3f},0.000>'
+        pn = f'|Pn:{self.pins}' if self.pins else ''
+        return f'<{state}|MPos:{self.mpos[0]:.3f},{self.mpos[1]:.3f},0.000|FS:0,0{pn}{ln}|WCO:{self.wco[0]:.3f},{self.wco[1]:.3f},0.000>'
 
     def _pending_n(self):
         """Lowest line number that has not fully run (for checking the bridge never claims more than this)."""
@@ -176,7 +178,7 @@ class FakeGrbl:
         self.seen.append(body)
         idle = not self.cur and not self.planner
         if body == '$$':
-            for k, v in ((130, 310), (131, 210), (22, 1)):
+            for k, v in ((5, 1), (22, 1), (23, 3), (130, 310), (131, 210)):
                 self._emit(f'${k}={v}')
         elif body == '$I':
             if self.legacy:
@@ -463,6 +465,29 @@ def jogging(tmp):
             P.disconnect()
 
 
+def limit_switches(tmp):
+    print('limit switch settings and pins')
+    with tempfile.TemporaryDirectory() as d:
+        P = new_bridge(d)
+        P.connect()
+        g = FakeGrbl.instances[-1]
+        wait_for(lambda: P.settings.get(130), 3)
+        log = lambda: [e['m'] for e in P.status(0)['log']]
+        check(not any(m.startswith('$5=') for m in log()), 'the $$ sent on connect is not printed')
+        st = P.status()
+        check(st['grbl']['settings'].get('5') == 1.0 and st['grbl']['settings'].get('23') == 3.0, f'$5 and $23 are in the status ({st["grbl"]["settings"]})')
+        P.echo_settings_until = time.time() + 3
+        P.queue('$$')
+        check(wait_for(lambda: '$5=1' in log() and '$23=3' in log(), 3), 'a typed $$ prints the settings')
+        check(st['pins'] == '', 'no pins at first')
+        g.pins = 'XY'
+        check(wait_for(lambda: P.status()['pins'] == 'XY', 3), 'a closed limit switch shows as pins in the status')
+        check(wait_for(lambda: 'Pins triggered: XY' in log(), 3), 'and in the log')
+        g.pins = ''
+        check(wait_for(lambda: P.status()['pins'] == '' and 'Pins released' in log(), 3), 'released switches are logged')
+        P.disconnect()
+
+
 def machine_profile(tmp):
     print('machine profile on the bridge')
     P = new_bridge(tmp)
@@ -731,7 +756,7 @@ def update_script(tmp):
 
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, self_update, update_script):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, self_update, update_script):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

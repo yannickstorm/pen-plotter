@@ -447,6 +447,8 @@ class Plotter:
         self.mpos = [0.0, 0.0, 0.0]
         self.wco = [0.0, 0.0, 0.0]
         self.settings = {}
+        self.pins = ''                          # input pins GRBL reports as triggered (limit switches, probe, door): 'XY', '' = none
+        self.echo_settings_until = 0.0          # a `$$` typed by the user is shown in the log; the one sent on connect is not
         self.planner_blocks, self.rx_buffer = PLANNER_BLOCKS, RX_BUFFER
         self.inflight = collections.deque()     # (bytes, job line index | -1 for resume set-up | None for manual)
         self.manual = collections.deque()       # manual lines waiting to go out
@@ -660,6 +662,8 @@ class Plotter:
             m = re.match(r'^\$(\d+)=([-\d.]+)', text)
             if m:
                 self.settings[int(m.group(1))] = float(m.group(2))
+                if time.time() < self.echo_settings_until:
+                    self.say('rx', text)
                 return
             m = re.match(r'^\[VER:([^:\]]*)', text)
             if m:
@@ -698,9 +702,12 @@ class Plotter:
         self.status_at = time.time()
         if self.state != 'Alarm':
             self.alarm = None
-        wpos, ln = None, None
+        wpos, ln, pins = None, None, ''
         for p in parts[1:]:
             k, _, v = p.partition(':')
+            if k == 'Pn':
+                pins = v
+                continue
             try:
                 vals = [float(n) for n in v.split(',')]
             except ValueError:
@@ -709,6 +716,9 @@ class Plotter:
             elif k == 'WPos': wpos = vals[:3]
             elif k == 'WCO': self.wco = vals[:3]
             elif k == 'Ln': ln = int(vals[0])
+        if pins != self.pins:
+            self.say('sys', f'Pins triggered: {pins}' if pins else 'Pins released')
+            self.pins = pins
         if wpos is not None:
             self.mpos = [a + b for a, b in zip(wpos, self.wco)]
         j = self.job
@@ -949,10 +959,10 @@ class Plotter:
         with self.lock:
             wpos = [round(a - b, 3) for a, b in zip(self.mpos, self.wco)]
             st = {'bridge': VERSION, 'host': socket.gethostname(), 'connected': self.ser is not None,
-                  'port': self.port, 'baud': self.baud, 'state': self.state, 'alarm': self.alarm,
+                  'port': self.port, 'baud': self.baud, 'state': self.state, 'alarm': self.alarm, 'pins': self.pins,
                   'pos': wpos, 'pos_fresh': self.status_at > self.banner_at, 'job': self._job_view(self.job) if self.job else None, 'error': self.error, 'seq': self.log_seq,
                   'homing': self.settings.get(22) == 1, 'resume': True, 'machine_rev': self.machine.data['rev'],
-                  'grbl': {**self.grbl, 'settings': {str(k): v for k, v in self.settings.items() if k in (10, 20, 21, 22, 30, 31, 32, 110, 111, 130, 131)}}}
+                  'grbl': {**self.grbl, 'settings': {str(k): v for k, v in self.settings.items() if k in (3, 5, 10, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 110, 111, 130, 131)}}}
             if 130 in self.settings and 131 in self.settings:
                 st['work'] = [self.settings[130], self.settings[131]]
             if since is not None:
@@ -1346,6 +1356,8 @@ class Handler(BaseHTTPRequestHandler):
                 P.stop('Stopped by user', body.get('penUp'))
             elif cmd == 'send':
                 for line in str(body.get('line', '')).split('\n'):
+                    if line.strip() == '$$':
+                        P.echo_settings_until = time.time() + 3
                     P.queue(line)
             elif cmd == 'unlock':
                 P.queue('$X')
