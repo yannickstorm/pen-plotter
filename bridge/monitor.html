@@ -112,6 +112,11 @@
   .ok-t { color: var(--ok); } .warn-t { color: var(--warn); }
   .picker { display: inline-flex; align-items: center; gap: 6px; }
   .picker .btn { width: 34px; padding: 0; }
+  .pins { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; }
+  .pins b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .pins span { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--faint); font: 600 11.5px var(--mono); }
+  .pins span.on { background: var(--danger); border-color: transparent; color: #fff; }
+  .pins small { color: var(--faint); margin-left: 4px; }
   .gr { margin-top: 10px; display: flex; flex-direction: column; }
   .gr .r { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
   .gr .r:first-child { border-top: 0; }
@@ -224,6 +229,7 @@
       <h2>GRBL settings <small id="grblInfo"></small></h2>
       <div class="row"><button class="btn sm" id="grblOpen">Show settings</button></div>
       <div id="grblBody" hidden>
+        <div class="pins" id="pinRow" title="Input pins GRBL reports as triggered. Press a switch by hand to test it."><b>Switches</b><span data-p="X">X</span><span data-p="Y">Y</span><span data-p="Z">Z</span><span data-p="P">probe</span><span data-p="D">door</span><span data-p="H">hold</span><small id="pinNote"></small></div>
         <div class="callout">These are the controller's own settings (<span class="mono">$$</span>), kept on the board. A wrong direction or homing value can drive the pen into the frame — try small jogs after a change. Every save keeps the old values, so <b>Undo last save</b> puts them back.</div>
         <div id="grblRows" class="gr"></div>
         <div class="row end"><button class="btn primary" id="grblSave" disabled>Save changes</button><button class="btn sm" id="grblReload">Reload</button><button class="btn sm" id="grblUndo" hidden>Undo last save</button><button class="btn sm" id="grblCopy">Copy as commands</button></div>
@@ -329,7 +335,14 @@ function render(s) {
   $('bConn').hidden = s.connected; $('bDisc').hidden = !s.connected;
   $('bZero').disabled = busy;
   renderRecover(s);
+  renderPins(s);
   if (running) drawPreview();
+}
+function renderPins(s) {
+  const on = s.connected ? s.pins || '' : '';
+  document.querySelectorAll('#pinRow span').forEach(e => e.classList.toggle('on', on.includes(e.dataset.p)));
+  const inv = s.grbl && s.grbl.settings && s.grbl.settings['5'];
+  $('pinNote').textContent = !s.connected ? 'not connected' : inv == null ? '' : `$5 = ${inv} (${inv ? 'pin high = triggered' : 'pin to GND = triggered'}) · ${on ? 'lit = triggered' : 'nothing triggered'}`;
 }
 const clock = t => t ? new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 const strokes = () => (job && job.strokes) || [];
