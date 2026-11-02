@@ -693,8 +693,8 @@ def self_update(tmp):
     check(fresh().check() is None and not restarts, 'the same version is left alone')
     rel.update(tag='v0.0.1', blob=tarball('0.0.1'))
     check(fresh().check() is None and not restarts, 'an older release is ignored')
-    rel.update(tag='v9.9.9-rc1', blob=tarball('9.9.9'))
-    check(fresh().check() is None and not restarts, 'a pre-release tag is ignored')
+    rel.update(tag='v9.9.9-rc1', blob=tarball('9.9.9-rc1'))
+    check(fresh().check() is None and not restarts, 'a pre-release is never installed by itself')
 
     rel.update(tag='v9.9.9', blob=tarball('9.9.9'), digest='sha256:' + '0' * 64)
     u = fresh(); check(u.check() is None and u.info()['state'] == 'error' and open(folder + '/bridge.py').read() == 'old', 'a download that does not match its checksum is rejected')
@@ -715,13 +715,16 @@ def self_update(tmp):
     check(sorted(os.listdir(folder)) == ['bridge.py', 'bridge.py.prev', 'monitor.html', 'monitor.html.prev'] and not os.path.exists(tmp + '/escape.py'), 'nothing else is written')
     # the release list, the mode, a manual install (also of an older release)
     restarts.clear()
-    rel.update(listed=['v1.0.0', 'v9.9.9', 'v9.9.9-rc1', 'v1.2.0'], by_tag={'v1.0.0': tarball('1.0.0'), 'v9.9.9': tarball('9.9.9')}, tag='v9.9.9', blob=tarball('9.9.9'))
+    rel.update(listed=['v1.0.0', 'v9.9.9', 'v9.9.9-rc1', 'v1.2.0'], by_tag={'v1.0.0': tarball('1.0.0'), 'v9.9.9': tarball('9.9.9'), 'v9.9.9-rc1': tarball('9.9.9-rc1')}, tag='v9.9.9', blob=tarball('9.9.9'))
     state = tmp + '/ustate'; os.makedirs(state)
     u = B.Updater(P, 'x/y', api, 3600, folder, lambda: restarts.append(1), state)
     lst = u.releases()
-    check([r['tag'] for r in lst][:3] == ['v9.9.9', 'v1.2.0', 'v1.0.0'], f"releases are listed newest first (pre-releases last) ({[r['tag'] for r in lst]})")
-    check(next(r for r in lst if r['tag'] == 'v1.0.0')['current'] and next(r for r in lst if r['tag'] == 'v9.9.9')['newer'] and not next(r for r in lst if r['tag'].endswith('rc1'))['installable'],
-          'the running one is marked, newer ones too, a pre-release tag cannot be installed')
+    check([r['tag'] for r in lst] == ['v9.9.9', 'v9.9.9-rc1', 'v1.2.0', 'v1.0.0'], f"releases are listed newest first, a pre-release just before its release ({[r['tag'] for r in lst]})")
+    rc = next(r for r in lst if r['tag'].endswith('rc1'))
+    check(next(r for r in lst if r['tag'] == 'v1.0.0')['current'] and next(r for r in lst if r['tag'] == 'v9.9.9')['newer'] and rc['installable'] and rc['newer'] and rc['prerelease'],
+          'the running one is marked, newer ones too, and a pre-release is offered like any other')
+    check(sorted(['v1.5.0', 'v1.5.0-rc10', 'v1.4.9', 'v1.5.0-rc2'], key=B.release_key) == ['v1.4.9', 'v1.5.0-rc2', 'v1.5.0-rc10', 'v1.5.0'] and B.release_key('v1.5') is None,
+          'versions order as 1.4.9 < 1.5.0-rc2 < 1.5.0-rc10 < 1.5.0')
     u.configure({'mode': 'notify', 'hours': 12})
     check(B.Updater(P, 'x/y', api, 3600, folder, None, state).cfg == {'mode': 'notify', 'hours': 12.0}, 'the mode and interval are kept across restarts')
     try:
@@ -740,6 +743,14 @@ def self_update(tmp):
     check(u.install('v9.9.9') == 'v9.9.9' and restarts == [1] and "VERSION = '9.9.9'" in open(folder + '/bridge.py').read(), 'a manual install puts the chosen release in place and restarts')
     restarts.clear()
     check(u.install('v1.0.0') == 'v1.0.0' and "VERSION = '1.0.0'" in open(folder + '/bridge.py').read(), 'an older release can be installed too (going back)')
+    restarts.clear()
+    check(u.install('v9.9.9-rc1') == 'v9.9.9-rc1' and "VERSION = '9.9.9-rc1'" in open(folder + '/bridge.py').read() and restarts == [1], 'a pre-release can be installed on request')
+    restarts.clear(); keep, B.VERSION = B.VERSION, '9.9.9-rc1'
+    try:
+        u2 = B.Updater(P, 'x/y', api, 3600, folder, lambda: restarts.append(1))
+        check(u2.check(True) == 'v9.9.9' and restarts == [1], 'a bridge running a pre-release moves on to the release that follows it')
+    finally:
+        B.VERSION = keep
     u.configure({'mode': 'off'}); u.wake.clear()
 
     srv.shutdown()
