@@ -6141,7 +6141,7 @@ function renderSw() {
   if (!u.enabled && u.mode == null) return setHTML(el, `<div class="card"><h3>Bridge software <small>${esc(i.version)}</small></h3><p class="note" style="margin-top:0">Updates are switched off on this bridge (<code>--no-update</code>).</p></div>`);
   const hours = [[1, 'every hour'], [6, 'every 6 hours'], [24, 'every day'], [168, 'every week']], opt = (v, t, cur) => `<option value="${v}" ${cur ? 'selected' : ''}>${t}</option>`;
   const rel = (d.rel || []).map(r => {
-    const act = r.current ? '<span class="rtag ok">installed</span>' : !r.installable ? '' : `<button class="btn sm ${r.newer ? 'primary' : ''}" data-sw="install" data-tag="${esc(r.tag)}" data-new="${r.newer ? 1 : 0}">${r.newer ? 'Update to this' : 'Go back to this'}</button>`;
+    const act = r.current ? '<span class="rtag ok">installed</span>' : !r.installable ? '' : `<button class="btn sm ${r.newer ? 'primary' : ''}" data-sw="install" data-tag="${esc(r.tag)}" data-new="${r.newer ? 1 : 0}">${r.prerelease ? 'Try this pre-release' : r.newer ? 'Update to this' : 'Go back to this'}</button>`;
     const day = r.published ? new Date(r.published).toLocaleDateString() : '';
     return `<details class="rel"><summary><b>${esc(r.version)}</b> <span class="note" style="margin:0">${esc(day)}${r.prerelease ? ' · pre-release' : ''}</span>${r.newer ? ' <span class="rtag">newer</span>' : ''}<span class="grow"></span>${act}</summary>
       <div class="relnotes">${esc(r.notes || 'No release notes.')}</div></details>`;
@@ -6155,6 +6155,7 @@ function renderSw() {
       <p class="note">${{auto: 'A new release is installed as soon as the plotter is idle — never during a plot.', notify: 'The bridge looks for new releases and shows them here; you decide when to install.', off: 'The bridge never looks by itself. You can still check and install from here.'}[u.mode] || ''}</p>
       <label class="field"><span>Look for new releases</span><select id="swHours" ${u.mode === 'off' ? 'disabled' : ''}>${hours.map(([h, t]) => opt(h, t, Math.abs(u.hours - h) < 0.01)).join('')}${hours.some(([h]) => Math.abs(u.hours - h) < 0.01) ? '' : opt(u.hours, `every ${+u.hours.toFixed(2)} h`, true)}</select></label></div>
     <div class="card"><h3>Releases</h3>${d.relErr ? `<p class="note" style="margin-top:0;color:var(--danger)">${esc(d.relErr)}</p>` : ''}${rel || (d.relErr ? '' : '<p class="note" style="margin-top:0">…</p>')}
+      ${(d.rel || []).some(r => r.prerelease && r.newer && r.installable) ? '<p class="note" style="color:var(--warn)">A pre-release is available. It is never installed by itself — press “Try this pre-release” to test it; the next normal release replaces it.</p>' : ''}
       <p class="note">Installing restarts the bridge (a few seconds; Plot Studio reconnects) and is refused while a plot is running. The previous files are kept as <code>bridge.py.prev</code>. Going back to an old release also takes its features back.</p>
       <details class="alt"><summary><span class="note" style="margin:0">Does not update by itself? Update from a terminal on the Pi</span></summary>${swCmd()}<p class="note">Shows every step and the exact reason if one fails. <code>sudo /opt/plotter-bridge/update.sh --tag v1.3.0</code> installs a specific release.</p></details></div>`);
   const h = $('swHours'); if (h) h.onchange = () => swConfig(m, {hours: +h.value});

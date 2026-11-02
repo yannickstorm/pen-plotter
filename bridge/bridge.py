@@ -1010,6 +1010,16 @@ def version_key(v):
     return tuple(int(x) for x in m.groups()) if m else None
 
 
+def release_key(v):
+    """'v1.5.0' or 'v1.5.0-rc2' -> a sortable key (a pre-release sorts before its release); None when it is not a version.
+    Only plain versions are ever installed by themselves; a pre-release is offered, and installed only on request."""
+    m = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?', str(v).strip())
+    if not m:
+        return None
+    pre = m.group(4)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)), 0 if pre else 1, re.sub(r'\d+', lambda d: d.group().zfill(8), pre or ''))
+
+
 class Updater:
     """Looks for new GitHub releases, lists them, and installs one (a newer one by itself if asked to, any one on request).
     It installs next to bridge.py and restarts, but never while a plot is running. Everything comes from the release's
@@ -1051,7 +1061,7 @@ class Updater:
         return dict(self.s, **self.cfg, available=self._available())
 
     def _available(self):
-        a, c = version_key(self.s.get('latest') or ''), version_key(VERSION)
+        a, c = release_key(self.s.get('latest') or ''), release_key(VERSION)
         return bool(a and c and a > c)
 
     def _get(self, url, limit=32 * 1024 * 1024):
@@ -1074,15 +1084,15 @@ class Updater:
         if not fresh and cached and time.time() - at < 60:
             return cached
         raw = json.loads(self._get(f'{self.api}/repos/{self.repo}/releases?per_page=20'))
-        cur, out = version_key(VERSION), []
+        cur, out = release_key(VERSION), []
         for r in raw:
             if r.get('draft'):
                 continue
-            tag, k = r.get('tag_name') or '', version_key(r.get('tag_name') or '')
+            tag, k = r.get('tag_name') or '', release_key(r.get('tag_name') or '')
             asset = any(a.get('name') == UPDATE_ASSET for a in r.get('assets', []))
             out.append({'tag': tag, 'version': tag.lstrip('v'), 'name': r.get('name') or tag, 'published': r.get('published_at'), 'notes': (r.get('body') or '')[:4000],
                         'prerelease': bool(r.get('prerelease')), 'installable': bool(k and asset), 'current': k == cur, 'newer': bool(k and cur and k > cur)})
-        out.sort(key=lambda r: version_key(r['tag']) or (0, 0, 0), reverse=True)
+        out.sort(key=lambda r: release_key(r['tag']) or (0,), reverse=True)
         self._rel = (time.time(), out)
         return out
 
@@ -1094,9 +1104,9 @@ class Updater:
             self.s.update(state='checking', error=None)
             rel = json.loads(self._get(f'{self.api}/repos/{self.repo}/releases/latest'))
             tag = rel.get('tag_name') or ''
-            new, cur = version_key(tag), version_key(VERSION)
+            new, cur = release_key(tag), release_key(VERSION)     # `latest` is never a pre-release; a bridge on one moves on to the release
             self.s.update(latest=tag.lstrip('v') or None, checked=time.time())
-            if not new or not cur or new <= cur:
+            if not new or not cur or new <= cur or not new[3]:     # a pre-release is never installed by itself
                 self.s['state'] = 'current'
                 return None
             if not (self.cfg['mode'] == 'auto' if install is None else install):
@@ -1112,7 +1122,7 @@ class Updater:
 
     def install(self, tag):
         """Install the release `tag` now (newer or older). Refuses while a plot is running."""
-        if not version_key(tag):
+        if not release_key(tag):
             raise ValueError(f'{tag} is not a release number')
         if not self.idle():
             raise RuntimeError('A plot is running — install the update when it is finished')
@@ -1139,7 +1149,7 @@ class Updater:
         if want and hashlib.sha256(blob).hexdigest() != want:
             raise ValueError('the download does not match the release checksum')
         files = self._unpack(blob)
-        self._verify(files, '.'.join(map(str, version_key(tag))))
+        self._verify(files, tag.lstrip('v'))
         self.s['state'] = 'waiting'          # downloaded and checked; installed as soon as no plot is running
         while wait and not self.idle():
             time.sleep(UPDATE_RETRY)
