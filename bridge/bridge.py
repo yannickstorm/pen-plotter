@@ -717,6 +717,9 @@ class Plotter:
             if k == 'Pn':
                 pins = v
                 continue
+            if k == 'Lim':     # GRBL 0.9 (only with $10 bit 4): the limit pins as binary digits, Z first — 'Lim:001' is X
+                pins = ''.join(a for a, c in zip('ZYX', v) if c == '1')[::-1]
+                continue
             try:
                 vals = [float(n) for n in v.split(',')]
             except ValueError:

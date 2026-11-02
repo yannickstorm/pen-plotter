@@ -115,7 +115,7 @@ The bridge has no internet-facing security beyond the optional token. Don't port
 
 ## GRBL settings
 
-The monitor's **GRBL settings** card lists everything the controller reports for `$$` with GRBL's own descriptions. Direction masks (`$2`, `$3`, `$23`) are shown per axis and on/off settings as switches. *Save* asks first (it lists old → new), writes the changed `$n=value` lines and reads the list again; *Undo last save* puts back what the previous save replaced (kept on disk, so it survives a restart); *Copy as commands* gives the whole list as `$n=value` lines to keep. A row of lights at the top shows which input pins GRBL reports as triggered (X, Y, Z, probe, door, hold) with the current `$5`, to test limit switches by pressing them. Nothing is written while a plot is running.
+The monitor's **GRBL settings** card lists everything the controller reports for `$$` with GRBL's own descriptions. Direction masks (`$2`, `$3`, `$23`) are shown per axis and on/off settings as switches. *Save* asks first (it lists old → new), writes the changed `$n=value` lines and reads the list again; *Undo last save* puts back what the previous save replaced (kept on disk, so it survives a restart); *Copy as commands* gives the whole list as `$n=value` lines to keep. A row of lights at the top shows which input pins GRBL reports as triggered (X, Y, Z, probe, door, hold) with the current `$5`, to test limit switches by pressing them. GRBL 1.1 always reports the pins (`Pn:`); GRBL 0.9 only does with `$10` including 16 (e.g. `$10=19`, which adds `Lim:`). Nothing is written while a plot is running.
 
 ## API
 

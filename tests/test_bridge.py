@@ -492,6 +492,10 @@ def limit_switches(tmp):
         check(wait_for(lambda: 'Pins triggered: XY' in log(), 3), 'and in the log')
         g.pins = ''
         check(wait_for(lambda: P.status()['pins'] == '' and 'Pins released' in log(), 3), 'released switches are logged')
+        for body, want in (('Idle,MPos:0.000,0.000,0.000,WPos:0.000,0.000,0.000,Lim:001', 'X'), ('Idle,MPos:0.000,0.000,0.000,WPos:0.000,0.000,0.000,Lim:110', 'YZ'),
+                           ('Idle,MPos:0.000,0.000,0.000,WPos:0.000,0.000,0.000,Lim:000', '')):
+            P._status(body)
+            check(P.status()['pins'] == want, f'GRBL 0.9 reports the pins as Lim: ({body[-7:]} -> {want!r})')
         P.disconnect()
 
 
