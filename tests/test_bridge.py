@@ -58,6 +58,7 @@ class FakeGrbl:
         self.wco = [0.0, 0.0]                 # G54, kept in EEPROM
         self.s = 0.0
         self.hold = False
+        self.cfg = {3: 3, 5: 1, 22: 1, 23: 3, 130: 310, 131: 210}   # the `$` settings, kept like GRBL keeps them in EEPROM
         self.pins = ''                        # limit switches held closed, e.g. 'XY' (reported as Pn:XY)
         self.dwell_until = 0.0
         self.ink = []
@@ -178,8 +179,14 @@ class FakeGrbl:
         self.seen.append(body)
         idle = not self.cur and not self.planner
         if body == '$$':
-            for k, v in ((5, 1), (22, 1), (23, 3), (130, 310), (131, 210)):
-                self._emit(f'${k}={v}')
+            for k, v in sorted(self.cfg.items()):
+                self._emit(f'${k}={v}' + {3: ' (dir port invert mask:00000011)', 5: ' (limit pins invert, bool)', 130: ' (x max travel, mm)'}.get(k, ''))
+        elif re.match(r'\$\d+=', body):
+            k, v = body[1:].split('=')
+            if int(k) not in self.cfg:
+                self._emit('error:3')
+                return True
+            self.cfg[int(k)] = float(v) if '.' in v else int(v)
         elif body == '$I':
             if self.legacy:
                 self._emit('[0.9j.20160326:]')
@@ -478,7 +485,7 @@ def limit_switches(tmp):
         check(st['grbl']['settings'].get('5') == 1.0 and st['grbl']['settings'].get('23') == 3.0, f'$5 and $23 are in the status ({st["grbl"]["settings"]})')
         P.echo_settings_until = time.time() + 3
         P.queue('$$')
-        check(wait_for(lambda: '$5=1' in log() and '$23=3' in log(), 3), 'a typed $$ prints the settings')
+        check(wait_for(lambda: any(m.startswith('$5=1 (limit pins invert') for m in log()) and '$23=3' in log(), 3), 'a typed $$ prints the settings')
         check(st['pins'] == '', 'no pins at first')
         g.pins = 'XY'
         check(wait_for(lambda: P.status()['pins'] == 'XY', 3), 'a closed limit switch shows as pins in the status')
@@ -486,6 +493,45 @@ def limit_switches(tmp):
         g.pins = ''
         check(wait_for(lambda: P.status()['pins'] == '' and 'Pins released' in log(), 3), 'released switches are logged')
         P.disconnect()
+
+
+def grbl_settings(tmp):
+    print('GRBL settings page')
+    with tempfile.TemporaryDirectory() as d:
+        P = new_bridge(d)
+        P.connect()
+        g = FakeGrbl.instances[-1]
+        wait_for(lambda: P.settings.get(130), 3)
+        s = P.grbl_settings()
+        byid = {x['id']: x for x in s['settings']}
+        check(byid[3]['text'] == 'dir port invert mask:00000011' and byid[3]['value'] == 3, f'the list carries GRBL\'s own text ({byid.get(3)})')
+        check(s['connected'] and not s['busy'] and s['backup'] is None, 'connected, idle, nothing to undo yet')
+        for bad in ({}, {'x': 1}, {'99': 1}, {'3': -1}, {'3': 'nan'}):
+            try:
+                P.write_grbl(bad); check(False, f'{bad} is refused')
+            except ValueError:
+                check(True, f'{bad} is refused')
+        check(not [x for x in g.seen if x.startswith('$3=')], 'and nothing was sent for them')
+        P.write_grbl({'3': 1, '131': 200.5})
+        check(wait_for(lambda: g.cfg[3] == 1 and g.cfg[131] == 200.5, 3), f'the changes reach GRBL ({g.cfg})')
+        check(wait_for(lambda: P.settings.get(131) == 200.5, 3), 'and the list is read again')
+        b = P.grbl_settings()['backup']
+        check(b['before'] == {'3': 3.0, '131': 210.0}, f'the old values are kept ({b})')
+        check(B.os.path.exists(B.os.path.join(d, 'grbl-settings-backup.json')), 'also on disk')
+        P.write_grbl(b['before'])
+        check(wait_for(lambda: g.cfg[3] == 3 and g.cfg[131] == 210, 3), 'putting them back works')
+        P.disconnect()
+        P2 = new_bridge(d)
+        check(P2.grbl_settings()['backup'] is not None, 'the backup survives a restart')
+        P2.connect()
+        wait_for(lambda: P2.settings.get(130), 3)
+        P2.run(make_job(40)[0], 'busy', 0.0)
+        try:
+            P2.write_grbl({'3': 1}); check(False, 'no changes during a plot')
+        except RuntimeError:
+            check(True, 'no changes during a plot')
+        P2.stop('test')
+        P2.disconnect()
 
 
 def machine_profile(tmp):
@@ -767,7 +813,7 @@ def update_script(tmp):
 
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, self_update, update_script):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, self_update, update_script):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

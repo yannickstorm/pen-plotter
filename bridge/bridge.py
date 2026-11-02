@@ -447,6 +447,8 @@ class Plotter:
         self.mpos = [0.0, 0.0, 0.0]
         self.wco = [0.0, 0.0, 0.0]
         self.settings = {}
+        self.setting_text = {}                  # $n -> GRBL's own description of it, from the `$$` list
+        self.backup = None                      # the values before the last write to GRBL's settings: {t, before, after}
         self.pins = ''                          # input pins GRBL reports as triggered (limit switches, probe, door): 'XY', '' = none
         self.echo_settings_until = 0.0          # a `$$` typed by the user is shown in the log; the one sent on connect is not
         self.planner_blocks, self.rx_buffer = PLANNER_BLOCKS, RX_BUFFER
@@ -464,6 +466,11 @@ class Plotter:
         self.store = store
         if store:
             self._restore()
+            try:
+                with open(os.path.join(store.dir, 'grbl-settings-backup.json')) as f:
+                    self.backup = json.load(f)
+            except (OSError, ValueError):
+                pass
             threading.Thread(target=self._saver, daemon=True).start()
         threading.Thread(target=self._supervisor, daemon=True).start()
 
@@ -659,9 +666,11 @@ class Plotter:
                     self._end_job(f'Plotter alarm ({text})')
                 self.cond.notify_all()
                 return
-            m = re.match(r'^\$(\d+)=([-\d.]+)', text)
+            m = re.match(r'^\$(\d+)=([-\d.]+)(?:\s*\((.*)\))?', text)
             if m:
                 self.settings[int(m.group(1))] = float(m.group(2))
+                if m.group(3):
+                    self.setting_text[int(m.group(1))] = m.group(3)
                 if time.time() < self.echo_settings_until:
                     self.say('rx', text)
                 return
@@ -917,6 +926,52 @@ class Plotter:
             if line not in ('$$', '$I'):
                 self.say('tx', line)
             self.cond.notify_all()
+
+    def grbl_settings(self):
+        """Everything GRBL reported for `$$`, as the settings page shows it."""
+        with self.lock:
+            return {'connected': self.ser is not None, 'state': self.state, 'busy': bool(self.job and self.job['running']),
+                    'version': self.grbl.get('version'), 'options': self.grbl.get('options'), 'backup': self.backup,
+                    'settings': [{'id': k, 'value': v, 'text': self.setting_text.get(k, '')} for k, v in sorted(self.settings.items())]}
+
+    def write_grbl(self, changes):
+        """Send `$n=value` for each change, remember the values they replace, and read the list again."""
+        if not isinstance(changes, dict) or not changes:
+            raise ValueError('Nothing to change')
+        with self.lock:
+            if not self.ser:
+                raise RuntimeError('The plotter is not connected')
+            if self.job and self.job['running']:
+                raise RuntimeError('A plot is running — wait for it to finish or stop it')
+            new = {}
+            for k, v in changes.items():
+                try:
+                    n, v = int(k), float(v)
+                except (TypeError, ValueError):
+                    raise ValueError(f'Bad setting {k}={v}')
+                if n not in self.settings:
+                    raise ValueError(f'${n} is not a setting this GRBL reported — reload the list first')
+                if not math.isfinite(v) or v < 0 or v > 1e7:
+                    raise ValueError(f'${n}={v} is out of range')
+                new[n] = v
+            before = {str(n): self.settings[n] for n in new}
+            self.backup = {'t': round(time.time()), 'before': before, 'after': {str(n): v for n, v in new.items()}}
+            if self.store:
+                try:
+                    tmp = os.path.join(self.store.dir, 'grbl-settings-backup.json.tmp')
+                    with open(tmp, 'w') as f:
+                        json.dump(self.backup, f)
+                    os.replace(tmp, os.path.join(self.store.dir, 'grbl-settings-backup.json'))
+                except OSError as e:
+                    self.say('err', f'Could not save the settings backup: {e}')
+            lines = [f'${n}={v:g}' if abs(v) < 1e6 and round(v, 3) == v else f'${n}={v:.3f}' for n, v in sorted(new.items())]
+            for line in lines:
+                self.say('tx', line)
+                self.manual.append(line)
+            self.echo_settings_until = 0
+            self.manual.append('$$')
+            self.cond.notify_all()
+            return lines
 
     def jog(self, dx, dy, feed):
         """Move the pen by dx, dy. GRBL 1.1 has jog commands ($J=, cancellable, never leaves a mode behind); older firmware
@@ -1292,6 +1347,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self.plotter.job_detail(with_gcode=bool(q.get('gcode'))))
         if u.path == '/api/machine':
             return self._send(200, {'machine': self.plotter.machine.get()})
+        if u.path == '/api/grbl':
+            return self._send(200, self.plotter.grbl_settings())
         if u.path == '/api/releases':
             if not self.updater:
                 return self._send(200, {'enabled': False, 'releases': []})
@@ -1328,6 +1385,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {'error': str(c), 'conflict': True, 'machine': c.current})
                 except ValueError as e:
                     return self._send(200, {'error': str(e)})
+            if cmd == 'grbl':     # {settings: {"3": 3, ...}} · grbl/read (ask GRBL again) · grbl/restore (the values before the last write)
+                return self._send(200, {'ok': True, 'sent': P.write_grbl(body.get('settings'))})
+            if cmd == 'grbl/read':
+                P.queue('$$')
+                return self._send(200, {'ok': True})
+            if cmd == 'grbl/restore':
+                if not P.backup:
+                    raise ValueError('There is nothing to restore')
+                return self._send(200, {'ok': True, 'sent': P.write_grbl(P.backup['before'])})
             if cmd == 'connect':
                 P.connect(body.get('port'), body.get('baud'))
             elif cmd == 'disconnect':
@@ -1383,7 +1449,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return self._send(404, {'error': 'Unknown endpoint'})
             return self._send(200, {'ok': True})
-        except RuntimeError as e:
+        except (RuntimeError, ValueError) as e:
             return self._send(200, {'error': str(e)})
         except Exception as e:
             return self._send(500, {'error': f'{type(e).__name__}: {e}'})

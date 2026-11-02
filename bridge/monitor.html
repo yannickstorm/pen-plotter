@@ -112,6 +112,15 @@
   .ok-t { color: var(--ok); } .warn-t { color: var(--warn); }
   .picker { display: inline-flex; align-items: center; gap: 6px; }
   .picker .btn { width: 34px; padding: 0; }
+  .gr { margin-top: 10px; display: flex; flex-direction: column; }
+  .gr .r { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+  .gr .r:first-child { border-top: 0; }
+  .gr .r.chg { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  .gr .id { font: 600 12px var(--mono); color: var(--accent-2); }
+  .gr .tx { font-size: 12.5px; min-width: 0; } .gr .tx small { display: block; color: var(--faint); font-size: 11px; }
+  .gr input[type=number] { width: 96px; font-family: var(--mono); text-align: right; }
+  .gr label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-left: 6px; }
+  .gr input[type=checkbox] { height: auto; width: 16px; }
   .picker span { font: 500 13px var(--mono); min-width: 110px; text-align: center; }
 </style>
 </head>
@@ -209,6 +218,17 @@
       <h2>Connection</h2>
       <div class="row"><select id="ports" class="grow"></select><select id="baud"><option>115200</option><option>250000</option><option>57600</option><option>9600</option></select></div>
       <div class="row end"><button class="btn primary" id="bConn">Connect</button><button class="btn" id="bDisc">Disconnect</button><button class="btn sm" id="bRefresh">Refresh ports</button></div>
+    </section>
+
+    <section class="card" id="grblCard">
+      <h2>GRBL settings <small id="grblInfo"></small></h2>
+      <div class="row"><button class="btn sm" id="grblOpen">Show settings</button></div>
+      <div id="grblBody" hidden>
+        <div class="callout">These are the controller's own settings (<span class="mono">$$</span>), kept on the board. A wrong direction or homing value can drive the pen into the frame — try small jogs after a change. Every save keeps the old values, so <b>Undo last save</b> puts them back.</div>
+        <div id="grblRows" class="gr"></div>
+        <div class="row end"><button class="btn primary" id="grblSave" disabled>Save changes</button><button class="btn sm" id="grblReload">Reload</button><button class="btn sm" id="grblUndo" hidden>Undo last save</button><button class="btn sm" id="grblCopy">Copy as commands</button></div>
+        <div class="sub" id="grblMsg" style="margin-top:8px"></div>
+      </div>
     </section>
 
     <section class="card">
@@ -431,6 +451,52 @@ const drop = $('drop');
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); runFile(e.dataTransfer.files[0]); };
+
+// GRBL settings: everything `$$` lists, editable. Masks ($2 $3 $23) are shown per axis, on/off settings as a switch.
+const MASKS = { 2: 'step pulse', 3: 'direction', 23: 'homing direction' }, BOOLS = [4, 5, 6, 13, 20, 21, 22];
+let gSet = [], gOrig = {}, gCur = {};
+function gRow(s) {
+  const id = s.id, ctl = MASKS[id] ? ['X', 'Y', 'Z'].map((a, i) => `<label><input type="checkbox" data-id="${id}" data-bit="${i}" ${(gCur[id] >> i) & 1 ? 'checked' : ''}>${a}</label>`).join('')
+    : BOOLS.includes(id) ? `<label><input type="checkbox" data-id="${id}" data-bool="1" ${gCur[id] ? 'checked' : ''}>on</label>`
+    : `<input type="number" step="any" min="0" data-id="${id}" value="${gCur[id]}">`;
+  const was = gCur[id] !== gOrig[id] ? `<small>was ${gOrig[id]}</small>` : '';
+  return `<div class="r ${was ? 'chg' : ''}"><span class="id">$${id}</span><span class="tx">${esc((s.text || '').replace(/,?\s*(bool|mask:\d+)\s*$/i, '') || 'setting')}${was}</span><span>${ctl}</span></div>`;
+}
+function gDraw() {
+  $('grblRows').innerHTML = gSet.map(gRow).join('');
+  const n = Object.keys(gCur).filter(k => gCur[k] !== gOrig[k]).length;
+  $('grblSave').disabled = !n || !st || !st.connected || (st.job && st.job.running);
+  $('grblSave').textContent = n ? `Save ${n} change${n > 1 ? 's' : ''}` : 'Save changes';
+}
+async function gLoad() {
+  try {
+    const g = await call('grbl');
+    gSet = g.settings; gOrig = {}; gCur = {};
+    g.settings.forEach(s => { gOrig[s.id] = gCur[s.id] = s.value; });
+    $('grblInfo').textContent = g.connected ? `GRBL ${g.version || ''}` : 'not connected';
+    $('grblMsg').textContent = g.settings.length ? '' : g.connected ? 'No settings yet — press Reload.' : 'Connect the plotter first.';
+    const b = g.backup; $('grblUndo').hidden = !b;
+    if (b) $('grblUndo').title = 'Puts back ' + Object.entries(b.before).map(([k, v]) => `$${k}=${v}`).join(', ') + ' (saved ' + clock(b.t) + ')';
+    gDraw();
+  } catch (e) { toast(e.message, true); }
+}
+$('grblOpen').onclick = () => { $('grblBody').hidden = !$('grblBody').hidden; $('grblOpen').textContent = $('grblBody').hidden ? 'Show settings' : 'Hide settings'; if (!$('grblBody').hidden) gLoad(); };
+$('grblRows').oninput = e => {
+  const t = e.target, id = +t.dataset.id; if (!id && id !== 0) return;
+  if (t.dataset.bit != null) gCur[id] = (gCur[id] & ~(1 << t.dataset.bit)) | (t.checked ? 1 << t.dataset.bit : 0);
+  else if (t.dataset.bool) gCur[id] = t.checked ? 1 : 0;
+  else if (t.value !== '') gCur[id] = +t.value;
+  if (t.type === 'number') { const n = Object.keys(gCur).filter(k => gCur[k] !== gOrig[k]).length; $('grblSave').disabled = !n; $('grblSave').textContent = n ? `Save ${n} change${n > 1 ? 's' : ''}` : 'Save changes'; t.closest('.r').classList.toggle('chg', gCur[id] !== gOrig[id]); }
+  else gDraw();
+};
+$('grblSave').onclick = async () => {
+  const ch = Object.fromEntries(Object.keys(gCur).filter(k => gCur[k] !== gOrig[k]).map(k => [k, gCur[k]]));
+  if (!confirm('Change GRBL settings?\n\n' + Object.keys(ch).map(k => `$${k}: ${gOrig[k]} → ${ch[k]}`).join('\n'))) return;
+  try { await call('grbl', { settings: ch }); toast('Saved'); setTimeout(gLoad, 800); } catch (e) { toast(e.message, true); }
+};
+$('grblUndo').onclick = async () => { if (!confirm('Put the settings back to what they were before the last save?')) return; try { await call('grbl/restore', {}); toast('Restored'); setTimeout(gLoad, 800); } catch (e) { toast(e.message, true); } };
+$('grblReload').onclick = async () => { try { await call('grbl/read', {}); setTimeout(gLoad, 700); } catch (e) { toast(e.message, true); } };
+$('grblCopy').onclick = () => { const t = gSet.map(s => `$${s.id}=${gOrig[s.id]}`).join('\n'); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Copied'), () => { $('grblMsg').innerHTML = '<pre class="mono" style="white-space:pre-wrap">' + esc(t) + '</pre>'; }); };
 
 // Plot Studio is hosted, not kept on the bridge: the link opens it with this bridge's address filled in
 fetch('api/info').then(r => r.json()).then(i => {
