@@ -113,10 +113,6 @@ The bridge has no internet-facing security beyond the optional token. Don't port
 - Bed size is read from GRBL's `$130` / `$131` and Plot Studio adopts it when it connects.
 - Unplugging the plotter interrupts the job (it can be resumed); the bridge reconnects by itself when the plotter comes back.
 
-## GRBL settings
-
-The monitor's **GRBL settings** card lists everything the controller reports for `$$` with GRBL's own descriptions. Direction masks (`$2`, `$3`, `$23`) are shown per axis and on/off settings as switches. *Save* asks first (it lists old → new), writes the changed `$n=value` lines and reads the list again; *Undo last save* puts back what the previous save replaced (kept on disk, so it survives a restart); *Copy as commands* gives the whole list as `$n=value` lines to keep. Nothing is written while a plot is running.
-
 ## API
 
 All endpoints are under `/api/`, JSON in and out, with CORS enabled.
@@ -132,9 +128,6 @@ All endpoints are under `/api/`, JSON in and out, with CORS enabled.
 | `POST send {line}` | send a command when no job is running |
 | `POST jog {x, y, feed}` / `unlock` / `home` | |
 | `POST origin {x?, y?}` | the pen's current position becomes work position x, y (default 0, 0) |
-| `GET grbl` | everything GRBL's `$$` lists: `settings: [{id, value, text}]`, plus `connected`, `busy`, `version` and `backup` (the values before the last write) |
-| `POST grbl {settings: {"3": 3, …}}` | write `$n=value` to the controller (not during a plot; unknown ids and out-of-range values are refused). The old values are kept in `grbl-settings-backup.json` in the state folder |
-| `POST grbl/read` / `grbl/restore` | read `$$` again · put back the values from before the last write |
 | `GET machine` | `{machine: {id, name, rev, profile, updated}}` — `profile` is `null` until set up |
 | `POST machine {name?, profile?, baseRev?}` | save the settings. Unknown or out-of-range values are refused; a `baseRev` that is behind answers `{conflict: true, machine}` instead of overwriting |
 | `GET info` | `{name: 'plotter-bridge', id, machine, version, auth}` — no token needed, used to recognise the bridge |
