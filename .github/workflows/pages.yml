@@ -124,6 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
+          PRE=(); [[ "$TAG" == *-* ]] && PRE=(--prerelease)   # v1.5.0-rc1: a candidate, not the latest release
           gh release create "$TAG" plot-studio.html plotter-bridge.tar.gz \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Pen Plotter $TAG" --generate-notes
+            --title "Pen Plotter $TAG" --generate-notes "${PRE[@]}"
