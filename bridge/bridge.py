@@ -333,8 +333,8 @@ class JobStore:
 #  browser and phone that connects reads the same profile from here and writes changes back.
 # ---------------------------------------------------------------------------
 PROFILE_KEYS = {'bedW': (1, 5000), 'bedH': (1, 5000), 'up': (0, 1000), 'down': (0, 1000), 'dwell': (0, 10), 'feed': (1, 100000),
-                'travel': (1, 100000), 'parkX': (-5000, 5000), 'parkY': (-5000, 5000), 'decimals': (0, 6)}
-PROFILE_FLAGS = ('travelG0', 'park', 'mirrorX')
+                'travel': (1, 100000), 'parkX': (-5000, 5000), 'parkY': (-5000, 5000), 'homeX': (-5000, 5000), 'homeY': (-5000, 5000), 'decimals': (0, 6)}
+PROFILE_FLAGS = ('travelG0', 'park', 'mirrorX', 'homeSet')
 PROFILE_TEXT = ('header', 'footer')
 
 
@@ -631,6 +631,8 @@ class Plotter:
             if text == 'ok' or text.startswith('error'):
                 b, idx = self.inflight.popleft() if self.inflight else (b'', None)
                 j = self.job
+                if text == 'ok' and idx is None and b.strip() == b'$H':
+                    self._homed()
                 if text.startswith('error'):
                     sent = b.decode().strip()
                     msg = f'{text} on "{sent}"' + (f' (line {idx + 1})' if idx is not None and idx >= 0 else '')
@@ -684,6 +686,17 @@ class Plotter:
             if m:   # GRBL 1.1 / grblHAL build options: planner blocks and serial buffer size
                 self.planner_blocks, self.rx_buffer = int(m.group(1)), max(64, min(int(m.group(2)), 1024) - 1)
             self.say('rx', text)
+
+    def _homed(self):
+        """After a homing cycle: the pen is at the home position, so give it the work position the machine settings name
+        (G10 L20 keeps it in the controller's EEPROM; GRBL itself ends homing at 0 or -travel)."""
+        p = (self.machine.get().get('profile') or {})
+        if not p.get('homeSet'):
+            return
+        line = f"G10 L20 P1 X{float(p.get('homeX', 0)):.3f} Y{float(p.get('homeY', 0)):.3f}"
+        self.say('sys', f"Homed — the pen is now at X{float(p.get('homeX', 0)):g} Y{float(p.get('homeY', 0)):g}")
+        self.say('tx', line)
+        self.manual.append(line)
 
     def _acked(self, j, idx):
         j['acked'] = idx + 1
