@@ -98,10 +98,11 @@ ok "bridge.py $GOT compiles and runs"
 
 # ---------------------------------------------------------------------------------------------------------------------
 step "Installing"
-for f in bridge.py monitor.html; do [ -f "$DEST/$f" ] && cp -p "$DEST/$f" "$DEST/$f.prev"; done
+for f in bridge.py monitor.html grbl-pen-plotter.hex; do [ -f "$DEST/$f" ] && cp -p "$DEST/$f" "$DEST/$f.prev"; done
 ok "old files kept as bridge.py.prev and monitor.html.prev"
 if [ -n "${BRIDGE_SKIP_INSTALL:-}" ]; then
   cp "$SRC/bridge.py" "$SRC/monitor.html" "$DEST/"
+  [ -f "$SRC/grbl-pen-plotter.hex" ] && cp "$SRC/grbl-pen-plotter.hex" "$DEST/"
   ok "copied (service not touched)"
 else
   [ -x "$SRC/install.sh" ] || chmod +x "$SRC/install.sh" 2>/dev/null

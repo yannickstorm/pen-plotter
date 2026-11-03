@@ -69,12 +69,19 @@ jobs:
         run: |
           mkdir -p dist
           python3 build_artifact.py dist/plot-studio.html --standalone
+      - name: Build the servo-pen GRBL firmware
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-avr avr-libc make
+          firmware/build.sh
       - name: Package the bridge
         env:
           TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           mkdir -p dist/plotter-bridge
           cp bridge/bridge.py bridge/monitor.html bridge/install.sh bridge/update.sh bridge/README.md dist/plotter-bridge/
+          [ -f firmware/grbl-pen-plotter.hex ] && cp firmware/grbl-pen-plotter.hex dist/plotter-bridge/ || true
           if [[ "$TAG" == v* ]]; then
             sed -i "s/^VERSION = .*/VERSION = '${TAG#v}'/" dist/plotter-bridge/bridge.py
           fi

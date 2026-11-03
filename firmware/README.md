@@ -27,7 +27,11 @@ Check the defaults against your own `$$` (the patch uses the old firmware's valu
 1. Save the old settings: send `$$` and `$#` and keep the output. **GRBL 1.1 resets the settings on first boot** (the EEPROM layout differs from 0.9), so you will re-enter the ones that differ from the defaults, and the G54 offset (the home position) is gone too.
 2. Servo wiring: the servo's signal goes to the shield's **Z+ (or Z−) header, which is D11**, the spindle PWM pin. The servo needs its own 5 V supply with a common ground. Limit switches stay on X D9, Y D10 (Z D12 is unused).
 
-## Build and flash
+## Flash from the bridge (no laptop at the plotter)
+
+Releases carry the built `grbl-pen-plotter.hex` inside `plotter-bridge.tar.gz`. On a bridge that has it (and `avrdude`; `install.sh` installs it) open the monitor, **GRBL settings → Firmware → Flash the firmware that came with this bridge**. The bridge saves the settings first, flashes, reconnects, and offers to put your settings back. It needs the access token (`--token`) and is refused during a plot. Details: [`bridge/README.md`](../bridge/README.md#flashing-the-controller).
+
+## Build and flash by hand
 
 ```bash
 sudo apt install git make gcc-avr avr-libc avrdude     # once

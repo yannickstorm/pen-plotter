@@ -17,6 +17,9 @@ fi
 
 mkdir -p "$DEST"
 cp "$SRC/bridge.py" "$SRC/monitor.html" "$DEST/"
+[ -f "$SRC/grbl-pen-plotter.hex" ] && cp "$SRC/grbl-pen-plotter.hex" "$DEST/"     # the firmware the monitor can flash to the plotter
+# avrdude flashes that firmware (monitor -> GRBL settings -> Firmware); not needed otherwise, so a failure here is not fatal
+command -v avrdude >/dev/null 2>&1 || apt-get install -y avrdude >/dev/null 2>&1 || echo "Note: could not install avrdude — flashing from the monitor needs it:  sudo apt install avrdude"
 [ -f "$SRC/update.sh" ] && cp "$SRC/update.sh" "$DEST/" && chmod +x "$DEST/update.sh"
 rm -f "$DEST/studio.html"              # Plot Studio is not kept on the bridge: use the hosted one, it is always the newest
 chown -R "$RUN_AS" "$DEST"            # the bridge updates itself from new releases: it must be able to replace its own files

@@ -117,6 +117,8 @@
   .pins span { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--faint); font: 600 11.5px var(--mono); }
   .pins span.on { background: var(--danger); border-color: transparent; color: #fff; }
   .pins small { color: var(--faint); margin-left: 4px; }
+  .fw { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .fw .row { margin-top: 8px; }
   .gr { margin-top: 10px; display: flex; flex-direction: column; }
   .gr .r { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
   .gr .r:first-child { border-top: 0; }
@@ -234,6 +236,13 @@
         <div id="grblRows" class="gr"></div>
         <div class="row end"><button class="btn primary" id="grblSave" disabled>Save changes</button><button class="btn sm" id="grblReload">Reload</button><button class="btn sm" id="grblUndo" hidden>Undo last save</button><button class="btn sm" id="grblCopy">Copy as commands</button></div>
         <div class="sub" id="grblMsg" style="margin-top:8px"></div>
+        <div class="fw" id="fwBox">
+          <h2>Firmware <small id="fwRun"></small></h2>
+          <div class="sub" id="fwBundled"></div>
+          <div class="row"><button class="btn sm danger" id="fwFlash">Flash the firmware that came with this bridge</button><label class="btn sm" id="fwPick">Flash a .hex file…<input type="file" id="fwFile" accept=".hex,.ihx" hidden></label></div>
+          <div class="callout" id="fwStatus" hidden></div>
+          <div class="callout" id="fwRestore" hidden><b>Put your settings back?</b> A different GRBL version starts with its own defaults. These differ from what the controller had before the flash:<div id="fwList" class="mono" style="margin:6px 0;font-size:12px"></div><button class="btn sm primary" id="fwRestoreGo">Restore them</button></div>
+        </div>
       </div>
     </section>
 
@@ -510,6 +519,34 @@ $('grblSave').onclick = async () => {
 $('grblUndo').onclick = async () => { if (!confirm('Put the settings back to what they were before the last save?')) return; try { await call('grbl/restore', {}); toast('Restored'); setTimeout(gLoad, 800); } catch (e) { toast(e.message, true); } };
 $('grblReload').onclick = async () => { try { await call('grbl/read', {}); setTimeout(gLoad, 700); } catch (e) { toast(e.message, true); } };
 $('grblCopy').onclick = () => { const t = gSet.map(s => `$${s.id}=${gOrig[s.id]}`).join('\n'); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Copied'), () => { $('grblMsg').innerHTML = '<pre class="mono" style="white-space:pre-wrap">' + esc(t) + '</pre>'; }); };
+
+// Firmware: flash the controller through avrdude on the machine the bridge runs on (a Uno-class board with its bootloader).
+let fwTimer = null;
+const fwActive = s => ['starting', 'saving', 'flashing'].includes(s);
+async function fwLoad() {
+  let f; try { f = await call('firmware'); } catch (e) { return; }
+  const s = f.state || {}, b = f.bundled, running = fwActive(s.state);
+  $('fwRun').textContent = f.running.version ? `running GRBL ${f.running.version}` : f.connected ? 'version unknown' : 'not connected';
+  $('fwBundled').innerHTML = b ? (b.error ? `<span class="warn-t">${esc(b.name)}: ${esc(b.error)}</span>` : `Bundled: <b>${esc(b.name)}</b> · ${(b.size / 1024).toFixed(0)} KB · sha256 <span class="mono">${esc(b.sha256.slice(0, 12))}…</span>`) : 'This bridge carries no firmware file — flash a .hex file instead.';
+  const noTool = !f.avrdude, off = running || f.busy || (!f.connected && !f.port);
+  $('fwFlash').disabled = !b || !!b.error || noTool || off;
+  $('fwPick').style.opacity = noTool || off ? .4 : 1; $('fwPick').style.pointerEvents = noTool || off ? 'none' : '';
+  const msg = noTool ? 'avrdude is not installed on this computer — run <span class="mono">sudo apt install avrdude</span> there.' : f.busy ? 'A plot is running: wait for it to finish.' : s.message ? esc(s.message) : '';
+  $('fwStatus').hidden = !msg; $('fwStatus').innerHTML = msg; $('fwStatus').className = 'callout' + (s.state === 'failed' || noTool ? ' bad' : '');
+  const r = f.restore && !running && (Object.keys(f.restore.settings).length || f.restore.g54) ? f.restore : null;
+  $('fwRestore').hidden = !r;
+  if (r) $('fwList').innerHTML = Object.entries(r.settings).map(([k, v]) => `$${k}: ${v[1]} → ${v[0]}`).join('<br>') + (r.g54 ? `${Object.keys(r.settings).length ? '<br>' : ''}G54 work offset → ${r.g54.map(v => v.toFixed(3)).join(', ')}` : '');
+  if (running && !fwTimer) fwTimer = setInterval(fwLoad, 1000);
+  if (!running && fwTimer) { clearInterval(fwTimer); fwTimer = null; if (!$('grblBody').hidden) gLoad(); }
+}
+async function fwStart(body, what) {
+  if (!confirm(`Flash ${what}?\n\nThe plotter is disconnected for about 20 seconds — do not unplug it or switch it off. The controller's settings are saved first; a different GRBL version resets them, and you can put them back afterwards.`)) return;
+  try { await call('firmware/flash', body); toast('Flashing…'); setTimeout(fwLoad, 600); } catch (e) { toast(e.message, true); }
+}
+$('fwFlash').onclick = () => fwStart({ bundled: true }, 'the firmware that came with this bridge');
+$('fwFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) fwStart({ hex: await f.text() }, f.name); };
+$('fwRestoreGo').onclick = async () => { try { await call('firmware/restore', {}); toast('Restored'); setTimeout(() => { fwLoad(); gLoad(); }, 900); } catch (e) { toast(e.message, true); } };
+$('grblOpen').addEventListener('click', () => { if (!$('grblBody').hidden) fwLoad(); });
 
 // Plot Studio is hosted, not kept on the bridge: the link opens it with this bridge's address filled in
 fetch('api/info').then(r => r.json()).then(i => {
