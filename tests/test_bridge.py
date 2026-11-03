@@ -538,6 +538,32 @@ def grbl_settings(tmp):
         P2.disconnect()
 
 
+def home_position(tmp):
+    print('home position after homing')
+    with tempfile.TemporaryDirectory() as d:
+        P = new_bridge(d)
+        P.connect()
+        g = FakeGrbl.instances[-1]
+        wait_for(lambda: P.settings.get(130), 3)
+        P.queue('$H')
+        check(wait_for(lambda: '$H' in g.seen, 3), 'homing runs')
+        time.sleep(0.3)
+        check(not [x for x in g.seen if x.startswith('G10')], 'with no home position set, nothing is sent after it')
+        P.machine.save(None, {'homeSet': True, 'homeX': 310, 'homeY': 0}, None)
+        P.queue('$H')
+        check(wait_for(lambda: [x for x in g.seen if x.startswith('G10')] == ['G10 L20 P1 X310.000 Y0.000'], 3), f'after $H the pen is given the home position ({[x for x in g.seen if x.startswith("G10")]})')
+        check(wait_for(lambda: P.status()['pos'][0] == 310.0, 3), f'and the readout shows it ({P.status()["pos"]})')
+        P.machine.save(None, {'homeSet': False, 'homeX': 310, 'homeY': 0}, None)
+        n = len([x for x in g.seen if x.startswith('G10')]); P.queue('$H'); time.sleep(0.5)
+        check(len([x for x in g.seen if x.startswith('G10')]) == n, 'switched off again: nothing is sent')
+        for bad in ({'homeX': 99999}, {'homeY': 'x'}):
+            try:
+                P.machine.save(None, bad, None); check(False, f'{bad} is refused')
+            except ValueError:
+                check(True, f'{bad} is refused')
+        P.disconnect()
+
+
 def machine_profile(tmp):
     print('machine profile on the bridge')
     P = new_bridge(tmp)
@@ -817,7 +843,7 @@ def update_script(tmp):
 
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, self_update, update_script):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, home_position, self_update, update_script):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
