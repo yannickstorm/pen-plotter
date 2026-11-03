@@ -1,0 +1,78 @@
+diff -u a/grbl/config.h b/grbl/config.h
+--- a/grbl/config.h
++++ b/grbl/config.h
+@@ -107,10 +107,10 @@
+ // #define HOMING_CYCLE_2                         // OPTIONAL: Uncomment and add axes mask to enable
+ 
+ // NOTE: The following are two examples to setup homing for 2-axis machines.
+-#define HOMING_CYCLE_0 ((1<<X_AXIS)|(1<<Y_AXIS))  // NOT COMPATIBLE WITH COREXY: Homes both X-Y in one cycle. 
++// #define HOMING_CYCLE_0 ((1<<X_AXIS)|(1<<Y_AXIS))  // NOT COMPATIBLE WITH COREXY: Homes both X-Y in one cycle. 
+ 
+-// #define HOMING_CYCLE_0 (1<<X_AXIS)  // COREXY COMPATIBLE: First home X
+-// #define HOMING_CYCLE_1 (1<<Y_AXIS)  // COREXY COMPATIBLE: Then home Y
++#define HOMING_CYCLE_0 (1<<X_AXIS)  // COREXY COMPATIBLE: First home X
++#define HOMING_CYCLE_1 (1<<Y_AXIS)  // COREXY COMPATIBLE: Then home Y
+ 
+ // Number of homing cycles performed after when the machine initially jogs to limit switches.
+ // This help in preventing overshoot and should improve repeatability. This value should be one or
+@@ -186,7 +186,7 @@
+ // defined at (http://corexy.com/theory.html). Motors are assumed to positioned and wired exactly as
+ // described, if not, motions may move in strange directions. Grbl requires the CoreXY A and B motors
+ // have the same steps per mm internally.
+-// #define COREXY // Default disabled. Uncomment to enable.
++#define COREXY // Default disabled. Uncomment to enable.
+ 
+ // Inverts pin logic of the control command pins based on a mask. This essentially means you can use
+ // normally-closed switches on the specified pins, rather than the default normally-open switches.
+diff -u a/grbl/defaults.h b/grbl/defaults.h
+--- a/grbl/defaults.h
++++ b/grbl/defaults.h
+@@ -28,24 +28,24 @@
+ #ifndef defaults_h
+ 
+ #ifdef DEFAULTS_GENERIC
+-  // Grbl generic default settings. Should work across different machines.
+-  #define DEFAULT_X_STEPS_PER_MM 250.0
+-  #define DEFAULT_Y_STEPS_PER_MM 250.0
+-  #define DEFAULT_Z_STEPS_PER_MM 250.0
+-  #define DEFAULT_X_MAX_RATE 500.0 // mm/min
+-  #define DEFAULT_Y_MAX_RATE 500.0 // mm/min
++  // Pen plotter defaults (CoreXY, 100 steps/mm, 310 x 210 mm), from the previous firmware's $$.
++  #define DEFAULT_X_STEPS_PER_MM 100.0
++  #define DEFAULT_Y_STEPS_PER_MM 100.0
++  #define DEFAULT_Z_STEPS_PER_MM 100.0
++  #define DEFAULT_X_MAX_RATE 8000.0 // mm/min
++  #define DEFAULT_Y_MAX_RATE 8000.0 // mm/min
+   #define DEFAULT_Z_MAX_RATE 500.0 // mm/min
+-  #define DEFAULT_X_ACCELERATION (10.0*60*60) // 10*60*60 mm/min^2 = 10 mm/sec^2
+-  #define DEFAULT_Y_ACCELERATION (10.0*60*60) // 10*60*60 mm/min^2 = 10 mm/sec^2
++  #define DEFAULT_X_ACCELERATION (1200.0*60*60) // 1200 mm/sec^2
++  #define DEFAULT_Y_ACCELERATION (1200.0*60*60) // 1200 mm/sec^2
+   #define DEFAULT_Z_ACCELERATION (10.0*60*60) // 10*60*60 mm/min^2 = 10 mm/sec^2
+-  #define DEFAULT_X_MAX_TRAVEL 200.0 // mm NOTE: Must be a positive value.
+-  #define DEFAULT_Y_MAX_TRAVEL 200.0 // mm NOTE: Must be a positive value.
+-  #define DEFAULT_Z_MAX_TRAVEL 200.0 // mm NOTE: Must be a positive value.
+-  #define DEFAULT_SPINDLE_RPM_MAX 1000.0 // rpm
++  #define DEFAULT_X_MAX_TRAVEL 310.0 // mm NOTE: Must be a positive value.
++  #define DEFAULT_Y_MAX_TRAVEL 210.0 // mm NOTE: Must be a positive value.
++  #define DEFAULT_Z_MAX_TRAVEL 100.0 // mm NOTE: Must be a positive value.
++  #define DEFAULT_SPINDLE_RPM_MAX 255.0 // servo: M3 S0..S255 spans the servo's pulse range
+   #define DEFAULT_SPINDLE_RPM_MIN 0.0 // rpm
+   #define DEFAULT_STEP_PULSE_MICROSECONDS 10
+   #define DEFAULT_STEPPING_INVERT_MASK 0
+-  #define DEFAULT_DIRECTION_INVERT_MASK 0
++  #define DEFAULT_DIRECTION_INVERT_MASK 3 // both motors, as on the previous firmware: check with a small jog, change $3 if an axis runs backwards
+   #define DEFAULT_STEPPER_IDLE_LOCK_TIME 25 // msec (0-254, 255 keeps steppers enabled)
+   #define DEFAULT_STATUS_REPORT_MASK 1 // MPos enabled
+   #define DEFAULT_JUNCTION_DEVIATION 0.01 // mm
+@@ -57,8 +57,8 @@
+   #define DEFAULT_HARD_LIMIT_ENABLE 0  // false
+   #define DEFAULT_INVERT_PROBE_PIN 0 // false
+   #define DEFAULT_LASER_MODE 0 // false
+-  #define DEFAULT_HOMING_ENABLE 0  // false
+-  #define DEFAULT_HOMING_DIR_MASK 0 // move positive dir
++  #define DEFAULT_HOMING_ENABLE 1  // true: $H homes X, then Y
++  #define DEFAULT_HOMING_DIR_MASK 0 // move positive dir: set $23 to the side of your switches (X bit 1, Y bit 2)
+   #define DEFAULT_HOMING_FEED_RATE 25.0 // mm/min
+   #define DEFAULT_HOMING_SEEK_RATE 500.0 // mm/min
+   #define DEFAULT_HOMING_DEBOUNCE_DELAY 250 // msec (0-65k)
