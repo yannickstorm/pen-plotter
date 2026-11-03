@@ -14,7 +14,7 @@ git -C "$WORK/grbl" checkout --quiet "$COMMIT"
 (cd "$WORK/grbl" && patch -p1 < "$HERE/grbl-servo-corexy.patch")
 make -C "$WORK/grbl" > /dev/null
 cp "$WORK/grbl/grbl.hex" "$HERE/grbl-pen-plotter.hex"
-avr-size -C --mcu=atmega328p "$WORK/grbl/build/grbl.elf" 2>/dev/null | sed -n 1,6p || true
+avr-size -C --mcu=atmega328p "$WORK/grbl/build/main.elf" 2>/dev/null | sed -n 1,6p || true
 echo "built $HERE/grbl-pen-plotter.hex"
 if [ "${1:-}" = flash ]; then
   avrdude -v -patmega328p -carduino -P"${2:?give the serial port}" -b115200 -D -Uflash:w:"$HERE/grbl-pen-plotter.hex":i

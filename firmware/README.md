@@ -3,7 +3,7 @@
 For an Arduino Uno with a CNC Shield V3. It is [vankesteren/grbl-servo](https://github.com/vankesteren/grbl-servo)
 (GRBL 1.1h with an RC-servo pen on the spindle PWM pin), pinned at the commit in `build.sh`, plus
 `grbl-servo-corexy.patch` (38 changed lines in `grbl/config.h` and `grbl/defaults.h`). GRBL is GPL-3.0;
-the patch is the whole difference. **This build has not been run on a plotter yet.**
+the patch is the whole difference. It compiles with avr-gcc 7.3-class toolchains (Ubuntu `gcc-avr`): 31,398 bytes of an Uno's 32,256 bytes of flash (97%), 1,633 bytes of RAM statically. **It has not been run on a plotter yet.**
 
 ## What the patch changes
 
