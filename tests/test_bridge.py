@@ -513,7 +513,9 @@ def grbl_settings(tmp):
         wait_for(lambda: P.settings.get(130), 3)
         s = P.grbl_settings()
         byid = {x['id']: x for x in s['settings']}
-        check(byid[3]['text'] == 'dir port invert mask:00000011' and byid[3]['value'] == 3, f'the list carries GRBL\'s own text ({byid.get(3)})')
+        check(byid[3]['text'] == B.GRBL_SETTING_NAMES[3] and byid[3]['value'] == 3, f'every setting has a name ({byid.get(3)})')
+        check(byid[22]['text'] == 'Homing cycle ($H)' and all(x['text'] for x in s['settings']), 'also the ones GRBL 1.1 prints without a description')
+        check(sorted(B.GRBL_SETTING_NAMES) == [0, 1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 100, 101, 102, 110, 111, 112, 120, 121, 122, 130, 131, 132], 'the names cover every setting GRBL 1.1 has')
         check(s['connected'] and not s['busy'] and s['backup'] is None, 'connected, idle, nothing to undo yet')
         for bad in ({}, {'x': 1}, {'99': 1}, {'3': -1}, {'3': 'nan'}):
             try:

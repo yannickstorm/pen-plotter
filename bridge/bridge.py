@@ -425,6 +425,19 @@ CHECKPOINT_EVERY = 2.0    # seconds between progress saves while plotting
 STALL_AFTER = 15.0        # idle with lines unanswered this long = the controller lost them (a reset whose banner got lost)
 RESUMABLE = ('stopped', 'failed', 'interrupted')
 
+# GRBL 1.1 lists `$$` without descriptions (0.9 added them): the settings page names them from here
+GRBL_SETTING_NAMES = {
+    0: 'Step pulse time, µs', 1: 'Step idle delay, ms (255 keeps the motors on)', 2: 'Step pulse invert (per axis)', 3: 'Direction invert (per axis)',
+    4: 'Invert the stepper enable pin', 5: 'Invert the limit switch pins (on for normally-closed switches)', 6: 'Invert the probe pin',
+    10: 'Status report fields (1 = position, 2 = buffer state)', 11: 'Junction deviation, mm', 12: 'Arc tolerance, mm', 13: 'Report in inches',
+    20: 'Soft limits (needs homing)', 21: 'Hard limits (a switch stops everything)', 22: 'Homing cycle ($H)', 23: 'Homing direction invert (per axis)',
+    24: 'Homing feed rate, mm/min (slow final approach)', 25: 'Homing seek rate, mm/min', 26: 'Homing switch debounce, ms', 27: 'Homing pull-off distance, mm',
+    30: 'Maximum spindle speed (servo firmware: the S value for the far end of the pen servo)', 31: 'Minimum spindle speed (servo firmware: the near end)',
+    32: 'Laser mode (must be off for the servo pen)',
+    100: 'X steps per mm', 101: 'Y steps per mm', 102: 'Z steps per mm', 110: 'X maximum rate, mm/min', 111: 'Y maximum rate, mm/min', 112: 'Z maximum rate, mm/min',
+    120: 'X acceleration, mm/s²', 121: 'Y acceleration, mm/s²', 122: 'Z acceleration, mm/s²', 130: 'X maximum travel, mm', 131: 'Y maximum travel, mm', 132: 'Z maximum travel, mm',
+}
+
 # ----- flashing the controller (an Arduino Uno with the Optiboot bootloader, through avrdude) -----
 BOOT_START = 0x7E00                    # Optiboot sits above this on an Uno: a hex file that reaches it is refused
 FIRMWARE_FILE = 'grbl-pen-plotter.hex'
@@ -1017,7 +1030,7 @@ class Plotter:
         with self.lock:
             return {'connected': self.ser is not None, 'state': self.state, 'busy': bool(self.job and self.job['running']),
                     'version': self.grbl.get('version'), 'options': self.grbl.get('options'), 'backup': self.backup,
-                    'settings': [{'id': k, 'value': v, 'text': self.setting_text.get(k, '')} for k, v in sorted(self.settings.items())]}
+                    'settings': [{'id': k, 'value': v, 'text': GRBL_SETTING_NAMES.get(k) or self.setting_text.get(k, '')} for k, v in sorted(self.settings.items())]}
 
     def firmware_info(self):
         """What the firmware section shows: the running GRBL, the firmware that ships with the bridge, avrdude, the last flash."""
