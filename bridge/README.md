@@ -48,6 +48,8 @@ python3 bridge.py --token s3cret          # require a token for the API
 |---|---|---|
 | `--port` | auto | serial port of the plotter |
 | `--baud` | 115200 | GRBL's baud rate |
+| `--allow-flash` | off | allow flashing the controller from the web page without `--token` (by default a token is required) |
+| `--flash-baud` | 115200 | the bootloader's speed when flashing (old Nano clones: 57600) |
 | `--http-port` | 8080 | web port |
 | `--host` | 0.0.0.0 | `127.0.0.1` to allow this computer only |
 | `--token` | none | required as `X-Bridge-Token` header for every API call |
@@ -119,6 +121,16 @@ The bridge has no internet-facing security beyond the optional token. Don't port
 
 The monitor's **GRBL settings** card lists everything the controller reports for `$$` with GRBL's own descriptions. Direction masks (`$2`, `$3`, `$23`) are shown per axis and on/off settings as switches. *Save* asks first (it lists old → new), writes the changed `$n=value` lines and reads the list again; *Undo last save* puts back what the previous save replaced (kept on disk, so it survives a restart); *Copy as commands* gives the whole list as `$n=value` lines to keep. A row of lights at the top shows which input pins GRBL reports as triggered (X, Y, Z, probe, door, hold) with the current `$5`, to test limit switches by pressing them. GRBL 1.1 always reports the pins (`Pn:`); GRBL 0.9 only does with `$10` including 16 (e.g. `$10=19`, which adds `Lim:`). Nothing is written while a plot is running.
 
+## Flashing the controller
+
+The **Firmware** section of the monitor's GRBL settings card flashes an Arduino Uno (with its Optiboot bootloader) through `avrdude`, so the plotter's firmware can be changed from the browser, without a laptop at the plotter. The release carries `grbl-pen-plotter.hex` (GRBL 1.1h with a servo pen, CoreXY and X-then-Y homing, built from [`firmware/`](../firmware/README.md)); any other `.hex` for an ATmega328P can be sent too.
+
+- `install.sh` installs `avrdude` (`sudo apt install avrdude` by hand if it could not).
+- Flashing needs the access token (`--token`), or `--allow-flash`. It is refused during a plot.
+- **Before** flashing, the bridge saves `$$` and `$#` (settings and work offsets) to `grbl-firmware-backup.json` in the state folder. A different GRBL version resets the settings on its first boot. When the new firmware answers, the card lists what differs and **Restore them** puts it back. `$10`, `$30`, `$31` and `$32` are never restored, because they mean something else in another version.
+- The hex file is checked first: every record's checksum, the end record, and that it does not reach the bootloader (0x7E00 and up).
+- The bridge disconnects, runs `avrdude -p atmega328p -c arduino -P <port> -b 115200 -D -U flash:w:…`, shows avrdude's output in the log, and connects again, also when avrdude failed (the bootloader is not touched, so the board stays recoverable).
+
 ## API
 
 All endpoints are under `/api/`, JSON in and out, with CORS enabled.
@@ -136,6 +148,9 @@ All endpoints are under `/api/`, JSON in and out, with CORS enabled.
 | `POST origin {x?, y?}` | the pen's current position becomes work position x, y (default 0, 0) |
 | `GET grbl` | everything GRBL's `$$` lists: `settings: [{id, value, text}]`, plus `connected`, `busy`, `version` and `backup` (the values before the last write) |
 | `POST grbl {settings: {"3": 3, …}}` | write `$n=value` to the controller (not during a plot; unknown ids and out-of-range values are refused). The old values are kept in `grbl-settings-backup.json` in the state folder |
+| `GET firmware` | the running GRBL, the firmware that ships with the bridge (`bundled`: name, size, sha256), `avrdude` (its path, or null), the state of the last flash and what `restore` would put back |
+| `POST firmware/flash {bundled: true}` or `{hex: "<Intel HEX>"}` | flash the controller (needs `--token`, or `--allow-flash`; not during a plot) |
+| `POST firmware/restore` | put back the settings and the G54 work offset the controller had before the last flash |
 | `POST grbl/read` / `grbl/restore` | read `$$` again · put back the values from before the last write |
 | `GET machine` | `{machine: {id, name, rev, profile, updated}}` — `profile` is `null` until set up |
 | `POST machine {name?, profile?, baseRev?}` | save the settings. Unknown or out-of-range values are refused; a `baseRev` that is behind answers `{conflict: true, machine}` instead of overwriting |

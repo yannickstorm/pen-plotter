@@ -425,6 +425,59 @@ CHECKPOINT_EVERY = 2.0    # seconds between progress saves while plotting
 STALL_AFTER = 15.0        # idle with lines unanswered this long = the controller lost them (a reset whose banner got lost)
 RESUMABLE = ('stopped', 'failed', 'interrupted')
 
+# ----- flashing the controller (an Arduino Uno with the Optiboot bootloader, through avrdude) -----
+BOOT_START = 0x7E00                    # Optiboot sits above this on an Uno: a hex file that reaches it is refused
+FIRMWARE_FILE = 'grbl-pen-plotter.hex'
+FLASH_BAUD = 115200                    # the Uno's bootloader speed (older Nano clones: 57600)
+FLASH_KEEP_OUT = (10, 30, 31, 32)      # settings that mean something else in another GRBL version: never restored by the bridge
+
+
+def check_hex(data):
+    """Checks an Intel HEX file for an ATmega328P: every record's checksum, the end record, and that nothing lies in
+    the bootloader (0x7E00 and up). Returns {'bytes': n, 'end': highest address + 1}."""
+    text = data.decode('ascii') if isinstance(data, (bytes, bytearray)) else str(data)
+    n = end = base = 0
+    done = False
+    for no, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        if done:
+            raise ValueError(f'line {no}: data after the end record')
+        if not line.startswith(':') or len(line) < 11 or len(line) % 2 == 0:
+            raise ValueError(f'line {no} is not an Intel HEX record')
+        try:
+            rec = bytes.fromhex(line[1:])
+        except ValueError:
+            raise ValueError(f'line {no}: not hexadecimal')
+        if sum(rec) & 0xFF or rec[0] != len(rec) - 5:
+            raise ValueError(f'line {no}: wrong checksum or length')
+        addr, typ, body = (rec[1] << 8) | rec[2], rec[3], rec[4:-1]
+        if typ == 0:
+            if base + addr + len(body) > BOOT_START:
+                raise ValueError(f'line {no}: the program reaches {base + addr + len(body):#x}, into the bootloader ({BOOT_START:#x}) — that is not firmware for an Arduino Uno')
+            n += len(body)
+            end = max(end, base + addr + len(body))
+        elif typ == 1:
+            done = True
+        elif typ == 2:
+            base = ((body[0] << 8) | body[1]) << 4
+        elif typ == 4:
+            base = ((body[0] << 8) | body[1]) << 16
+        elif typ not in (3, 5):
+            raise ValueError(f'line {no}: unknown record type {typ}')
+    if not done:
+        raise ValueError('the end record is missing — the file is cut short')
+    if not n:
+        raise ValueError('the file holds no program')
+    return {'bytes': n, 'end': end}
+
+
+def find_firmware():
+    """The firmware that ships with the bridge: next to bridge.py, in firmware/ of a clone, or in the folder above."""
+    return next((p for p in (os.path.join(HERE, FIRMWARE_FILE), os.path.join(os.path.dirname(HERE), 'firmware', FIRMWARE_FILE),
+                             os.path.join(os.path.dirname(HERE), FIRMWARE_FILE)) if os.path.exists(p)), None)
+
 
 class Plotter:
     """Job progress has three counters: `next` (lines sent), `acked` (GRBL answered ok: parsed and queued) and
@@ -448,6 +501,11 @@ class Plotter:
         self.wco = [0.0, 0.0, 0.0]
         self.settings = {}
         self.setting_text = {}                  # $n -> GRBL's own description of it, from the `$$` list
+        self.params = {}                        # G54…G59, G28, G30, G92, TLO from `$#`: [x, y, z] (TLO: [z])
+        self.flashing = False                   # the serial port belongs to avrdude: do not reconnect
+        self.fw = {'state': 'idle', 'message': '', 'at': None}
+        self.fw_baud = FLASH_BAUD
+        self.fw_backup = None                   # {t, version, settings, params} saved before the last flash
         self.backup = None                      # the values before the last write to GRBL's settings: {t, before, after}
         self.pins = ''                          # input pins GRBL reports as triggered (limit switches, probe, door): 'XY', '' = none
         self.echo_settings_until = 0.0          # a `$$` typed by the user is shown in the log; the one sent on connect is not
@@ -469,6 +527,11 @@ class Plotter:
             try:
                 with open(os.path.join(store.dir, 'grbl-settings-backup.json')) as f:
                     self.backup = json.load(f)
+            except (OSError, ValueError):
+                pass
+            try:
+                with open(os.path.join(store.dir, 'grbl-firmware-backup.json')) as f:
+                    self.fw_backup = json.load(f)
             except (OSError, ValueError):
                 pass
             threading.Thread(target=self._saver, daemon=True).start()
@@ -539,7 +602,7 @@ class Plotter:
     def _supervisor(self):
         while True:
             time.sleep(3)
-            if self.ser or self.user_disconnected or not self.autoconnect:
+            if self.ser or self.user_disconnected or not self.autoconnect or self.flashing:
                 continue
             if (self.want_port and os.path.exists(self.want_port)) or (not self.want_port and guess_port()):
                 try:
@@ -676,6 +739,12 @@ class Plotter:
                 if time.time() < self.echo_settings_until:
                     self.say('rx', text)
                 return
+            m = re.match(r'^\[(G5[4-9]|G28|G30|G92|TLO):([-\d.,]+)\]', text)
+            if m:
+                try:
+                    self.params[m.group(1)] = [float(v) for v in m.group(2).split(',')]
+                except ValueError:
+                    pass
             m = re.match(r'^\[VER:([^:\]]*)', text)
             if m:
                 self.grbl['version'] = m.group(1)
@@ -950,6 +1019,146 @@ class Plotter:
                     'version': self.grbl.get('version'), 'options': self.grbl.get('options'), 'backup': self.backup,
                     'settings': [{'id': k, 'value': v, 'text': self.setting_text.get(k, '')} for k, v in sorted(self.settings.items())]}
 
+    def firmware_info(self):
+        """What the firmware section shows: the running GRBL, the firmware that ships with the bridge, avrdude, the last flash."""
+        path, bundled = find_firmware(), None
+        if path:
+            try:
+                with open(path, 'rb') as f:
+                    raw = f.read()
+                bundled = dict(check_hex(raw), name=os.path.basename(path), size=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+            except (OSError, ValueError) as e:
+                bundled = {'name': os.path.basename(path), 'error': str(e)}
+        with self.lock:
+            return {'connected': self.ser is not None, 'port': self.port, 'busy': bool(self.job and self.job['running']),
+                    'running': {'version': self.grbl.get('version'), 'options': self.grbl.get('options')},
+                    'bundled': bundled, 'avrdude': shutil.which('avrdude'), 'state': dict(self.fw),
+                    'backup': {'t': self.fw_backup['t'], 'version': self.fw_backup.get('version')} if self.fw_backup else None,
+                    'restore': self._restore_plan()}
+
+    def _restore_plan(self):
+        """What would be put back after a flash: settings that differ from what the new firmware starts with (the ones both
+        versions have), and the G54 work offset when it changed. Needs the lists read from the new firmware."""
+        b = self.fw_backup
+        if not b or not self.settings:
+            return None
+        sett = {k: [v, self.settings[int(k)]] for k, v in b.get('settings', {}).items()
+                if int(k) in self.settings and int(k) not in FLASH_KEEP_OUT and abs(self.settings[int(k)] - v) > 1e-9}
+        g54, now = b.get('params', {}).get('G54'), self.params.get('G54')
+        return {'settings': sett, 'g54': g54 if g54 and now and any(abs(a - c) > 1e-6 for a, c in zip(g54, now)) else None}
+
+    def flash_firmware(self, data):
+        """Checks the hex file and starts the flash in the background. Raises when it cannot start."""
+        info = check_hex(data)
+        if not shutil.which('avrdude'):
+            raise RuntimeError('avrdude is not installed on this computer — install it:  sudo apt install avrdude')
+        with self.lock:
+            if self.flashing:
+                raise RuntimeError('A firmware flash is already running')
+            if self.job and self.job['running']:
+                raise RuntimeError('A plot is running — wait for it to finish or stop it')
+            port = self.port or self.want_port
+            if not port:
+                raise RuntimeError('No serial port known — connect to the plotter first')
+            self.flashing = True
+            self.fw = {'state': 'starting', 'message': 'Starting…', 'at': time.time()}
+        threading.Thread(target=self._flash, args=(bytes(data) if isinstance(data, (bytes, bytearray)) else str(data).encode(), port, info), daemon=True, name='flash').start()
+
+    def _fw_state(self, state, message):
+        with self.lock:
+            self.fw = {'state': state, 'message': message, 'at': time.time()}
+        self.say('sys', message)
+
+    def _flash(self, data, port, info):
+        import subprocess, tempfile
+        tail = collections.deque(maxlen=8)
+        ok = False
+        try:
+            # 1. what the controller holds now: GRBL's version resets the settings of another version
+            if self.ser:
+                self._fw_state('saving', 'Saving the controller’s settings before flashing…')
+                self.queue('$$'); self.queue('$#')
+                t0 = time.time()
+                while time.time() - t0 < 8 and (self.manual or self.inflight):
+                    time.sleep(0.05)
+            with self.lock:
+                self.fw_backup = {'t': round(time.time()), 'version': self.grbl.get('version'),
+                                  'settings': {str(k): v for k, v in self.settings.items()}, 'params': dict(self.params)}
+                if self.store:
+                    try:
+                        tmp = os.path.join(self.store.dir, 'grbl-firmware-backup.json.tmp')
+                        with open(tmp, 'w') as f:
+                            json.dump(self.fw_backup, f)
+                        os.replace(tmp, os.path.join(self.store.dir, 'grbl-firmware-backup.json'))
+                    except OSError as e:
+                        self.say('err', f'Could not save the firmware backup: {e}')
+            # 2. give the port to avrdude
+            with self.lock:
+                self.user_disconnected = True
+                self._close('Flashing the firmware')
+            time.sleep(0.5)
+            self._fw_state('flashing', f'Flashing {info["bytes"]:,} bytes to {port}… (do not unplug)')
+            with tempfile.TemporaryDirectory() as d:
+                hexfile = os.path.join(d, 'firmware.hex')
+                with open(hexfile, 'wb') as f:
+                    f.write(data)
+                cmd = ['avrdude', '-p', 'atmega328p', '-c', 'arduino', '-P', port, '-b', str(self.fw_baud), '-D', '-U', f'flash:w:{hexfile}:i']
+                self.say('sys', ' '.join(cmd))
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+                timer = threading.Timer(180, p.kill)
+                timer.start()
+                try:
+                    for line in p.stdout:
+                        line = line.strip()
+                        if not line or re.match(r'^(Writing|Reading)\s*\|', line) and '100%' not in line:
+                            continue
+                        tail.append(line)
+                        self.say('rx', line)
+                    p.wait()
+                finally:
+                    timer.cancel()
+            ok = p.returncode == 0
+            if not ok:
+                self._fw_state('failed', f'avrdude failed (exit {p.returncode}): ' + ' | '.join(list(tail)[-3:]))
+        except Exception as e:
+            self._fw_state('failed', f'Flashing failed: {type(e).__name__}: {e}')
+        finally:
+            # 3. back to the plotter, whatever happened
+            with self.lock:
+                self.flashing = False
+                self.user_disconnected = False
+                self.settings.clear(); self.setting_text.clear(); self.params.clear(); self.grbl.clear()
+            time.sleep(1.5)
+            try:
+                self.connect(port, self.baud)
+                if self.ser:
+                    self.queue('$#')
+                    t0 = time.time()
+                    while time.time() - t0 < 6 and (self.manual or self.inflight):
+                        time.sleep(0.05)
+            except Exception as e:
+                self.say('err', f'Could not reconnect after flashing: {e}')
+            if ok:
+                self._fw_state('done', f'Firmware flashed — GRBL {self.grbl.get("version") or "?"} is running. Check the settings below.')
+
+    def restore_after_flash(self):
+        """Puts back the settings (and the G54 work offset) the controller had before the last flash."""
+        plan = self._restore_plan()
+        if plan is None:
+            raise RuntimeError('There is nothing to restore — flash first, and wait until the settings are read')
+        if not plan['settings'] and not plan['g54']:
+            raise RuntimeError('The controller already has the settings it had before')
+        sent = self.write_grbl({k: v[0] for k, v in plan['settings'].items()}) if plan['settings'] else []
+        if plan['g54']:
+            g = plan['g54']
+            line = f'G10 L2 P1 X{g[0]:.3f} Y{g[1]:.3f} Z{g[2] if len(g) > 2 else 0:.3f}'
+            self.say('tx', line)
+            with self.lock:
+                self.manual.append(line)
+                self.cond.notify_all()
+            sent.append(line)
+        return sent
+
     def write_grbl(self, changes):
         """Send `$n=value` for each change, remember the values they replace, and read the list again."""
         if not isinstance(changes, dict) or not changes:
@@ -1030,7 +1239,7 @@ class Plotter:
         with self.lock:
             wpos = [round(a - b, 3) for a, b in zip(self.mpos, self.wco)]
             st = {'bridge': VERSION, 'host': socket.gethostname(), 'connected': self.ser is not None,
-                  'port': self.port, 'baud': self.baud, 'state': self.state, 'alarm': self.alarm, 'pins': self.pins,
+                  'port': self.port, 'baud': self.baud, 'state': self.state, 'alarm': self.alarm, 'pins': self.pins, 'firmware': self.fw['state'],
                   'pos': wpos, 'pos_fresh': self.status_at > self.banner_at, 'job': self._job_view(self.job) if self.job else None, 'error': self.error, 'seq': self.log_seq,
                   'homing': self.settings.get(22) == 1, 'resume': True, 'machine_rev': self.machine.data['rev'],
                   'grbl': {**self.grbl, 'settings': {str(k): v for k, v in self.settings.items() if k in (3, 5, 10, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 110, 111, 130, 131)}}}
@@ -1070,7 +1279,7 @@ def find_file(name):
 UPDATE_REPO = 'yannickstorm/pen-plotter'
 UPDATE_API = 'https://api.github.com'
 UPDATE_ASSET = 'plotter-bridge.tar.gz'
-UPDATE_FILES = ('bridge.py', 'monitor.html')      # the only files an update may write
+UPDATE_FILES = ('bridge.py', 'monitor.html', 'grbl-pen-plotter.hex')      # the only files an update may write
 UPDATE_EVERY = 6 * 3600
 UPDATE_RETRY = 600                                # a downloaded update waits for the plotter to be idle: look again this often
 
@@ -1290,6 +1499,7 @@ class Handler(BaseHTTPRequestHandler):
     token = None
     studio_url = STUDIO_URL
     updater = None
+    allow_flash = False
 
     def log_message(self, *a):
         pass
@@ -1365,6 +1575,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'machine': self.plotter.machine.get()})
         if u.path == '/api/grbl':
             return self._send(200, self.plotter.grbl_settings())
+        if u.path == '/api/firmware':
+            return self._send(200, self.plotter.firmware_info())
         if u.path == '/api/releases':
             if not self.updater:
                 return self._send(200, {'enabled': False, 'releases': []})
@@ -1403,6 +1615,20 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {'error': str(e)})
             if cmd == 'grbl':     # {settings: {"3": 3, ...}} · grbl/read (ask GRBL again) · grbl/restore (the values before the last write)
                 return self._send(200, {'ok': True, 'sent': P.write_grbl(body.get('settings'))})
+            if cmd == 'firmware/flash':       # {bundled: true} or {hex: "<Intel HEX text>"}
+                if not self.token and not self.allow_flash:
+                    raise RuntimeError('Flashing from the network needs an access token: start the bridge with --token (or --allow-flash to accept the risk)')
+                if body.get('bundled'):
+                    path = find_firmware()
+                    if not path:
+                        raise RuntimeError('This bridge carries no firmware file — upload a .hex file instead')
+                    with open(path, 'rb') as f:
+                        P.flash_firmware(f.read())
+                else:
+                    P.flash_firmware(str(body.get('hex', '')).encode())
+                return self._send(200, {'ok': True})
+            if cmd == 'firmware/restore':
+                return self._send(200, {'ok': True, 'sent': P.restore_after_flash()})
             if cmd == 'grbl/read':
                 P.queue('$$')
                 return self._send(200, {'ok': True})
@@ -1485,6 +1711,8 @@ def main():
     ap.add_argument('--host', default=os.environ.get('BRIDGE_HOST', '0.0.0.0'), help='address to listen on (default: all)')
     ap.add_argument('--http-port', type=int, default=int(os.environ.get('BRIDGE_PORT', 8080)))
     ap.add_argument('--token', default=os.environ.get('BRIDGE_TOKEN'), help='require this token for the API')
+    ap.add_argument('--allow-flash', action='store_true', default=bool(os.environ.get('BRIDGE_ALLOW_FLASH')), help='allow flashing the controller from the web page even without --token')
+    ap.add_argument('--flash-baud', type=int, default=int(os.environ.get('BRIDGE_FLASH_BAUD', FLASH_BAUD)), help='bootloader speed for flashing (default: %(default)s; old Nano clones: 57600)')
     ap.add_argument('--no-autoconnect', action='store_true', help='only connect when asked from the web page')
     ap.add_argument('--state', default=os.environ.get('BRIDGE_STATE', os.path.join(os.path.expanduser('~'), '.plotter-bridge')),
                     help='folder for the job checkpoint used to resume after a crash (default: ~/.plotter-bridge)')
@@ -1509,6 +1737,7 @@ def main():
     plotter = Plotter(a.port, a.baud, autoconnect=not a.no_autoconnect, store=store,
                       machine=MachineStore(a.state if store else None, a.name))
     Handler.plotter, Handler.token, Handler.studio_url = plotter, a.token or None, a.studio_url
+    Handler.allow_flash, plotter.fw_baud = a.allow_flash, a.flash_baud
     if not a.no_autoconnect:
         try:
             plotter.connect()

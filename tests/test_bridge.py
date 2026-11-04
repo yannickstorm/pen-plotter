@@ -181,6 +181,11 @@ class FakeGrbl:
         if body == '$$':
             for k, v in sorted(self.cfg.items()):
                 self._emit(f'${k}={v}' + {3: ' (dir port invert mask:00000011)', 5: ' (limit pins invert, bool)', 130: ' (x max travel, mm)'}.get(k, ''))
+        elif body == '$#':
+            for name in ('G54', 'G55', 'G56', 'G57', 'G58', 'G59', 'G28', 'G30', 'G92'):
+                v = self.wco if name == 'G54' else [0.0, 0.0]
+                self._emit(f'[{name}:{v[0]:.3f},{v[1]:.3f},0.000]')
+            self._emit('[TLO:0.000]')
         elif re.match(r'\$\d+=', body):
             k, v = body[1:].split('=')
             if int(k) not in self.cfg:
@@ -564,6 +569,118 @@ def home_position(tmp):
         P.disconnect()
 
 
+def firmware_flash(tmp):
+    print('flashing the firmware from the bridge')
+    import os, stat
+
+    def ihex(blocks, eof=True, bad=False):
+        out = []
+        for addr, data in blocks:
+            for i in range(0, len(data), 16):
+                chunk = data[i:i + 16]
+                rec = bytes([len(chunk), (addr + i) >> 8 & 255, (addr + i) & 255, 0]) + chunk
+                out.append(':' + (rec + bytes([(-sum(rec)) & 255 ^ (1 if bad else 0)])).hex().upper())
+        if eof:
+            out.append(':00000001FF')
+        return '\n'.join(out) + '\n'
+    good = ihex([(0, bytes(range(256)) * 4)])
+    check(B.check_hex(good)['bytes'] == 1024 and B.check_hex(good)['end'] == 1024, 'a good hex file checks out')
+    for what, text in (('a wrong checksum', ihex([(0, b'\x01' * 20)], bad=True)), ('a missing end record', ihex([(0, b'\x01' * 20)], eof=False)),
+                       ('a program that reaches the bootloader', ihex([(0x7DF0, b'\x01' * 32)])), ('no program at all', ':00000001FF\n'), ('text that is no hex file', 'hello\n')):
+        try:
+            B.check_hex(text); check(False, f'{what} is refused')
+        except ValueError:
+            check(True, f'{what} is refused')
+
+    d = os.path.join(tmp, 'fake-bin'); os.makedirs(d)
+    log, rc = os.path.join(tmp, 'avrdude.log'), os.path.join(tmp, 'avrdude.rc')
+    open(rc, 'w').write('0')
+    script = os.path.join(d, 'avrdude')
+    open(script, 'w').write(f'#!/bin/sh\necho "$@" >> {log}\ncp "$(echo "$@" | sed -n "s/.*flash:w:\\([^:]*\\):i.*/\\1/p")" {log}.hex\n'
+                            f'echo "avrdude: writing flash (1024 bytes)"\nprintf "Writing | ################ | 50%%\\rWriting | ################ | 100%%\\n" >&2\n'
+                            f'echo "avrdude done.  Thank you."\nexit $(cat {rc})\n')
+    os.chmod(script, os.stat(script).st_mode | stat.S_IEXEC)
+    old_path = os.environ['PATH']
+    state = os.path.join(tmp, 'state'); os.makedirs(state)
+    P = new_bridge(state)
+    try:
+        os.environ['PATH'] = d + os.pathsep + old_path
+        P.connect()
+        g = FakeGrbl.instances[-1]
+        wait_for(lambda: P.settings.get(130), 3)
+        P.write_grbl({'131': 205}); wait_for(lambda: g.cfg[131] == 205 and P.settings.get(131) == 205, 3)
+        P.queue('G10 L20 P1 X5 Y6'); wait_for(lambda: 'G10 L20 P1 X5 Y6' in g.seen, 3)
+        # a plot in the way
+        P.run(make_job(40)[0], 'busy', 0.0)
+        try:
+            P.flash_firmware(good); check(False, 'no flashing during a plot')
+        except RuntimeError:
+            check(True, 'no flashing during a plot')
+        P.stop('test')
+        wait_for(lambda: not (P.job and P.job['running']), 5)
+        wait_for(lambda: P.ser is not None, 5)
+        first = len(FakeGrbl.instances)
+        P.flash_firmware(good)
+        check(wait_for(lambda: P.fw['state'] == 'done', 20), f"the flash finishes ({P.fw['state']}: {P.fw['message']})")
+        args = open(log).read().split()
+        check(args[:6] == ['-p', 'atmega328p', '-c', 'arduino', '-P', '/dev/fake'] and '-D' in args and '-b' in args and '115200' in args, f'avrdude is called for an Uno on the bridge’s port ({args[:8]})')
+        check(open(log + '.hex').read() == good, 'with exactly the hex file that was checked')
+        check(len(FakeGrbl.instances) > first and P.status()['connected'], 'the bridge connects to the plotter again')
+        msgs = [e['m'] for e in P.status(0)['log']]
+        check(any('avrdude done' in m for m in msgs) and not any(m.startswith('Writing |') and '50%' in m for m in msgs), 'avrdude’s output is in the log, without the progress bar noise')
+        bk = json.load(open(os.path.join(state, 'grbl-firmware-backup.json')))
+        check(bk['settings']['131'] == 205.0 and bk['params']['G54'][0] != 0, f'the settings and G54 were saved before flashing ({bk["settings"].get("131")}, {bk["params"].get("G54")})')
+        # the new firmware starts with its defaults: restore what differs
+        g2 = FakeGrbl.instances[-1]
+        wait_for(lambda: P.settings.get(131) == 210 and 'G54' in P.params, 4)
+        plan = P.firmware_info()['restore']
+        check(plan and plan['settings'].get('131') == [205.0, 210.0] and plan['g54'] is not None, f'the restore plan lists what differs ({plan})')
+        check(all(int(k) not in B.FLASH_KEEP_OUT for k in plan['settings']), 'settings that change meaning between GRBL versions are left out')
+        P.restore_after_flash()
+        check(wait_for(lambda: g2.cfg[131] == 205 and any(x.startswith('G10 L2 P1') for x in g2.seen), 4), f'restore puts the settings and the work offset back ({g2.cfg.get(131)})')
+        # a failing avrdude: reported, and the bridge still reconnects
+        open(rc, 'w').write('1')
+        n = len(FakeGrbl.instances)
+        P.flash_firmware(good)
+        check(wait_for(lambda: P.fw['state'] == 'failed', 20) and 'exit 1' in P.fw['message'], f"a failing avrdude is reported ({P.fw['message'][:60]})")
+        check(wait_for(lambda: P.status()['connected'], 10) and len(FakeGrbl.instances) > n, 'and the bridge connects again')
+        # no avrdude
+        os.environ['PATH'] = old_path.replace(d, '')
+        saved = B.shutil.which
+        B.shutil.which = lambda name: None
+        try:
+            P.flash_firmware(good); check(False, 'a missing avrdude is explained')
+        except RuntimeError as e:
+            check('apt install avrdude' in str(e), 'a missing avrdude is explained')
+        finally:
+            B.shutil.which = saved
+        wait_for(lambda: P.grbl.get('version'), 5)
+        fi = P.firmware_info()
+        check(fi['connected'] and fi['running']['version'] and 'bundled' in fi, 'firmware_info: connected, running version, the bundled firmware')
+    finally:
+        os.environ['PATH'] = old_path
+        P.disconnect()
+
+    # over HTTP: a token is needed to flash
+    with tempfile.TemporaryDirectory() as d2:
+        P2 = new_bridge(d2); P2.connect()
+        B.Handler.plotter, B.Handler.token, B.Handler.allow_flash = P2, None, False
+        srv = ThreadingHTTPServer(('127.0.0.1', 0), B.Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        def call(path, body=None, token=None):
+            req = urllib.request.Request(f'http://127.0.0.1:{srv.server_address[1]}/api/' + path, data=None if body is None else json.dumps(body).encode(),
+                                         headers={'Content-Type': 'application/json', **({'X-Bridge-Token': token} if token else {})})
+            return json.load(urllib.request.urlopen(req))
+        r = call('firmware/flash', {'hex': good})
+        check('--token' in r.get('error', ''), 'without an access token the bridge will not flash')
+        B.Handler.token = 's3'
+        check('error' not in call('firmware', None, 's3') and 'bundled' in call('firmware', None, 's3'), 'GET firmware answers with the token')
+        r = call('firmware/flash', {'hex': 'nonsense'}, 's3')
+        check('Intel HEX' in r.get('error', '') or 'hex' in r.get('error', '').lower(), f"a bad file is refused over the API ({r.get('error')})")
+        B.Handler.token = None
+        srv.shutdown(); P2.disconnect()
+
+
 def machine_profile(tmp):
     print('machine profile on the bridge')
     P = new_bridge(tmp)
@@ -843,7 +960,7 @@ def update_script(tmp):
 
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, home_position, self_update, update_script):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, home_position, firmware_flash, self_update, update_script):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")

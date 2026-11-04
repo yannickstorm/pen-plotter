@@ -1,6 +1,9 @@
 # custom GRBL firmware build (kept locally)
 grbl/
 
+# the firmware built by firmware/build.sh (CI builds it into releases)
+firmware/*.hex
+
 # generated output
 *.gcode
 *.nc
