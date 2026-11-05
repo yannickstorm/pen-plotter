@@ -5,15 +5,15 @@
 /* Layout: full-height viewer; canvas fills the left, parameters in a side panel (below the canvas on phones). */
 :root {
   --bg: #e8ebee; --panel: #f6f7f8; --fg: #14181c; --muted: #58646e; --line: #cfd5da;
-  --accent: #c2410c; --part: #6f8fa3; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
+  --accent: #c2410c; --part: #6f8fa3; --part2: #5f9a86; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
   --font-body: 'Archivo', system-ui, sans-serif; --font-data: 'JetBrains Mono', ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
-  --accent: #ff8a4c; --part: #86a9bd; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
+  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
-  --accent: #ff8a4c; --part: #86a9bd; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
+  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; }
 .app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 304px; }
@@ -38,6 +38,9 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body); o
 .cut { display: grid; gap: 7px; }
 .cut label { font: 400 12px var(--font-data); display: flex; justify-content: space-between; }
 .cut input { width: 100%; accent-color: var(--accent); }
+.btn { font: 500 12px var(--font-data); color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 7px 11px; border-radius: 4px; cursor: pointer; justify-self: start; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; }
 dt { color: var(--muted); }
 dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
@@ -72,6 +75,16 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <label class="row"><input type="checkbox" id="t-dims" checked> Dimensions from front screw</label>
       <label class="row"><input type="checkbox" id="t-grid" checked> Grid and axes</label>
     </section>
+    <section class="cut" id="adjust">
+      <h2>Slide the switch stack</h2>
+      <label for="adjx"><span>Along X</span><span id="adjx-val"></span></label>
+      <input type="range" id="adjx" step="0.5" value="0">
+      <label for="adjy"><span>Along Y</span><span id="adjy-val"></span></label>
+      <input type="range" id="adjy" step="0.5" value="0">
+      <dl><dt>Stack from front screw</dt><dd id="stackpos"></dd></dl>
+      <p class="note">Tell me these two numbers once the switches trigger where you want and I set them in the design.</p>
+      <button type="button" id="adj-reset" class="btn">Reset to nominal</button>
+    </section>
     <section class="cut">
       <h2>Cut</h2>
       <label for="cut"><span>Remove above Z =</span><span id="cut-val"></span></label>
@@ -82,18 +95,19 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <dl id="layout"></dl>
     </section>
     <section>
-      <h2>Part</h2>
+      <h2>Parts</h2>
       <dl id="part"></dl>
     </section>
     <section>
       <h2>Fitting order</h2>
       <ol>
-        <li>Screw the base to the motor with two M3 screws.</li>
-        <li>Fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf.</li>
+        <li>Screw the arm to the motor with two M3 screws.</li>
+        <li>On the carrier, fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf.</li>
         <li>Fit the upper (X) switch on top.</li>
+        <li>Lay the carrier on the arm's clamp pad. Put an M3 screw through each pair of crossing slots, with a nut under the pad. Slide, test the switches, tighten.</li>
       </ol>
     </section>
-    <p class="note">Print with the base down. The arm is long and thin, so use four or more walls. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
+    <p class="note">Print the arm with its base down and the carrier upside down, upper plate on the bed. The arm is long and thin, so use four or more walls. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
   </aside>
 </div>
 
@@ -127,34 +141,35 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   const key = new T.DirectionalLight(0xffffff, 0.62); key.position.set(1, -1.2, 2); scene.add(key);
   const fill = new T.DirectionalLight(0xffffff, 0.18); fill.position.set(-1, 1, 0.4); scene.add(fill);
 
-  // ---- mesh from the embedded binary STL ----
-  const raw = Uint8Array.from(atob(STL_B64), c => c.charCodeAt(0));
-  const dv = new DataView(raw.buffer);
-  const n = dv.getUint32(80, true);
-  const pos = new Float32Array(n * 9);
-  let vol = 0;
-  for (let i = 0; i < n; i++) {
-    const o = 84 + i * 50 + 12;
-    for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true);
-    const a = i * 9;
-    vol += (pos[a] * (pos[a + 4] * pos[a + 8] - pos[a + 5] * pos[a + 7])
-          - pos[a + 1] * (pos[a + 3] * pos[a + 8] - pos[a + 5] * pos[a + 6])
-          + pos[a + 2] * (pos[a + 3] * pos[a + 7] - pos[a + 4] * pos[a + 6])) / 6;
-  }
-  const geo = new T.BufferGeometry();
-  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
-  geo.computeVertexNormals();
-  geo.computeBoundingBox();
-  const bb = geo.boundingBox, size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
-
+  // ---- meshes from the embedded binary STLs: the fixed arm and the sliding carrier ----
   const cutPlane = new T.Plane(new T.Vector3(0, 0, -1), 1e4);
-  const partMat = new T.MeshStandardMaterial({ color: 0x6f8fa3, roughness: 0.62, metalness: 0.05,
-    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: [cutPlane] });
-  const mesh = new T.Mesh(geo, partMat);
-  scene.add(mesh);
-  const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
-  const edges = new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat);
-  scene.add(edges);
+  function addPart(b64) {
+    const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const dv = new DataView(raw.buffer), n = dv.getUint32(80, true), pos = new Float32Array(n * 9);
+    let vol = 0;
+    for (let i = 0; i < n; i++) {
+      const o = 84 + i * 50 + 12;
+      for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true);
+      const a = i * 9;
+      vol += (pos[a] * (pos[a + 4] * pos[a + 8] - pos[a + 5] * pos[a + 7])
+            - pos[a + 1] * (pos[a + 3] * pos[a + 8] - pos[a + 5] * pos[a + 6])
+            + pos[a + 2] * (pos[a + 3] * pos[a + 7] - pos[a + 4] * pos[a + 6])) / 6;
+    }
+    const geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+    geo.computeVertexNormals(); geo.computeBoundingBox();
+    const mat = new T.MeshStandardMaterial({ color: 0x6f8fa3, roughness: 0.62, metalness: 0.05,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: [cutPlane] });
+    const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
+    return { n, vol, geo, mat, edgeMat, mesh: new T.Mesh(geo, mat), edges: new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat) };
+  }
+  const armP = addPart(STL_ARM_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, carP];
+  const carrier = new T.Group();            // everything that slides with the carrier
+  carrier.add(carP.mesh, carP.edges);
+  scene.add(armP.mesh, armP.edges, carrier);
+  const bb = armP.geo.boundingBox.clone().union(carP.geo.boundingBox);
+  const size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
+  const vol = armP.vol + carP.vol, n = armP.n + carP.n;
 
   // ---- helpers: text pills, grid, axes ----
   function label(text, color, h) {
@@ -184,39 +199,47 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   });
   scene.add(axes);
 
-  // ---- ghost hardware and dimensions (built for X_DIR = +1, mirrored below) ----
-  const ghost = new T.Group(), dims = new T.Group();
-  scene.add(ghost, dims);
-  const fx = P.HOLE_SPACING / 2, sx = fx + P.STACK_DX, sy = P.Y_SIGN * P.STACK_DY;
+  // ---- ghost hardware and dimensions (built for X_DIR = +1, mirrored by scale) ----
+  const hw = new T.Group(), swGhost = new T.Group(), dims = new T.Group();
+  scene.add(hw, dims); carrier.add(swGhost);
+  const fx = P.HOLE_SPACING / 2, sx0 = fx + P.STACK_DX, sy0 = P.Y_SIGN * P.STACK_DY;
   const yZ = P.X_Z - P.Y_DROP;
   const accentMat = new T.MeshBasicMaterial({ color: 0xff8a4c, transparent: true, opacity: 0.5 });
   const accentLine = new T.LineBasicMaterial({ color: 0xff8a4c });
   function sw(w, d, zTop, name, dir, at) {
     const m = new T.Mesh(new T.BoxGeometry(w, d, P.SW_H), accentMat);
-    m.position.set(sx, sy, zTop + P.SW_H / 2); ghost.add(m);
-    const l = new T.LineSegments(new T.EdgesGeometry(m.geometry), accentLine); l.position.copy(m.position); ghost.add(l);
-    const front = new T.Vector3(sx, sy, zTop + P.SW_H / 2).addScaledVector(dir, (dir.x ? w : d) / 2);
-    const a = new T.ArrowHelper(dir, front, 15, 0xff8a4c, 4.5, 3.2); ghost.add(a);
-    const t = label(name, '#ffb48a', 3.6); t.position.copy(at); ghost.add(t);
+    m.position.set(sx0, sy0, zTop + P.SW_H / 2); swGhost.add(m);
+    const l = new T.LineSegments(new T.EdgesGeometry(m.geometry), accentLine); l.position.copy(m.position); swGhost.add(l);
+    const front = new T.Vector3(sx0, sy0, zTop + P.SW_H / 2).addScaledVector(dir, (dir.x ? w : d) / 2);
+    swGhost.add(new T.ArrowHelper(dir, front, 15, 0xff8a4c, 4.5, 3.2));
+    const t = label(name, '#ffb48a', 3.6); t.position.copy(at); swGhost.add(t);
   }
-  sw(P.SW_W, P.SW_L, P.X_Z, 'X switch → +X', new T.Vector3(1, 0, 0), new T.Vector3(sx, sy, P.X_Z + P.SW_H + 4));
-  sw(P.SW_L, P.SW_W, yZ, 'Y switch → −Y', new T.Vector3(0, -1, 0), new T.Vector3(sx - 17, sy, yZ + P.SW_H / 2));
+  sw(P.SW_W, P.SW_L, P.X_Z, 'X switch → +X', new T.Vector3(1, 0, 0), new T.Vector3(sx0, sy0, P.X_Z + P.SW_H + 4));
+  sw(P.SW_L, P.SW_W, yZ, 'Y switch → −Y', new T.Vector3(0, -1, 0), new T.Vector3(sx0 - 17, sy0, yZ + P.SW_H / 2));
   const screwMat = new T.MeshBasicMaterial({ color: 0x9aa6af, transparent: true, opacity: 0.6 });
   [-1, 1].forEach(k => {
-    const body = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, 12, 20), screwMat); body.rotation.x = Math.PI / 2; body.position.set(k * fx, 0, 4 - 3); ghost.add(body);
-    const head = new T.Mesh(new T.CylinderGeometry(2.8, 2.8, 2, 24), screwMat); head.rotation.x = Math.PI / 2; head.position.set(k * fx, 0, 5); ghost.add(head);
+    const body = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, 12, 20), screwMat); body.rotation.x = Math.PI / 2; body.position.set(k * fx, 0, 1); hw.add(body);
+    const head = new T.Mesh(new T.CylinderGeometry(2.8, 2.8, 2, 24), screwMat); head.rotation.x = Math.PI / 2; head.position.set(k * fx, 0, 5); hw.add(head);
   });
   const dashed = new T.LineDashedMaterial({ color: 0xff8a4c, dashSize: 2.5, gapSize: 1.8, depthTest: false });
-  const path = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(fx, 0, 0.3), new T.Vector3(sx, 0, 0.3), new T.Vector3(sx, sy, 0.3)]), dashed);
-  path.computeLineDistances(); path.renderOrder = 9; dims.add(path);
-  const l1 = label(P.STACK_DX + ' mm', '#ffb48a', 3.6); l1.position.set((fx + sx) / 2, 0, 5); dims.add(l1);
-  const l2 = label(P.STACK_DY + ' mm', '#ffb48a', 3.6); l2.position.set(sx, sy / 2, 5); dims.add(l2);
-  const l3 = label('front screw', '#ffb48a', 3.4); l3.position.set(fx, 7, 7); dims.add(l3);
-  ghost.scale.x = dims.scale.x = P.X_DIR;
+  const path = new T.Line(new T.BufferGeometry(), dashed); path.renderOrder = 9; dims.add(path);
+  const lblFront = label('front screw', '#ffb48a', 3.4); lblFront.position.set(fx, 7, 7); dims.add(lblFront);
+  let lblX = null, lblY = null;
+  function setDims(dx, dy) {
+    const x = sx0 + dx, y = sy0 + dy;
+    path.geometry.setFromPoints([new T.Vector3(fx, 0, 0.3), new T.Vector3(x, 0, 0.3), new T.Vector3(x, y, 0.3)]);
+    path.computeLineDistances();
+    [lblX, lblY].forEach(l => { if (l) { dims.remove(l); l.material.map.dispose(); l.material.dispose(); } });
+    lblX = label((x - fx).toFixed(1) + ' mm', '#ffb48a', 3.6); lblX.position.set((fx + x) / 2, 0, 5);
+    lblY = label(Math.abs(y).toFixed(1) + ' mm', '#ffb48a', 3.6); lblY.position.set(x, y / 2, 5);
+    dims.add(lblX, lblY);
+  }
+  hw.scale.x = dims.scale.x = swGhost.scale.x = P.X_DIR;
 
   // ---- theme ----
   function theme() {
-    partMat.color.set(css('--part')); edgeMat.color.set(css('--edge'));
+    armP.mat.color.set(css('--part')); carP.mat.color.set(css('--part2'));
+    parts.forEach(p => p.edgeMat.color.set(css('--edge')));
     gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
   }
   let dirty = true;
@@ -275,33 +298,50 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
 
   // ---- controls ----
   const $ = id => document.getElementById(id);
-  $('t-edges').onchange = e => { edges.visible = e.target.checked; dirty = true; };
-  $('t-wire').onchange = e => { partMat.wireframe = e.target.checked; dirty = true; };
-  $('t-switches').onchange = e => { ghost.visible = e.target.checked; dirty = true; };
+  $('t-edges').onchange = e => { parts.forEach(p => { p.edges.visible = e.target.checked; }); dirty = true; };
+  $('t-wire').onchange = e => { parts.forEach(p => { p.mat.wireframe = e.target.checked; }); dirty = true; };
+  $('t-switches').onchange = e => { hw.visible = swGhost.visible = e.target.checked; dirty = true; };
   $('t-dims').onchange = e => { dims.visible = e.target.checked; dirty = true; };
   $('t-grid').onchange = e => { grid.visible = axes.visible = e.target.checked; dirty = true; };
   const cut = $('cut'); cut.max = Math.ceil(size.z); cut.value = cut.max;
   function setCut() {
     const v = +cut.value, off = v >= +cut.max;
-    cutPlane.constant = off ? 1e4 : v; partMat.side = off ? T.FrontSide : T.DoubleSide; partMat.needsUpdate = true;
+    cutPlane.constant = off ? 1e4 : v; parts.forEach(p => { p.mat.side = off ? T.FrontSide : T.DoubleSide; p.mat.needsUpdate = true; });
     $('cut-val').textContent = off ? 'off' : v.toFixed(1) + ' mm'; dirty = true;
   }
   cut.oninput = setCut; setCut();
 
+  // slide the carrier: +X moves the stack away from the motor along the X lever direction
+  const adjx = $('adjx'), adjy = $('adjy');
+  [adjx, adjy].forEach(r => { r.min = -P.ADJ; r.max = P.ADJ; });
+  const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1) + ' mm';
+  function setAdj() {
+    const dx = +adjx.value, dy = +adjy.value;
+    carrier.position.set(P.X_DIR * dx, dy, 0);
+    setDims(dx, dy);
+    $('adjx-val').textContent = sgn(dx); $('adjy-val').textContent = sgn(dy);
+    $('stackpos').textContent = `X ${(P.STACK_DX + dx).toFixed(1)} · Y ${(P.Y_SIGN < 0 ? '−' : '+')}${Math.abs(P.STACK_DY * P.Y_SIGN + dy).toFixed(1)}`;
+    dirty = true;
+  }
+  adjx.oninput = adjy.oninput = setAdj;
+  $('adj-reset').onclick = () => { adjx.value = 0; adjy.value = 0; setAdj(); };
+  setAdj();
+
   // ---- readouts ----
   const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
   $('layout').innerHTML =
-    row('Stack from front screw', `${P.STACK_DX} / ${P.Y_SIGN < 0 ? '−' : '+'}${P.STACK_DY} mm`) +
+    row('Nominal stack from front screw', `${P.STACK_DX} / ${P.Y_SIGN < 0 ? '−' : '+'}${P.STACK_DY} mm`) +
+    row('Sliding range', `±${P.ADJ} mm in X and Y`) +
     row('Upper (X) shelf top', `Z ${P.X_Z} mm`) +
     row('Lower (Y) shelf top', `Z ${yZ} mm`) +
     row('Screw spacing', `${P.HOLE_SPACING} mm`) +
     row('Switch long side × depth × height', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
     row('Switch holes (along long side)', `${P.SW_HOLE_SPACING} mm apart`);
   $('part').innerHTML =
-    row('Size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
-    row('Volume', `${(vol / 1000).toFixed(1)} cm³`) +
-    row('Triangles', n.toLocaleString('en'));
-  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · single solid · ${(vol / 1000).toFixed(1)} cm³`;
+    row('Arm / carrier volume', `${(armP.vol / 1000).toFixed(1)} / ${(carP.vol / 1000).toFixed(1)} cm³`) +
+    row('Assembled size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
+        row('Triangles', n.toLocaleString('en'));
+  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · arm + sliding carrier`;
 
   // ---- sizing and render loop ----
   function resize() {
