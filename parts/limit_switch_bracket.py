@@ -31,11 +31,14 @@ TOP_T = 3.0                # thickness of the upper structure (beam + X shelf)
 Y_SHELF_T = 4.0
 BEAM_W = 12.0
 WEB_T = 2.5
-# --- micro switch: long side 12.8 (clicks on this side), depth 5.8 (away from the clicking side), height 6.5; 2 holes 6.5 apart along the long side (CHECK with calipers) ---
-SW_L, SW_W, SW_H = 12.8, 5.8, 6.5
+# --- micro switch (1 A 125 V AC type, photo dims): long side 12.8 with the lever on it, 6.2 deep from the
+# clicking side to the back (3 solder pins stick out of the back), 5.8 thick (assumed, measure it);
+# 2 holes dia 2.0, 6.5 apart along the long side, through the thickness ---
+SW_L, SW_W, SW_H = 12.8, 6.2, 5.8
 SW_HOLE_SPACING = 6.5
-SW_HOLE = 1.4              # pilot for M1.6 self-tapping screw
-SCREW_HEAD = 3.6           # hole in the upper shelf for the lower switch's screws
+SW_HOLE = 1.7              # pilot for an M2 self-tapping screw (switch holes are dia 2.0)
+SCREW_HEAD = 4.4           # hole in the upper shelf for the lower switch's M2 screw heads
+WIRE_GAP = 6.0             # free space behind the lower switch for its solder pins and wires
 PAD = 3.0
 FILLET = 1.0
 
@@ -66,15 +69,15 @@ beam = extrude(Plane.XY.offset(top_z0) * Polygon(*beam_pts, align=None), amount=
 # X switch footprint: depth SW_W along X (long side faces +X), SW_L along Y.
 # Upper shelf: front edge flush with the switch's +X face, margin behind and to the sides.
 x_lo, x_hi = sx - SW_L / 2 - PAD, sx + SW_W / 2
-y_lo, y_hi = sy - SW_L / 2 - PAD, sy + SW_L / 2 + PAD
+y_lo, y_hi = sy - SW_L / 2 - PAD, max(sy + SW_L / 2 + PAD, sy + SW_W / 2 + WIRE_GAP + PAD)
 xshelf = rounded(Pos((x_lo + x_hi) / 2, (y_lo + y_hi) / 2, X_Z - TOP_T / 2) * Box(x_hi - x_lo, y_hi - y_lo, TOP_T))
 
 # Y switch footprint: SW_L along X, depth SW_W along Y (long side faces -Y).
 # Lower shelf: front edge flush with the switch's -Y face; the wall behind it carries it up to the upper shelf.
 yx_lo, yx_hi = sx - SW_L / 2 - PAD, sx + SW_L / 2 + PAD
-yy_lo, yy_hi = sy - SW_W / 2, sy + SW_W / 2 + PAD
+yy_lo, yy_hi = sy - SW_W / 2, sy + SW_W / 2 + WIRE_GAP + PAD
 yshelf = rounded(Pos((yx_lo + yx_hi) / 2, (yy_lo + yy_hi) / 2, Y_Z - Y_SHELF_T / 2) * Box(yx_hi - yx_lo, yy_hi - yy_lo, Y_SHELF_T))
-wall_y0 = sy + SW_W / 2
+wall_y0 = sy + SW_W / 2 + WIRE_GAP
 # the wall stays behind the X switch's front face so the X lever has free space in front
 w_lo, w_hi = x_lo, x_hi
 wall = Pos((w_lo + w_hi) / 2, (wall_y0 + yy_hi) / 2, ((Y_Z - Y_SHELF_T) + X_Z - TOP_T / 2) / 2) * Box(w_hi - w_lo, yy_hi - wall_y0, (X_Z - TOP_T / 2) - (Y_Z - Y_SHELF_T))
