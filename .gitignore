@@ -23,3 +23,5 @@ great-wave-multicolor.svg
 .vscode/
 __pycache__/
 *.pyc
+parts/*.png
+parts/*.stl
