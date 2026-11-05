@@ -1,0 +1,315 @@
+<title>Limit Switch Bracket</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-height viewer; canvas fills the left, parameters in a side panel (below the canvas on phones). */
+:root {
+  --bg: #e8ebee; --panel: #f6f7f8; --fg: #14181c; --muted: #58646e; --line: #cfd5da;
+  --accent: #c2410c; --part: #6f8fa3; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
+  --font-body: 'Archivo', system-ui, sans-serif; --font-data: 'JetBrains Mono', ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
+  --accent: #ff8a4c; --part: #86a9bd; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
+  --accent: #ff8a4c; --part: #86a9bd; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 304px; }
+.stage { position: relative; min-height: 0; background: var(--bg); }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.tag { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); pointer-events: none; }
+.tag h1 { font-size: 15px; font-weight: 600; letter-spacing: .01em; }
+.tag p { font: 400 11px var(--font-data); color: var(--muted); margin-top: 3px; }
+.views { position: absolute; bottom: 14px; left: max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-wrap: wrap; gap: 6px; }
+.views button { font: 500 12px var(--font-data); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  padding: 7px 11px; border-radius: 4px; cursor: pointer; }
+.views button:hover { border-color: var(--muted); }
+.views button:focus-visible, .row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { position: absolute; bottom: 18px; right: 16px; font: 400 11px var(--font-data); color: var(--muted); pointer-events: none; text-align: right; }
+.panel { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-height: 0;
+  padding-block: 16px 20px; padding-left: 18px; padding-right: max(18px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 20px; }
+.panel h2 { font: 500 11px var(--font-data); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 9px; }
+.row { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 4px 0; cursor: pointer; }
+.row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+.swatch { width: 9px; height: 9px; border-radius: 2px; background: var(--accent); flex: none; }
+.cut { display: grid; gap: 7px; }
+.cut label { font: 400 12px var(--font-data); display: flex; justify-content: space-between; }
+.cut input { width: 100%; accent-color: var(--accent); }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; }
+dt { color: var(--muted); }
+dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 1.4; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 42%); }
+  .panel { border-left: 0; border-top: 1px solid var(--line); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <div class="tag"><h1>Limit switch bracket</h1><p id="status">loading…</p></div>
+    <div class="views" id="views">
+      <button type="button" data-view="iso">Iso</button>
+      <button type="button" data-view="top">Top</button>
+      <button type="button" data-view="front">Front</button>
+      <button type="button" data-view="right">Right</button>
+    </div>
+    <div class="hint">drag: orbit · right-drag / shift: pan · wheel: zoom</div>
+  </div>
+  <aside class="panel">
+    <section>
+      <h2>Show</h2>
+      <label class="row"><input type="checkbox" id="t-edges" checked> Edges</label>
+      <label class="row"><input type="checkbox" id="t-wire"> Wireframe</label>
+      <label class="row"><input type="checkbox" id="t-switches" checked><span class="swatch"></span> Switches and screws</label>
+      <label class="row"><input type="checkbox" id="t-dims" checked> Dimensions from front screw</label>
+      <label class="row"><input type="checkbox" id="t-grid" checked> Grid and axes</label>
+    </section>
+    <section class="cut">
+      <h2>Cut</h2>
+      <label for="cut"><span>Remove above Z =</span><span id="cut-val"></span></label>
+      <input type="range" id="cut" min="0" max="35" step="0.5" value="35">
+    </section>
+    <section>
+      <h2>Layout</h2>
+      <dl id="layout"></dl>
+    </section>
+    <section>
+      <h2>Part</h2>
+      <dl id="part"></dl>
+    </section>
+    <section>
+      <h2>Fitting order</h2>
+      <ol>
+        <li>Screw the base to the motor with two M3 screws.</li>
+        <li>Fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf.</li>
+        <li>Fit the upper (X) switch on top.</li>
+      </ol>
+    </section>
+    <p class="note">Print with the base down. The arm is long and thin, so use four or more walls. Switch size and pilot holes are assumed, not measured.</p>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/*DATA*/
+(() => {
+  const T = window.THREE;
+  const host = document.getElementById('stage');
+  const P = PARAMS;
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  // ---- renderer ----
+  let renderer;
+  try {
+    renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
+  } catch (e) {
+    host.insertAdjacentHTML('beforeend', '<div class="fail">This browser cannot draw 3D (WebGL is unavailable). The STEP and STL files hold the same part.</div>');
+    return;
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.localClippingEnabled = true;
+  host.insertBefore(renderer.domElement, host.firstChild);
+  const el = renderer.domElement;
+
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(32, 1, 1, 3000);
+  camera.up.set(0, 0, 1);
+  scene.add(new T.HemisphereLight(0xffffff, 0x3a444d, 0.5));
+  const key = new T.DirectionalLight(0xffffff, 0.62); key.position.set(1, -1.2, 2); scene.add(key);
+  const fill = new T.DirectionalLight(0xffffff, 0.18); fill.position.set(-1, 1, 0.4); scene.add(fill);
+
+  // ---- mesh from the embedded binary STL ----
+  const raw = Uint8Array.from(atob(STL_B64), c => c.charCodeAt(0));
+  const dv = new DataView(raw.buffer);
+  const n = dv.getUint32(80, true);
+  const pos = new Float32Array(n * 9);
+  let vol = 0;
+  for (let i = 0; i < n; i++) {
+    const o = 84 + i * 50 + 12;
+    for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true);
+    const a = i * 9;
+    vol += (pos[a] * (pos[a + 4] * pos[a + 8] - pos[a + 5] * pos[a + 7])
+          - pos[a + 1] * (pos[a + 3] * pos[a + 8] - pos[a + 5] * pos[a + 6])
+          + pos[a + 2] * (pos[a + 3] * pos[a + 7] - pos[a + 4] * pos[a + 6])) / 6;
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox, size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
+
+  const cutPlane = new T.Plane(new T.Vector3(0, 0, -1), 1e4);
+  const partMat = new T.MeshStandardMaterial({ color: 0x6f8fa3, roughness: 0.62, metalness: 0.05,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: [cutPlane] });
+  const mesh = new T.Mesh(geo, partMat);
+  scene.add(mesh);
+  const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
+  const edges = new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat);
+  scene.add(edges);
+
+  // ---- helpers: text pills, grid, axes ----
+  function label(text, color, h) {
+    const c = document.createElement('canvas'), g = c.getContext('2d'), f = 'bold 30px monospace';
+    g.font = f; const w = Math.ceil(g.measureText(text).width) + 26; c.width = w; c.height = 46;
+    g.font = f; g.fillStyle = 'rgba(16,21,25,.86)'; g.beginPath(); g.roundRect ? g.roundRect(0, 0, w, 46, 8) : g.rect(0, 0, w, 46); g.fill();
+    g.fillStyle = color; g.textBaseline = 'middle'; g.fillText(text, 13, 24);
+    const s = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), depthTest: false, transparent: true }));
+    s.scale.set(h * w / 46, h, 1); s.renderOrder = 10; return s;
+  }
+  // 10 mm grid on the motor-face plane (z = 0); the lines through the origin are drawn stronger
+  const grid = new T.Group();
+  const gridMat = new T.LineBasicMaterial({ color: 0xc3cbd1 }), gridMainMat = new T.LineBasicMaterial({ color: 0x9aa6af });
+  (() => {
+    const minor = [], main = [], x0 = -30, x1 = 130, y0 = -110, y1 = 70;
+    for (let x = x0; x <= x1; x += 10) (x === 0 ? main : minor).push(x, y0, 0, x, y1, 0);
+    for (let y = y0; y <= y1; y += 10) (y === 0 ? main : minor).push(x0, y, 0, x1, y, 0);
+    const mk = (a, m) => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(a, 3)); return new T.LineSegments(g, m); };
+    grid.add(mk(minor, gridMat), mk(main, gridMainMat));
+  })();
+  grid.position.z = -0.1; scene.add(grid);
+  const axes = new T.Group();
+  [['X', [30, 0, 0], 0xe5484d, '#ff7b80'], ['Y', [0, 30, 0], 0x30a46c, '#5fd69a'], ['Z', [0, 0, 30], 0x3e63dd, '#8ea6ff']].forEach(([t, v, col, txt]) => {
+    const gg = new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3(...v)]);
+    const ln = new T.Line(gg, new T.LineBasicMaterial({ color: col, depthTest: false })); ln.renderOrder = 9; axes.add(ln);
+    const s = label(t, txt, 3.8); s.position.set(v[0] * 1.15, v[1] * 1.15, v[2] * 1.15 + (t === 'Z' ? 2 : 0)); axes.add(s);
+  });
+  scene.add(axes);
+
+  // ---- ghost hardware and dimensions (built for X_DIR = +1, mirrored below) ----
+  const ghost = new T.Group(), dims = new T.Group();
+  scene.add(ghost, dims);
+  const fx = P.HOLE_SPACING / 2, sx = fx + P.STACK_DX, sy = P.Y_SIGN * P.STACK_DY;
+  const yZ = P.X_Z - P.Y_DROP;
+  const accentMat = new T.MeshBasicMaterial({ color: 0xff8a4c, transparent: true, opacity: 0.5 });
+  const accentLine = new T.LineBasicMaterial({ color: 0xff8a4c });
+  function sw(w, d, zTop, name, dir, at) {
+    const m = new T.Mesh(new T.BoxGeometry(w, d, P.SW_H), accentMat);
+    m.position.set(sx, sy, zTop + P.SW_H / 2); ghost.add(m);
+    const l = new T.LineSegments(new T.EdgesGeometry(m.geometry), accentLine); l.position.copy(m.position); ghost.add(l);
+    const front = new T.Vector3(sx, sy, zTop + P.SW_H / 2).addScaledVector(dir, (dir.x ? w : d) / 2);
+    const a = new T.ArrowHelper(dir, front, 15, 0xff8a4c, 4.5, 3.2); ghost.add(a);
+    const t = label(name, '#ffb48a', 3.6); t.position.copy(at); ghost.add(t);
+  }
+  sw(P.SW_L, P.SW_W, P.X_Z, 'X switch → +X', new T.Vector3(1, 0, 0), new T.Vector3(sx, sy, P.X_Z + P.SW_H + 4));
+  sw(P.SW_W, P.SW_L, yZ, 'Y switch → −Y', new T.Vector3(0, -1, 0), new T.Vector3(sx - 17, sy, yZ + P.SW_H / 2));
+  const screwMat = new T.MeshBasicMaterial({ color: 0x9aa6af, transparent: true, opacity: 0.6 });
+  [-1, 1].forEach(k => {
+    const body = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, 12, 20), screwMat); body.rotation.x = Math.PI / 2; body.position.set(k * fx, 0, 4 - 3); ghost.add(body);
+    const head = new T.Mesh(new T.CylinderGeometry(2.8, 2.8, 2, 24), screwMat); head.rotation.x = Math.PI / 2; head.position.set(k * fx, 0, 5); ghost.add(head);
+  });
+  const dashed = new T.LineDashedMaterial({ color: 0xff8a4c, dashSize: 2.5, gapSize: 1.8, depthTest: false });
+  const path = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(fx, 0, 0.3), new T.Vector3(sx, 0, 0.3), new T.Vector3(sx, sy, 0.3)]), dashed);
+  path.computeLineDistances(); path.renderOrder = 9; dims.add(path);
+  const l1 = label(P.STACK_DX + ' mm', '#ffb48a', 3.6); l1.position.set((fx + sx) / 2, 0, 5); dims.add(l1);
+  const l2 = label(P.STACK_DY + ' mm', '#ffb48a', 3.6); l2.position.set(sx, sy / 2, 5); dims.add(l2);
+  const l3 = label('front screw', '#ffb48a', 3.4); l3.position.set(fx, 7, 7); dims.add(l3);
+  ghost.scale.x = dims.scale.x = P.X_DIR;
+
+  // ---- theme ----
+  function theme() {
+    partMat.color.set(css('--part')); edgeMat.color.set(css('--edge'));
+    gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
+  }
+  let dirty = true;
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme);
+  new MutationObserver(theme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---- camera: orbit around a target, Z up ----
+  const st = { th: -0.9, ph: 1.0, r: 230, t: center.clone() };
+  const view = { iso: [-0.9, 1.0], top: [-Math.PI / 2, 0.02], front: [-Math.PI / 2, Math.PI / 2], right: [0, Math.PI / 2] };
+  function applyCam() {
+    const s = Math.sin(st.ph);
+    camera.position.set(st.t.x + st.r * s * Math.cos(st.th), st.t.y + st.r * s * Math.sin(st.th), st.t.z + st.r * Math.cos(st.ph));
+    camera.lookAt(st.t); camera.updateMatrixWorld(); dirty = true;
+  }
+  let tween = 0;
+  function goTo(th, ph, r) {
+    cancelAnimationFrame(tween);
+    const a = { th: st.th, ph: st.ph, r: st.r, t: st.t.clone() }, t0 = performance.now(), dur = 380;
+    const dth = ((th - a.th + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    (function step(now) {
+      const u = clamp((now - t0) / dur, 0, 1), e = u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      st.th = a.th + dth * e; st.ph = a.ph + (ph - a.ph) * e; st.r = a.r + (r - a.r) * e; st.t.lerpVectors(a.t, center, e);
+      applyCam(); if (u < 1) tween = requestAnimationFrame(step);
+    })(t0);
+  }
+  function fitR() { const a = host.clientWidth / Math.max(1, host.clientHeight); return Math.max(size.x, size.y, size.z) * 2.5 * Math.max(1, 1.1 / a); }
+  document.getElementById('views').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; const v = view[b.dataset.view]; goTo(v[0], v[1], fitR());
+  });
+  function pan(dx, dy) {
+    const k = 2 * st.r * Math.tan(camera.fov * Math.PI / 360) / host.clientHeight;
+    const rt = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    st.t.addScaledVector(rt, -dx * k).addScaledVector(up, dy * k);
+  }
+  const ptrs = new Map();
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); cancelAnimationFrame(tween);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button }); });
+  el.addEventListener('pointermove', e => {
+    const p = ptrs.get(e.pointerId); if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (ptrs.size === 1) {
+      if (p.b === 2 || p.b === 1 || e.shiftKey) pan(dx, dy);
+      else { st.th -= dx * 0.008; st.ph = clamp(st.ph - dy * 0.008, 0.02, Math.PI - 0.02); }
+    } else if (ptrs.size === 2) {
+      const o = [...ptrs.entries()].find(([id]) => id !== e.pointerId)[1];
+      const before = Math.hypot(p.x - o.x, p.y - o.y), after = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+      if (after > 0) st.r = clamp(st.r * before / after, 40, 900);
+      pan(dx / 2, dy / 2);
+    }
+    p.x = e.clientX; p.y = e.clientY; applyCam();
+  });
+  const up = e => ptrs.delete(e.pointerId);
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', e => { e.preventDefault(); st.r = clamp(st.r * Math.exp(e.deltaY * 0.0012), 40, 900); applyCam(); }, { passive: false });
+
+  // ---- controls ----
+  const $ = id => document.getElementById(id);
+  $('t-edges').onchange = e => { edges.visible = e.target.checked; dirty = true; };
+  $('t-wire').onchange = e => { partMat.wireframe = e.target.checked; dirty = true; };
+  $('t-switches').onchange = e => { ghost.visible = e.target.checked; dirty = true; };
+  $('t-dims').onchange = e => { dims.visible = e.target.checked; dirty = true; };
+  $('t-grid').onchange = e => { grid.visible = axes.visible = e.target.checked; dirty = true; };
+  const cut = $('cut'); cut.max = Math.ceil(size.z); cut.value = cut.max;
+  function setCut() {
+    const v = +cut.value, off = v >= +cut.max;
+    cutPlane.constant = off ? 1e4 : v; partMat.side = off ? T.FrontSide : T.DoubleSide; partMat.needsUpdate = true;
+    $('cut-val').textContent = off ? 'off' : v.toFixed(1) + ' mm'; dirty = true;
+  }
+  cut.oninput = setCut; setCut();
+
+  // ---- readouts ----
+  const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  $('layout').innerHTML =
+    row('Stack from front screw', `${P.STACK_DX} / ${P.Y_SIGN < 0 ? '−' : '+'}${P.STACK_DY} mm`) +
+    row('Upper (X) shelf top', `Z ${P.X_Z} mm`) +
+    row('Lower (Y) shelf top', `Z ${yZ} mm`) +
+    row('Screw spacing', `${P.HOLE_SPACING} mm`) +
+    row('Switch body', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
+    row('Switch holes', `${P.SW_HOLE_SPACING} mm apart`);
+  $('part').innerHTML =
+    row('Size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
+    row('Volume', `${(vol / 1000).toFixed(1)} cm³`) +
+    row('Triangles', n.toLocaleString('en'));
+  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · single solid · ${(vol / 1000).toFixed(1)} cm³`;
+
+  // ---- sizing and render loop ----
+  function resize() {
+    const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); dirty = true;
+  }
+  new ResizeObserver(resize).observe(host);
+  (function loop() { if (dirty) { dirty = false; renderer.render(scene, camera); } requestAnimationFrame(loop); })();
+  theme(); resize(); st.r = fitR(); applyCam();
+})();
+</script>
