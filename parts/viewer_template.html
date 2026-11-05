@@ -5,12 +5,12 @@
 /* Layout: full-height viewer; canvas fills the left, parameters in a side panel (below the canvas on phones). */
 :root {
   --bg: #e8ebee; --panel: #f6f7f8; --fg: #14181c; --muted: #58646e; --line: #cfd5da;
-  --accent: #c2410c; --part: #6f8fa3; --part2: #5f9a86; --part3: #8b7bb5; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
+  --accent: #c2410c; --part: #6f8fa3; --part2: #5f9a86; --part3: #8b7bb5; --part4: #b0925a; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
   --font-body: 'Archivo', system-ui, sans-serif; --font-data: 'JetBrains Mono', ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
-  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
+  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --part4: #cfb07a; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
   --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
@@ -38,8 +38,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body); o
 .cut { display: grid; gap: 7px; }
 .cut label { font: 400 12px var(--font-data); display: flex; justify-content: space-between; }
 .cut input { width: 100%; accent-color: var(--accent); }
-.num { width: 78px; font: 500 12px var(--font-data); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; text-align: right; }
-.num:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cut input.num { width: 78px; font: 500 12px var(--font-data); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; text-align: right; }
+.cut input.num:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn { font: 500 12px var(--font-data); color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 7px 11px; border-radius: 4px; cursor: pointer; justify-self: start; }
 .btn:hover { border-color: var(--muted); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -96,9 +96,33 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <h2>Reading the printed parts</h2>
       <p class="note">Each scale is engraved, 1 mm per tick, 0 is the nominal position, plus is towards +X, +Y and up. Type your three readings into the boxes above to get the final position.</p>
       <ol class="read">
-        <li><b>Z</b>: on the side of the post, the top edge of the bridge plate sits next to a numbered tick.</li>
-        <li><b>Y</b>: on the bridge's pad, the +Y edge of the carrier sits next to a numbered tick.</li>
-        <li><b>X</b>: look through the small window in the carrier's +Y edge. The line in the middle of the window is the reading. The longest line is 0.</li>
+        <li><b>Z</b>: on the side of the post, at its front edge, the top edge of the bridge plate sits next to a numbered tick.</li>
+        <li><b>Y</b>: on the bridge's pad, the +Y end edge of the cross-slide sits next to a numbered tick.</li>
+        <li><b>X</b>: on top of the cross-slide, the −X end edge of the carrier's plate sits next to a tick. The longest tick is 0, the medium ones are ±4 and ±8.</li>
+      </ol>
+      <p class="note">The buttons Read X · Y and Read Z zoom to these scales.</p>
+    </section>
+    <section class="cut">
+      <h2>Cut</h2>
+      <label for="cut"><span>Remove above Z =</span><span id="cut-val"></span></label>
+      <input type="range" id="cut" min="0" max="35" step="0.5" value="35">
+    </section>
+    <section>
+      <h2>Layout</h2>
+      <dl id="layout"></dl>
+    </section>
+    <section>
+      <h2>Parts</h2>
+      <dl id="part"></dl>
+    </section>
+    <section>
+      <h2>Fitting order</h2>
+      <ol>
+        <li>Screw the arm to the motor with two M3 screws first.</li>
+        <li>Press an M3 heat-set insert into each of the three locking holes: on the front of the bridge plate, under the bridge pad and on the side of the cross-slide.</li>
+        <li>On the carrier, fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf. Then fit the upper (X) switch.</li>
+        <li>Slide the bridge down onto the post from the top. Slide the cross-slide into the pad along Y. Slide the carrier into the cross-slide along X.</li>
+        <li>Move each slide to the reading you want and lock it with its M3 set screw. The slides are a loose fit, so they hold only when locked.</li>
       </ol>
       <p class="note">The buttons Read X · Y and Read Z zoom to these scales.</p>
     </section>
@@ -125,7 +149,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
         <li>Lay the carrier on the bridge's pad. An M3 screw through each pair of crossing slots, nut under the pad. Slide, test the switches, tighten.</li>
       </ol>
     </section>
-    <p class="note">Prototype settings: no supports needed. Print the arm on its side (flat on the post's side face), the bridge upside down (pad on the bed) and the carrier upside down (upper plate on the bed). Two walls and 10 to 15 % infill are enough. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
+    <p class="note">Prototype settings: no supports needed. Print the arm on its side (on the post's +Y face, rail up), the bridge, the cross-slide and the carrier upside down (their top faces on the bed). Two walls and 10 to 15 % infill are enough. If the slides bind or wobble, change DT_CL (0.3 mm clearance per side) and reprint. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
   </aside>
 </div>
 
@@ -181,13 +205,13 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
     return { n, vol, geo, mat, edgeMat, mesh: new T.Mesh(geo, mat), edges: new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat) };
   }
-  const armP = addPart(STL_ARM_B64), brP = addPart(STL_BRIDGE_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, brP, carP];
-  const bridge = new T.Group(), carrier = new T.Group();   // bridge slides in Z; carrier slides in X, Y and Z
-  bridge.add(brP.mesh, brP.edges); carrier.add(carP.mesh, carP.edges);
-  scene.add(armP.mesh, armP.edges, bridge, carrier);
-  const bb = armP.geo.boundingBox.clone().union(brP.geo.boundingBox).union(carP.geo.boundingBox);
+  const armP = addPart(STL_ARM_B64), brP = addPart(STL_BRIDGE_B64), csP = addPart(STL_CROSS_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, brP, csP, carP];
+  const bridge = new T.Group(), crossG = new T.Group(), carrier = new T.Group();   // bridge: Z; cross-slide: Y, Z; carrier: X, Y, Z
+  bridge.add(brP.mesh, brP.edges); crossG.add(csP.mesh, csP.edges); carrier.add(carP.mesh, carP.edges);
+  scene.add(armP.mesh, armP.edges, bridge, crossG, carrier);
+  const bb = parts.reduce((b, p) => b.union(p.geo.boundingBox), armP.geo.boundingBox.clone());
   const size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
-  const vol = armP.vol + brP.vol + carP.vol, n = armP.n + brP.n + carP.n;
+  const vol = parts.reduce((s, p) => s + p.vol, 0), n = parts.reduce((s, p) => s + p.n, 0);
 
   // ---- helpers: text pills, grid, axes ----
   function label(text, color, h) {
@@ -256,7 +280,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
 
   // ---- theme ----
   function theme() {
-    armP.mat.color.set(css('--part')); brP.mat.color.set(css('--part3')); carP.mat.color.set(css('--part2'));
+    armP.mat.color.set(css('--part')); brP.mat.color.set(css('--part3')); csP.mat.color.set(css('--part4')); carP.mat.color.set(css('--part2'));
     parts.forEach(p => p.edgeMat.color.set(css('--edge')));
     gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
   }
@@ -286,9 +310,9 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   function fitR() { const a = host.clientWidth / Math.max(1, host.clientHeight); return Math.max(size.x, size.y, size.z) * 2.5 * Math.max(1, 1.1 / a); }
   document.getElementById('views').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    const k = b.dataset.view, dz = +$('adjz').value, zTop = P.X_Z - P.TOP_T + dz;
-    if (k === 'readxy') return goTo(-Math.PI / 2, 0.02, 75, new T.Vector3(P.X_DIR * P.CX, P.CY + 4, zTop));
-    if (k === 'readz') return goTo(-Math.PI / 2, Math.PI / 2, 48, new T.Vector3(P.X_DIR * 1, 0, zTop));
+    const k = b.dataset.view, dz = +$('adjz').value;
+    if (k === 'readxy') return goTo(-Math.PI / 2, 0.02, 62, new T.Vector3(P.X_DIR * P.CX, P.CY + 2, P.Z_CS_TOP + dz));
+    if (k === 'readz') return goTo(Math.PI, Math.PI / 2, 40, new T.Vector3(P.X_DIR * -7, -6, P.Z_B + dz));
     const v = view[k]; goTo(v[0], v[1], fitR());
   });
   function pan(dx, dy) {
@@ -341,7 +365,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   Object.entries(nums).forEach(([k, el]) => { el.min = rngs[k].min; el.max = rngs[k].max; });
   function setAdj(from) {
     const dx = +adjx.value, dy = +adjy.value, dz = +adjz.value;
-    carrier.position.set(P.X_DIR * dx, dy, dz); bridge.position.set(0, 0, dz);
+    carrier.position.set(P.X_DIR * dx, dy, dz); crossG.position.set(0, dy, dz); bridge.position.set(0, 0, dz);
     setDims(dx, dy);
     Object.entries(nums).forEach(([k, el]) => { if (el !== from) el.value = (+rngs[k].value).toFixed(1); });
     $('stackpos').textContent = `X ${(P.STACK_DX + dx).toFixed(1)} · Y ${(P.Y_SIGN < 0 ? '−' : '+')}${Math.abs(P.STACK_DY * P.Y_SIGN + dy).toFixed(1)} · Z ${(P.X_Z + dz).toFixed(1)}`;
@@ -366,10 +390,11 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     row('Switch long side × depth × height', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
     row('Switch holes (along long side)', `${P.SW_HOLE_SPACING} mm apart`);
   $('part').innerHTML =
-    row('Arm / bridge / carrier', `${(armP.vol / 1000).toFixed(1)} / ${(brP.vol / 1000).toFixed(1)} / ${(carP.vol / 1000).toFixed(1)} cm³`) +
+    row('Arm / bridge / cross / carrier', `${[armP, brP, csP, carP].map(p => (p.vol / 1000).toFixed(1)).join(' / ')} cm³`) +
+    row('Dovetail clearance', `${P.DT_CL} mm per side`) +
     row('Assembled size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
         row('Triangles', n.toLocaleString('en'));
-  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · arm + bridge + carrier`;
+  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · 4 parts, dovetail slides`;
 
   // ---- sizing and render loop ----
   function resize() {

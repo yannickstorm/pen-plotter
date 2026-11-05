@@ -2,7 +2,7 @@
 
     python check_print.py
 
-Overhang = a downward-facing surface steeper than 45 degrees from vertical that is not on the bed. Regions with a
+Overhang = a downward-facing surface steeper than about 48 degrees from vertical (45 degree slopes are fine) that is not on the bed. Regions with a
 span of at most BRIDGE mm in their narrowest direction are counted as bridges (they print fine without supports).
 """
 import sys
@@ -13,9 +13,10 @@ BRIDGE = 15.0
 # service frame (x, y, z up) -> print frame (z up). Rotations only, so the part is never mirrored.
 Rx = lambda deg: trimesh.transformations.rotation_matrix(np.radians(deg), [1, 0, 0])
 ORIENT = {
-    "arm":     ("lying on the post's side face", Rx(-90)),    # (x, y, z) -> (x, z, -y)
-    "bridge":  ("upside down, pad on the bed",   Rx(180)),
-    "carrier": ("upside down, upper plate on the bed", Rx(180)),
+    "arm":     ("lying on the post's +Y face, rail up", Rx(-90)),    # (x, y, z) -> (x, z, -y)
+    "bridge":  ("upside down, pad top on the bed",      Rx(180)),
+    "cross":   ("upside down, top face on the bed",     Rx(180)),
+    "carrier": ("upside down, upper plate on the bed",  Rx(180)),
 }
 
 def regions(mesh, mask):
@@ -48,7 +49,7 @@ def check(name, path):
     m.apply_transform(T)
     m.apply_translation([0, 0, -m.bounds[0][2]])
     n, c, a = m.face_normals, m.triangles_center, m.area_faces
-    down = (n[:, 2] < -0.7071) & (c[:, 2] > 0.05)
+    down = (n[:, 2] < -0.75) & (c[:, 2] > 0.05)      # steeper than ~48 degrees from vertical: 45 degree dovetail flanks pass
     bed = (n[:, 2] < -0.99) & (c[:, 2] <= 0.05)
     support, bridges = 0.0, 0.0
     worst = []
