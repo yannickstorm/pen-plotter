@@ -25,7 +25,7 @@ HOLE_SPACING = 31.0
 MOTOR_SCREW = 3.4          # clearance for M3
 HEAD_D = 6.0               # M3 cap/pan head
 BASE_T = 4.0
-BASE_W = 12.0
+BASE_W = 16.0               # as wide as the post, so the arm can lie flat on its side when printed
 POST_X, POST_Y = 14.0, 16.0   # post between the motor screws
 # --- where the switches go (nominal; the carrier slides +-ADJ around this) ---
 X_DIR = 1                  # +1: front screw / X lever on the +X side (-1 mirrors the whole part)
@@ -156,7 +156,18 @@ def build_carrier():
     wall_y0 = sy + SW_W / 2 + WIRE_GAP
     wall = Pos((x_lo + x_hi) / 2, (wall_y0 + wall_y1) / 2, ((Y_Z - Y_SHELF_T) + (X_Z - TOP_T / 2)) / 2) * \
         Box(x_hi - x_lo, wall_y1 - wall_y0, (X_Z - TOP_T / 2) - (Y_Z - Y_SHELF_T))
-    car = upper + clamp + link + low + wall
+    # Printability: when printed upside down the lower shelf must not hang from one wall. Two side walls (with a
+    # small tab of upper plate on the +X side to anchor the right one, well below the X lever) let it bridge.
+    side_y0, side_y1 = sy - SW_W / 2, wall_y1
+    side_z0, side_z1 = Y_Z - Y_SHELF_T, X_Z - TOP_T / 2
+    sides = None
+    for k in (-1, 1):
+        w = Pos(sx + k * (SW_L / 2 + 2.0), (side_y0 + side_y1) / 2, (side_z0 + side_z1) / 2) * \
+            Box(PAD - 1.0, side_y1 - side_y0, side_z1 - side_z0)
+        sides = w if sides is None else sides + w
+    tab = Pos((sx + SW_W / 2 + sx + SW_L / 2 + PAD) / 2, (side_y0 + side_y1) / 2, X_Z - TOP_T / 2) * \
+        Box((sx + SW_L / 2 + PAD) - (sx + SW_W / 2) + 1.0, side_y1 - side_y0, TOP_T)
+    car = upper + clamp + link + low + wall + sides + tab
     # slots along X that cross the bridge's slots
     car -= slot(cx - SO, cy + SO, X_Z - TOP_T / 2, slot_len, True, TOP_T + 2)
     car -= slot(cx + SO, cy - SO, X_Z - TOP_T / 2, slot_len, True, TOP_T + 2)
