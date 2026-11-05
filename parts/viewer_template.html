@@ -93,7 +93,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
         <li>Fit the upper (X) switch on top.</li>
       </ol>
     </section>
-    <p class="note">Print with the base down. The arm is long and thin, so use four or more walls. Switch size and pilot holes are assumed, not measured.</p>
+    <p class="note">Print with the base down. The arm is long and thin, so use four or more walls. The click side is the switch's long side, facing the axis direction. Switch size and pilot holes are assumed, not measured.</p>
   </aside>
 </div>
 
@@ -199,8 +199,8 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     const a = new T.ArrowHelper(dir, front, 15, 0xff8a4c, 4.5, 3.2); ghost.add(a);
     const t = label(name, '#ffb48a', 3.6); t.position.copy(at); ghost.add(t);
   }
-  sw(P.SW_L, P.SW_W, P.X_Z, 'X switch → +X', new T.Vector3(1, 0, 0), new T.Vector3(sx, sy, P.X_Z + P.SW_H + 4));
-  sw(P.SW_W, P.SW_L, yZ, 'Y switch → −Y', new T.Vector3(0, -1, 0), new T.Vector3(sx - 17, sy, yZ + P.SW_H / 2));
+  sw(P.SW_W, P.SW_L, P.X_Z, 'X switch → +X', new T.Vector3(1, 0, 0), new T.Vector3(sx, sy, P.X_Z + P.SW_H + 4));
+  sw(P.SW_L, P.SW_W, yZ, 'Y switch → −Y', new T.Vector3(0, -1, 0), new T.Vector3(sx - 17, sy, yZ + P.SW_H / 2));
   const screwMat = new T.MeshBasicMaterial({ color: 0x9aa6af, transparent: true, opacity: 0.6 });
   [-1, 1].forEach(k => {
     const body = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, 12, 20), screwMat); body.rotation.x = Math.PI / 2; body.position.set(k * fx, 0, 4 - 3); ghost.add(body);
@@ -295,8 +295,8 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     row('Upper (X) shelf top', `Z ${P.X_Z} mm`) +
     row('Lower (Y) shelf top', `Z ${yZ} mm`) +
     row('Screw spacing', `${P.HOLE_SPACING} mm`) +
-    row('Switch body', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
-    row('Switch holes', `${P.SW_HOLE_SPACING} mm apart`);
+    row('Switch long side × depth × height', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
+    row('Switch holes (along long side)', `${P.SW_HOLE_SPACING} mm apart`);
   $('part').innerHTML =
     row('Size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
     row('Volume', `${(vol / 1000).toFixed(1)} cm³`) +

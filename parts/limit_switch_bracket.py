@@ -3,10 +3,10 @@
 Frame: the two NEMA mounting holes lie on the X axis, centred on the origin; Z is up.
 The "front" screw is the one on the side the X lever points to: (X_DIR * HOLE_SPACING/2, 0).
 The switch stack sits STACK_DX along X and STACK_DY along Y from that screw.
-  * X switch: lever points +X, top shelf (shelf top at X_Z)
-  * Y switch: same spot but Y_DROP lower, lever points -Y (-90 deg)
-Both are mounted flat (screws vertical). Fit the lower (Y) switch first: its screws
-are reached through two access holes in the upper shelf.
+  * X switch: its LONG side (the clicking side) faces +X, upper shelf (shelf top at X_Z)
+  * Y switch: same spot but Y_DROP lower, its long side faces -Y (-90 deg)
+Both lie flat (screws vertical, holes along the long side), so the two bodies cross each other.
+Fit the lower (Y) switch first: its screws are reached through access holes in the upper shelf.
 
 Run:  python limit_switch_bracket.py   ->  limit_switch_bracket.step / .stl
 """
@@ -31,7 +31,7 @@ TOP_T = 3.0                # thickness of the upper structure (beam + X shelf)
 Y_SHELF_T = 4.0
 BEAM_W = 12.0
 WEB_T = 2.5
-# --- micro switch (D2F-type): body ~12.8 x 5.8 x 6.5, 2 holes 6.5 apart (CHECK with calipers) ---
+# --- micro switch: long side 12.8 (clicks on this side), depth 5.8 (away from the clicking side), height 6.5; 2 holes 6.5 apart along the long side (CHECK with calipers) ---
 SW_L, SW_W, SW_H = 12.8, 5.8, 6.5
 SW_HOLE_SPACING = 6.5
 SW_HOLE = 1.4              # pilot for M1.6 self-tapping screw
@@ -63,17 +63,21 @@ beam_pts = [(-h * nx, -h * ny), (L * ux - h * nx, L * uy - h * ny), (L * ux + h 
 top_z0 = X_Z - TOP_T
 beam = extrude(Plane.XY.offset(top_z0) * Polygon(*beam_pts, align=None), amount=TOP_T)
 
-# X shelf: front edge flush with the switch front (x = sx + SW_L/2), margin behind and to the sides
-x_lo, x_hi = sx - SW_L / 2 - PAD, sx + SW_L / 2
-y_lo, y_hi = sy - SW_W / 2 - PAD, sy + SW_L / 2 + PAD     # extends back (+Y) to hold the lower shelf's wall
+# X switch footprint: depth SW_W along X (long side faces +X), SW_L along Y.
+# Upper shelf: front edge flush with the switch's +X face, margin behind and to the sides.
+x_lo, x_hi = sx - SW_L / 2 - PAD, sx + SW_W / 2
+y_lo, y_hi = sy - SW_L / 2 - PAD, sy + SW_L / 2 + PAD
 xshelf = rounded(Pos((x_lo + x_hi) / 2, (y_lo + y_hi) / 2, X_Z - TOP_T / 2) * Box(x_hi - x_lo, y_hi - y_lo, TOP_T))
 
-# lower (Y) shelf: front edge flush with the switch front (y = sy - SW_L/2), wall behind it up to the X shelf
-yx_lo, yx_hi = sx - SW_W / 2 - PAD, sx + SW_W / 2 + PAD
-yy_lo, yy_hi = sy - SW_L / 2, sy + SW_L / 2 + PAD
+# Y switch footprint: SW_L along X, depth SW_W along Y (long side faces -Y).
+# Lower shelf: front edge flush with the switch's -Y face; the wall behind it carries it up to the upper shelf.
+yx_lo, yx_hi = sx - SW_L / 2 - PAD, sx + SW_L / 2 + PAD
+yy_lo, yy_hi = sy - SW_W / 2, sy + SW_W / 2 + PAD
 yshelf = rounded(Pos((yx_lo + yx_hi) / 2, (yy_lo + yy_hi) / 2, Y_Z - Y_SHELF_T / 2) * Box(yx_hi - yx_lo, yy_hi - yy_lo, Y_SHELF_T))
-wall_y0 = sy + SW_L / 2
-wall = Pos((yx_lo + yx_hi) / 2, (wall_y0 + yy_hi) / 2, ((Y_Z - Y_SHELF_T) + X_Z) / 2) * Box(yx_hi - yx_lo, yy_hi - wall_y0, X_Z - (Y_Z - Y_SHELF_T))
+wall_y0 = sy + SW_W / 2
+# the wall stays behind the X switch's front face so the X lever has free space in front
+w_lo, w_hi = x_lo, x_hi
+wall = Pos((w_lo + w_hi) / 2, (wall_y0 + yy_hi) / 2, ((Y_Z - Y_SHELF_T) + X_Z - TOP_T / 2) / 2) * Box(w_hi - w_lo, yy_hi - wall_y0, (X_Z - TOP_T / 2) - (Y_Z - Y_SHELF_T))
 
 part = base + post + beam + xshelf + yshelf + wall
 
@@ -87,14 +91,14 @@ part += web
 # motor screw holes
 for k in (-1, 1):
     part -= Pos(k * HOLE_SPACING / 2, 0, BASE_T / 2) * Cylinder(MOTOR_SCREW / 2, BASE_T + 2)
-# X switch pilot holes (spaced along X)
+# X switch pilot holes (spaced along Y, its long side)
 for k in (-1, 1):
-    part -= Pos(sx - SW_L / 2 + SW_L / 2 + k * SW_HOLE_SPACING / 2, sy, X_Z - TOP_T / 2) * Cylinder(SW_HOLE / 2, TOP_T + 2)
-# Y switch pilot holes (spaced along Y), and access holes above them in the X shelf
+    part -= Pos(sx, sy + k * SW_HOLE_SPACING / 2, X_Z - TOP_T / 2) * Cylinder(SW_HOLE / 2, TOP_T + 2)
+# Y switch pilot holes (spaced along X), and access holes above them in the X shelf
 for k in (-1, 1):
-    yy = sy + k * SW_HOLE_SPACING / 2
-    part -= Pos(sx, yy, Y_Z - Y_SHELF_T / 2) * Cylinder(SW_HOLE / 2, Y_SHELF_T + 2)
-    part -= Pos(sx, yy, X_Z - TOP_T / 2) * Cylinder(SCREW_HEAD / 2, TOP_T + 2)
+    xx = sx + k * SW_HOLE_SPACING / 2
+    part -= Pos(xx, sy, Y_Z - Y_SHELF_T / 2) * Cylinder(SW_HOLE / 2, Y_SHELF_T + 2)
+    part -= Pos(xx, sy, X_Z - TOP_T / 2) * Cylinder(SCREW_HEAD / 2, TOP_T + 2)
 
 if X_DIR < 0:
     part = mirror(part, Plane.YZ)
