@@ -5,15 +5,15 @@
 /* Layout: full-height viewer; canvas fills the left, parameters in a side panel (below the canvas on phones). */
 :root {
   --bg: #e8ebee; --panel: #f6f7f8; --fg: #14181c; --muted: #58646e; --line: #cfd5da;
-  --accent: #c2410c; --part: #6f8fa3; --part2: #5f9a86; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
+  --accent: #c2410c; --part: #6f8fa3; --part2: #5f9a86; --part3: #8b7bb5; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af;
   --font-body: 'Archivo', system-ui, sans-serif; --font-data: 'JetBrains Mono', ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
-  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
+  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
-  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
+  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; }
 .app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 304px; }
@@ -76,13 +76,15 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <label class="row"><input type="checkbox" id="t-grid" checked> Grid and axes</label>
     </section>
     <section class="cut" id="adjust">
-      <h2>Slide the switch stack</h2>
+      <h2>Move the switch stack</h2>
       <label for="adjx"><span>Along X</span><span id="adjx-val"></span></label>
       <input type="range" id="adjx" step="0.5" value="0">
       <label for="adjy"><span>Along Y</span><span id="adjy-val"></span></label>
       <input type="range" id="adjy" step="0.5" value="0">
-      <dl><dt>Stack from front screw</dt><dd id="stackpos"></dd></dl>
-      <p class="note">Tell me these two numbers once the switches trigger where you want and I set them in the design.</p>
+      <label for="adjz"><span>Height (Z)</span><span id="adjz-val"></span></label>
+      <input type="range" id="adjz" step="0.5" value="0">
+      <dl><dt>Stack</dt><dd id="stackpos"></dd></dl>
+      <p class="note">X and Y are measured from the front screw, Z is the X shelf top above the motor face. Tell me these three numbers once the switches trigger where you want and I set them in the design.</p>
       <button type="button" id="adj-reset" class="btn">Reset to nominal</button>
     </section>
     <section class="cut">
@@ -104,10 +106,11 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
         <li>Screw the arm to the motor with two M3 screws.</li>
         <li>On the carrier, fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf.</li>
         <li>Fit the upper (X) switch on top.</li>
-        <li>Lay the carrier on the arm's clamp pad. Put an M3 screw through each pair of crossing slots, with a nut under the pad. Slide, test the switches, tighten.</li>
+        <li>Bolt the bridge to the post: four M3 x 30 screws through the plate and the post slots, nuts on the far face. Slide it to the height you want and tighten.</li>
+        <li>Lay the carrier on the bridge's pad. An M3 screw through each pair of crossing slots, nut under the pad. Slide, test the switches, tighten.</li>
       </ol>
     </section>
-    <p class="note">Print the arm with its base down and the carrier upside down, upper plate on the bed. The arm is long and thin, so use four or more walls. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
+    <p class="note">Print the arm base-down, the bridge upside down (pad on the bed) and the carrier upside down (upper plate on the bed). Use four or more walls. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
   </aside>
 </div>
 
@@ -163,13 +166,13 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
     return { n, vol, geo, mat, edgeMat, mesh: new T.Mesh(geo, mat), edges: new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat) };
   }
-  const armP = addPart(STL_ARM_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, carP];
-  const carrier = new T.Group();            // everything that slides with the carrier
-  carrier.add(carP.mesh, carP.edges);
-  scene.add(armP.mesh, armP.edges, carrier);
-  const bb = armP.geo.boundingBox.clone().union(carP.geo.boundingBox);
+  const armP = addPart(STL_ARM_B64), brP = addPart(STL_BRIDGE_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, brP, carP];
+  const bridge = new T.Group(), carrier = new T.Group();   // bridge slides in Z; carrier slides in X, Y and Z
+  bridge.add(brP.mesh, brP.edges); carrier.add(carP.mesh, carP.edges);
+  scene.add(armP.mesh, armP.edges, bridge, carrier);
+  const bb = armP.geo.boundingBox.clone().union(brP.geo.boundingBox).union(carP.geo.boundingBox);
   const size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
-  const vol = armP.vol + carP.vol, n = armP.n + carP.n;
+  const vol = armP.vol + brP.vol + carP.vol, n = armP.n + brP.n + carP.n;
 
   // ---- helpers: text pills, grid, axes ----
   function label(text, color, h) {
@@ -238,7 +241,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
 
   // ---- theme ----
   function theme() {
-    armP.mat.color.set(css('--part')); carP.mat.color.set(css('--part2'));
+    armP.mat.color.set(css('--part')); brP.mat.color.set(css('--part3')); carP.mat.color.set(css('--part2'));
     parts.forEach(p => p.edgeMat.color.set(css('--edge')));
     gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
   }
@@ -311,37 +314,38 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   }
   cut.oninput = setCut; setCut();
 
-  // slide the carrier: +X moves the stack away from the motor along the X lever direction
-  const adjx = $('adjx'), adjy = $('adjy');
+  // move the stack: +X goes away from the motor along the X lever direction; Z raises the bridge and everything on it
+  const adjx = $('adjx'), adjy = $('adjy'), adjz = $('adjz');
   [adjx, adjy].forEach(r => { r.min = -P.ADJ; r.max = P.ADJ; });
+  adjz.min = -P.ADJ_Z; adjz.max = P.ADJ_Z;
   const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1) + ' mm';
   function setAdj() {
-    const dx = +adjx.value, dy = +adjy.value;
-    carrier.position.set(P.X_DIR * dx, dy, 0);
+    const dx = +adjx.value, dy = +adjy.value, dz = +adjz.value;
+    carrier.position.set(P.X_DIR * dx, dy, dz); bridge.position.set(0, 0, dz);
     setDims(dx, dy);
-    $('adjx-val').textContent = sgn(dx); $('adjy-val').textContent = sgn(dy);
-    $('stackpos').textContent = `X ${(P.STACK_DX + dx).toFixed(1)} · Y ${(P.Y_SIGN < 0 ? '−' : '+')}${Math.abs(P.STACK_DY * P.Y_SIGN + dy).toFixed(1)}`;
+    $('adjx-val').textContent = sgn(dx); $('adjy-val').textContent = sgn(dy); $('adjz-val').textContent = sgn(dz);
+    $('stackpos').textContent = `X ${(P.STACK_DX + dx).toFixed(1)} · Y ${(P.Y_SIGN < 0 ? '−' : '+')}${Math.abs(P.STACK_DY * P.Y_SIGN + dy).toFixed(1)} · Z ${(P.X_Z + dz).toFixed(1)}`;
     dirty = true;
   }
-  adjx.oninput = adjy.oninput = setAdj;
-  $('adj-reset').onclick = () => { adjx.value = 0; adjy.value = 0; setAdj(); };
+  adjx.oninput = adjy.oninput = adjz.oninput = setAdj;
+  $('adj-reset').onclick = () => { adjx.value = 0; adjy.value = 0; adjz.value = 0; setAdj(); };
   setAdj();
 
   // ---- readouts ----
   const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
   $('layout').innerHTML =
     row('Nominal stack from front screw', `${P.STACK_DX} / ${P.Y_SIGN < 0 ? '−' : '+'}${P.STACK_DY} mm`) +
-    row('Sliding range', `±${P.ADJ} mm in X and Y`) +
+    row('Sliding range', `±${P.ADJ} X, Y · ±${P.ADJ_Z} Z mm`) +
     row('Upper (X) shelf top', `Z ${P.X_Z} mm`) +
     row('Lower (Y) shelf top', `Z ${yZ} mm`) +
     row('Screw spacing', `${P.HOLE_SPACING} mm`) +
     row('Switch long side × depth × height', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
     row('Switch holes (along long side)', `${P.SW_HOLE_SPACING} mm apart`);
   $('part').innerHTML =
-    row('Arm / carrier volume', `${(armP.vol / 1000).toFixed(1)} / ${(carP.vol / 1000).toFixed(1)} cm³`) +
+    row('Arm / bridge / carrier', `${(armP.vol / 1000).toFixed(1)} / ${(brP.vol / 1000).toFixed(1)} / ${(carP.vol / 1000).toFixed(1)} cm³`) +
     row('Assembled size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
         row('Triangles', n.toLocaleString('en'));
-  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · arm + sliding carrier`;
+  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · arm + bridge + carrier`;
 
   // ---- sizing and render loop ----
   function resize() {
