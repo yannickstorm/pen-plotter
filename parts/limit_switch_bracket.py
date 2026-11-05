@@ -9,7 +9,7 @@
 Every slide is a 45 degree dovetail with DT_CL clearance per side (a loose-ish sliding fit) and is locked by an M3
 set screw into an M3 heat-set insert (3 in total):
   Z  boss on the front of the bridge plate, screw pushes on the tip of the post rail
-  Y  boss under the bridge pad, screw pushes up on the tip of the cross-slide rail
+  Y  boss under the bridge pad, screw (M3 x 12) pushes up on the tip of the cross-slide rail
   X  boss on the side of the cross-slide, screw pushes on the flank of the carrier rail
 
 Frame: the two NEMA mounting holes lie on the X axis, centred on the origin; Z is up. The "front" screw is the one
@@ -78,12 +78,15 @@ Y_Z = X_Z - Y_DROP
 Z_CS_TOP = X_Z - TOP_T                     # cross-slide top = carrier plate underside
 CS_T = DT_H + DT_CL + 1.7                  # cross-slide thickness (channel + web)
 Z_B = Z_CS_TOP - CS_T                      # bridge pad top = cross-slide underside
-PAD_T = DT_H + DT_CL + 1.7
+ROOF_HW = 3.0                              # flat part left at the top of the pad channel's peaked roof (6 mm bridge)
+PEAK = (DT_H + DT_CL) + (DT_B0 + DT_H + 2 * DT_CL - ROOF_HW)      # depth of that roof below the pad's top face
+PAD_T = PEAK + 1.7                         # the bridge pad has a peaked channel (prints without bridging)
 PH = 18.0                                  # bridge plate height (engagement on the post rail)
 PT = DT_H + DT_CL + INS_DEPTH + 1.7        # bridge plate thickness: channel + insert + web
 POST_H = Z_B + ADJ_Z + 2                   # +2 so the +8 tick is not on the very edge
 assert Y_Z + SW_H + 0.3 < Z_CS_TOP, "lower switch would touch the upper shelf"
 assert Z_B - PH - ADJ_Z >= 0, "bridge plate would go below the motor face at its lowest position"
+assert Z_B - PAD_T - INS_DEPTH - ADJ_Z >= 0.4, "bridge pad boss would reach the motor face at its lowest position"
 assert POST_X / 2 + 0.5 < HOLE_SPACING / 2 - HEAD_D / 2 + 3, "post collides with screw heads"
 
 # dovetail profiles in (u across, v out of the surface). Male rail: base half width DT_B0, 45 deg flanks.
@@ -91,6 +94,9 @@ _c0 = DT_B0 + DT_CL
 _d = DT_H + DT_CL
 MALE = [(-DT_B0, -0.5), (DT_B0, -0.5), (DT_B0, 0), (DT_B0 + DT_H, DT_H), (-DT_B0 - DT_H, DT_H), (-DT_B0, 0)]
 FEMALE = [(-_c0, 0.5), (_c0, 0.5), (_c0, 0), (_c0 + _d, -_d), (-_c0 - _d, -_d), (-_c0, 0)]
+# Same channel with a 45 degree peaked roof, for a channel that prints facing down: no bridging over its full width.
+_c1 = _c0 + _d
+FEMALE_PEAKED = [(-_c0, 0.5), (_c0, 0.5), (_c0, 0), (_c1, -_d), (ROOF_HW, -PEAK), (-ROOF_HW, -PEAK), (-_c1, -_d), (-_c0, 0)]
 
 def dt(profile, origin, u, w, length):
     """Dovetail prism. u = across, w = along, v = w x u = out of the surface it sits on."""
@@ -179,7 +185,7 @@ def build_bridge():
     br -= cyl_y(0, -POST_Y / 2 - PT - 1, -POST_Y / 2 - PT + INS_DEPTH, zc, INS_D)
     br -= cyl_y(0, -POST_Y / 2 - PT, -POST_Y / 2 - DT_H, zc, SET_D)
     # Y: channel along Y on the pad's top, set screw from below onto the tip of the cross-slide rail
-    br -= dt(FEMALE, (cx, (PAD_Y0 + PAD_Y1) / 2, Z_B), (-1, 0, 0), (0, 1, 0), PAD_Y1 - PAD_Y0 + 2)
+    br -= dt(FEMALE_PEAKED, (cx, (PAD_Y0 + PAD_Y1) / 2, Z_B), (-1, 0, 0), (0, 1, 0), PAD_Y1 - PAD_Y0 + 2)
     z_lo = Z_B - PAD_T - INS_DEPTH
     br -= cyl_z(cx, cy, z_lo - 1, z_lo + INS_DEPTH, INS_D)
     br -= cyl_z(cx, cy, z_lo, Z_B - DT_H + 0.5, SET_D)
