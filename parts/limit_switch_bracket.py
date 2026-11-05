@@ -22,16 +22,20 @@ SWITCH_Z = 35.0            # top of shelf above the motor face
 POST = 14.0                # square post
 SHELF_T = 4.0
 X_DIR = 1                  # +1 -> X lever points +X
-# --- micro switch (SS-5 / KW12 style): body 20 x 10.2 x 6.4, 2 holes 9.5 apart ---
-SW_L, SW_W = 20.0, 10.2
-SW_HOLE_SPACING = 9.5
-SW_HOLE = 1.9              # pilot for M2 self-tapping screw (2.2 if bolted with nuts)
-SW_OFFSET = 15.0           # switch centre distance from post axis
+# --- micro switch (D2F-type): body ~12.8 x 5.8, 2 holes 6.5 apart (CHECK with calipers) ---
+SW_L, SW_W = 12.8, 5.8
+SW_HOLE_SPACING = 6.5
+SW_HOLE = 1.4              # pilot for M1.6 self-tapping screw (use ~1.7 to bolt through with M1.6)
+SW_OFFSET_X = 23.0         # X switch centre from post axis: far enough that its holes miss the screwdriver access hole
+SW_OFFSET_Y = 15.0         # Y switch centre from post axis
 SHELF_PAD = 3.0            # shelf margin around the switch
 FILLET = 1.5
-ACCESS_D = 7.0             # driver access hole in the shelf above each motor screw
+ACCESS_D = 6.0             # driver access hole in the shelf above each motor screw
 
-reach = SW_OFFSET + SW_L / 2 + SHELF_PAD
+reach_x = SW_OFFSET_X + SW_L / 2 + SHELF_PAD
+reach = SW_OFFSET_Y + SW_L / 2 + SHELF_PAD   # Y arm
+# switch pilot holes must not break into the driver access hole above the +X motor screw
+assert SW_OFFSET_X - SW_HOLE_SPACING / 2 - SW_HOLE / 2 > HOLE_SPACING / 2 + ACCESS_D / 2 + 0.5, "switch holes hit access hole"
 shelf_w = SW_W + 2 * SHELF_PAD
 
 # base plate along X, with the two motor holes
@@ -46,7 +50,7 @@ post = Pos(0, 0, SWITCH_Z / 2) * Box(POST, POST, SWITCH_Z)
 
 # shelf arms: +X for the X switch, -Y for the Y switch (top face at SWITCH_Z)
 zc = SWITCH_Z - SHELF_T / 2
-arm_x = rounded(Pos(X_DIR * (reach / 2), 0, zc) * Box(reach, shelf_w, SHELF_T))
+arm_x = rounded(Pos(X_DIR * (reach_x / 2), 0, zc) * Box(reach_x, shelf_w, SHELF_T))
 arm_y = rounded(Pos(0, -reach / 2, zc) * Box(shelf_w, reach, SHELF_T))
 part = base + post + arm_x + arm_y
 
@@ -67,8 +71,8 @@ for sx in (-1, 1):
 # switch pilot holes (centred on each switch, spaced along its long axis)
 hole = lambda: Cylinder(SW_HOLE / 2, SHELF_T + 2)
 for s in (-1, 1):
-    part -= Pos(X_DIR * SW_OFFSET + s * SW_HOLE_SPACING / 2, 0, zc) * hole()
-    part -= Pos(0, -SW_OFFSET + s * SW_HOLE_SPACING / 2, zc) * hole()
+    part -= Pos(X_DIR * SW_OFFSET_X + s * SW_HOLE_SPACING / 2, 0, zc) * hole()
+    part -= Pos(0, -SW_OFFSET_Y + s * SW_HOLE_SPACING / 2, zc) * hole()
 
 bb = part.bounding_box()
 print(f"volume {part.volume:.0f} mm3, bbox {bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f} mm, valid={part.is_valid}")
