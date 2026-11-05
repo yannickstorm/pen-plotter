@@ -6,7 +6,7 @@ import base64, json, re, pathlib
 
 here = pathlib.Path(__file__).parent
 src = (here / "limit_switch_bracket.py").read_text()
-names = ["HOLE_SPACING", "STACK_DX", "STACK_DY", "Y_SIGN", "X_Z", "Y_DROP", "X_DIR", "SW_HOLE_SPACING", "ADJ", "ADJ_Z"]
+names = ["HOLE_SPACING", "STACK_DX", "STACK_DY", "Y_SIGN", "X_Z", "Y_DROP", "X_DIR", "SW_HOLE_SPACING", "ADJ", "ADJ_Z", "CLAMP_DIST", "TOP_T"]
 params = {n: float(re.search(rf"^{n}\s*=\s*(-?[\d.]+)", src, re.M).group(1)) for n in names}
 m = re.search(r"^SW_L, SW_W, SW_H\s*=\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)", src, re.M)
 params.update(SW_L=float(m.group(1)), SW_W=float(m.group(2)), SW_H=float(m.group(3)))
@@ -14,6 +14,11 @@ def stl_b64(name):
     stl = (here / name).read_bytes()
     assert len(stl) > 84 and len(stl) == 84 + 50 * int.from_bytes(stl[80:84], "little"), "STL must be binary"
     return base64.b64encode(stl).decode()
+import math
+sx = params["HOLE_SPACING"] / 2 + params["STACK_DX"]; sy = params["Y_SIGN"] * params["STACK_DY"]
+L = math.hypot(sx, sy)
+params["CX"] = round(sx - params["CLAMP_DIST"] * sx / L, 3)     # clamp centre, unmirrored
+params["CY"] = round(sy - params["CLAMP_DIST"] * sy / L, 3)
 data = (f"const PARAMS = {json.dumps(params)};\n"
         f"const STL_ARM_B64 = \"{stl_b64('limit_switch_arm.stl')}\";\n"
         f"const STL_BRIDGE_B64 = \"{stl_b64('limit_switch_bridge.stl')}\";\n"

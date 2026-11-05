@@ -14,6 +14,12 @@ top at X_Z. It slides +-ADJ in X and Y and +-ADJ_Z in Z.
   * X switch: its LONG side (the clicking side) faces +X;  Y switch: its long side faces -Y.
 Fit the lower (Y) switch first: its screws are reached through access holes in the upper shelf.
 
+Measuring the final position (engraved scales, 1 mm per tick, 0 = nominal, + = towards +X / +Y / up):
+  Z  on both side faces of the post: the top edge of the bridge plate sits next to a tick.
+  Y  on the bridge's pad: the carrier's +Y edge sits next to a tick.
+  X  on the bridge's pad: through the small window in the carrier's +Y edge, the line that is centred in the window.
+Final stack position = nominal + readings (the viewer adds them up for you).
+
 Run:  python limit_switch_bracket.py
       -> limit_switch_{arm,bridge,carrier}.step/.stl and limit_switch_assembly.stl (preview only)
 """
@@ -59,6 +65,10 @@ WIRE_GAP = 6.0             # free space behind the lower switch for its solder p
 PIN_Z, PIN_LEN = SW_H / 2, 3.5
 PAD = 3.0
 FILLET = 1.0
+# --- measuring scales ---
+TICK_D = 0.5               # depth of engraved ticks and numbers
+LABELS = X_DIR > 0         # numbers are engraved unmirrored, so they are skipped when the whole part is mirrored
+LABEL_SIZE = 3.0
 
 Y_Z = X_Z - Y_DROP
 ARM_TOP = X_Z - TOP_T      # the carrier plate lies on the arm
@@ -67,7 +77,7 @@ assert POST_X / 2 + PLATE_T + 0.5 < HOLE_SPACING / 2 - HEAD_D / 2 + 3, "post col
 PLATE_H = SPZ + SLOT_W + 2 * EDGE
 PLATE_BOT = ARM_TOP - PLATE_H
 assert PLATE_BOT - ADJ_Z >= BASE_T + 0.3, "bridge plate would hit the base at its lowest position"
-POST_H = ARM_TOP + ADJ_Z
+POST_H = ARM_TOP + ADJ_Z + 2          # +2 so the +8 tick is not on the very edge
 
 def rounded(solid, r=FILLET):
     return fillet(solid.edges().filter_by(Axis.Z), r)
@@ -89,6 +99,26 @@ def slot(cx, cy, z, length, along_x, depth):
     if not along_x:
         f = Rot(0, 0, 90) * f
     return Pos(cx, cy, z) * extrude(f, amount=depth, both=True)
+
+def tick_w(t):
+    return 1.0 if t == 0 else (0.8 if t % 4 == 0 else 0.5)
+
+def tick_len(t):
+    return 3.0 if t == 0 else (2.2 if t % 4 == 0 else 1.2)
+
+def tick_text(t):
+    return "0" if t == 0 else f"{t:+d}"
+
+def engrave(txt, origin, x_dir, z_dir):
+    """Text cut TICK_D into the surface that passes through `origin` with outward normal `z_dir`."""
+    if not LABELS:
+        return None
+    pl = Plane(origin=origin, x_dir=x_dir, z_dir=z_dir)
+    out = None
+    for f in Text(txt, LABEL_SIZE, align=(Align.CENTER, Align.CENTER)).faces():
+        piece = extrude(pl * f, amount=TICK_D, both=True)
+        out = piece if out is None else out + piece
+    return out
 
 def zslot(y, zc, length, depth):
     """Vertical slot (overall `length`) cut through the post along X."""
@@ -120,6 +150,16 @@ def build_arm():
     zs0, zs1 = z_lo0 - ADJ_Z - SLOT_W / 2, z_hi0 + ADJ_Z + SLOT_W / 2
     for y in (-ZS_Y, ZS_Y):
         arm -= zslot(y, (zs0 + zs1) / 2, zs1 - zs0, POST_X + 2)
+    # Z scale on both side faces of the post, read against the top edge of the bridge plate (z = ARM_TOP + offset)
+    x_end = POST_X / 2 - 0.3
+    for face in (-1, 1):
+        yf = face * POST_Y / 2
+        for t in range(-int(ADJ_Z), int(ADJ_Z) + 1):
+            arm -= Pos(x_end - tick_len(t) / 2, yf, ARM_TOP + t) * Box(tick_len(t), 2 * TICK_D, tick_w(t))
+            if t % 4 == 0:
+                e = engrave(tick_text(t), (x_end - 3.0 - 0.8 - 1.6, yf, ARM_TOP + t), (-face, 0, 0), (0, face, 0))
+                if e is not None:
+                    arm -= e
     return arm
 
 # ------------------------------------------------------------------ BRIDGE (slides in Z on the post)
@@ -128,9 +168,11 @@ def build_bridge():
     ph = ZS_Y + SLOT_W / 2 + EDGE
     plate = Pos(POST_X / 2 + PLATE_T / 2, 0, PLATE_BOT + PLATE_H / 2) * Box(PLATE_T, 2 * ph, PLATE_H)
     beam = strip((POST_X / 2 + PLATE_T / 2, -(ph - EDGE)), (cx, cy), BEAM_W / 2, z0, ARM_TOP)
-    pad_hx = SO + SLOT_W / 2 + EDGE
-    pad_hy = SO + ADJ + SLOT_W / 2 + EDGE
-    pad = slab(cx - pad_hx, cx + pad_hx, cy - pad_hy, cy + pad_hy, z0, ARM_TOP)
+    clamp_hh = SO + SLOT_W / 2 + EDGE              # half-height of the carrier's clamp plate
+    pad_hx = clamp_hh + 5.0                        # +5 on the -X side: room for the Y scale and its numbers
+    pad_hy = SO + ADJ + SLOT_W / 2 + EDGE          # the pad is only enlarged on the sides facing away from the switches
+    pad_ey = pad_hy + 4.5                          # +4.5 on the +Y side: room for the X scale numbers
+    pad = slab(cx - pad_hx, cx + clamp_hh, cy - pad_hy, cy + pad_ey, z0, ARM_TOP)
     br = plate + beam + pad
     for y in (-ZS_Y, ZS_Y):
         for z in (z_lo0, z_hi0):
@@ -138,6 +180,21 @@ def build_bridge():
     # two slots along Y: screw 1 at (cx-SO, cy+SO), screw 2 at (cx+SO, cy-SO), each free to move +-ADJ
     br -= slot(cx - SO, cy + SO, ARM_TOP - TOP_T / 2, slot_len, False, TOP_T + 2)
     br -= slot(cx + SO, cy - SO, ARM_TOP - TOP_T / 2, slot_len, False, TOP_T + 2)
+    n = int(ADJ)
+    # Y scale: ticks along the pad's -X edge. The carrier's +Y edge (y = cy + clamp_hh + offset) is the pointer.
+    for t in range(-n, n + 1):
+        br -= Pos(cx - (pad_hx - 0.3 - tick_len(t) / 2), cy + clamp_hh + t, ARM_TOP) * Box(tick_len(t), tick_w(t), 2 * TICK_D)
+        if t % 4 == 0:
+            e = engrave(tick_text(t), (cx - (pad_hx - 0.3 - 3.0 - 0.8 - 1.6), cy + clamp_hh + t, ARM_TOP), (1, 0, 0), (0, 0, 1))
+            if e is not None:
+                br -= e
+    # X scale: lines parallel to Y, read through the window in the carrier's +Y edge
+    for t in range(-n, n + 1):
+        br -= Pos(cx + t, cy + 9.35, ARM_TOP) * Box(tick_w(t), 17.3, 2 * TICK_D)
+        if t % 4 == 0:
+            e = engrave(tick_text(t), (cx + t, cy + 21.5, ARM_TOP), (1, 0, 0), (0, 0, 1))
+            if e is not None:
+                br -= e
     return br
 
 # ------------------------------------------------------------------ CARRIER
@@ -168,6 +225,8 @@ def build_carrier():
     tab = Pos((sx + SW_W / 2 + sx + SW_L / 2 + PAD) / 2, (side_y0 + side_y1) / 2, X_Z - TOP_T / 2) * \
         Box((sx + SW_L / 2 + PAD) - (sx + SW_W / 2) + 1.0, side_y1 - side_y0, TOP_T)
     car = upper + clamp + link + low + wall + sides + tab
+    # reading window for the X scale: a 1.4 mm notch in the +Y edge of the clamp plate, centred on the carrier
+    car -= Pos(cx, cy + SO + SLOT_W / 2 + EDGE - 1.0, X_Z - TOP_T / 2) * Box(1.4, 2.0, TOP_T + 2)
     # slots along X that cross the bridge's slots
     car -= slot(cx - SO, cy + SO, X_Z - TOP_T / 2, slot_len, True, TOP_T + 2)
     car -= slot(cx + SO, cy - SO, X_Z - TOP_T / 2, slot_len, True, TOP_T + 2)
@@ -221,5 +280,5 @@ for name, p in (("arm", arm), ("bridge", bridge), ("carrier", carrier)):
 print(f"stack nominal ({sx:.1f}, {sy:.1f}), X shelf top {X_Z:g}; slides +-{ADJ:g} mm in X/Y, +-{ADJ_Z:g} mm in Z; "
       f"clamp centre ({cx:.1f}, {cy:.1f}); worst overlap {max(worst.values()):.4f} mm3")
 for name, p in (("arm", arm), ("bridge", bridge), ("carrier", carrier)):
-    export_step(p, f"limit_switch_{name}.step"); export_stl(p, f"limit_switch_{name}.stl")
-export_stl(Compound([arm, bridge, carrier]), "limit_switch_assembly.stl")
+    export_step(p, f"limit_switch_{name}.step"); export_stl(p, f"limit_switch_{name}.stl", tolerance=0.02, angular_tolerance=0.3)
+export_stl(Compound([arm, bridge, carrier]), "limit_switch_assembly.stl", tolerance=0.02, angular_tolerance=0.3)

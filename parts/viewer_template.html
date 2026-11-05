@@ -38,12 +38,15 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body); o
 .cut { display: grid; gap: 7px; }
 .cut label { font: 400 12px var(--font-data); display: flex; justify-content: space-between; }
 .cut input { width: 100%; accent-color: var(--accent); }
+.num { width: 78px; font: 500 12px var(--font-data); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; text-align: right; }
+.num:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn { font: 500 12px var(--font-data); color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 7px 11px; border-radius: 4px; cursor: pointer; justify-self: start; }
 .btn:hover { border-color: var(--muted); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; }
 dt { color: var(--muted); }
 dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+ol.read li b { font-family: var(--font-data); }
 ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 1.4; }
 .note { font-size: 12px; color: var(--muted); line-height: 1.45; }
 .fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 14px; }
@@ -63,6 +66,8 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <button type="button" data-view="top">Top</button>
       <button type="button" data-view="front">Front</button>
       <button type="button" data-view="right">Right</button>
+      <button type="button" data-view="readxy">Read X · Y</button>
+      <button type="button" data-view="readz">Read Z</button>
     </div>
     <div class="hint">drag: orbit · right-drag / shift: pan · wheel: zoom</div>
   </div>
@@ -77,15 +82,25 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     </section>
     <section class="cut" id="adjust">
       <h2>Move the switch stack</h2>
-      <label for="adjx"><span>Along X</span><span id="adjx-val"></span></label>
+      <label for="adjx"><span>Along X</span><input type="number" id="adjx-n" class="num" step="0.5" aria-label="Along X offset in mm"></label>
       <input type="range" id="adjx" step="0.5" value="0">
-      <label for="adjy"><span>Along Y</span><span id="adjy-val"></span></label>
+      <label for="adjy"><span>Along Y</span><input type="number" id="adjy-n" class="num" step="0.5" aria-label="Along Y offset in mm"></label>
       <input type="range" id="adjy" step="0.5" value="0">
-      <label for="adjz"><span>Height (Z)</span><span id="adjz-val"></span></label>
+      <label for="adjz"><span>Height (Z)</span><input type="number" id="adjz-n" class="num" step="0.5" aria-label="Height (Z) offset in mm"></label>
       <input type="range" id="adjz" step="0.5" value="0">
       <dl><dt>Stack</dt><dd id="stackpos"></dd></dl>
       <p class="note">X and Y are measured from the front screw, Z is the X shelf top above the motor face. Tell me these three numbers once the switches trigger where you want and I set them in the design.</p>
       <button type="button" id="adj-reset" class="btn">Reset to nominal</button>
+    </section>
+    <section>
+      <h2>Reading the printed parts</h2>
+      <p class="note">Each scale is engraved, 1 mm per tick, 0 is the nominal position, plus is towards +X, +Y and up. Type your three readings into the boxes above to get the final position.</p>
+      <ol class="read">
+        <li><b>Z</b>: on the side of the post, the top edge of the bridge plate sits next to a numbered tick.</li>
+        <li><b>Y</b>: on the bridge's pad, the +Y edge of the carrier sits next to a numbered tick.</li>
+        <li><b>X</b>: look through the small window in the carrier's +Y edge. The line in the middle of the window is the reading. The longest line is 0.</li>
+      </ol>
+      <p class="note">The buttons Read X · Y and Read Z zoom to these scales.</p>
     </section>
     <section class="cut">
       <h2>Cut</h2>
@@ -258,19 +273,23 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     camera.lookAt(st.t); camera.updateMatrixWorld(); dirty = true;
   }
   let tween = 0;
-  function goTo(th, ph, r) {
+  function goTo(th, ph, r, tgt) {
     cancelAnimationFrame(tween);
     const a = { th: st.th, ph: st.ph, r: st.r, t: st.t.clone() }, t0 = performance.now(), dur = 380;
     const dth = ((th - a.th + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     (function step(now) {
       const u = clamp((now - t0) / dur, 0, 1), e = u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-      st.th = a.th + dth * e; st.ph = a.ph + (ph - a.ph) * e; st.r = a.r + (r - a.r) * e; st.t.lerpVectors(a.t, center, e);
+      st.th = a.th + dth * e; st.ph = a.ph + (ph - a.ph) * e; st.r = a.r + (r - a.r) * e; st.t.lerpVectors(a.t, tgt || center, e);
       applyCam(); if (u < 1) tween = requestAnimationFrame(step);
     })(t0);
   }
   function fitR() { const a = host.clientWidth / Math.max(1, host.clientHeight); return Math.max(size.x, size.y, size.z) * 2.5 * Math.max(1, 1.1 / a); }
   document.getElementById('views').addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return; const v = view[b.dataset.view]; goTo(v[0], v[1], fitR());
+    const b = e.target.closest('button'); if (!b) return;
+    const k = b.dataset.view, dz = +$('adjz').value, zTop = P.X_Z - P.TOP_T + dz;
+    if (k === 'readxy') return goTo(-Math.PI / 2, 0.02, 75, new T.Vector3(P.X_DIR * P.CX, P.CY + 4, zTop));
+    if (k === 'readz') return goTo(-Math.PI / 2, Math.PI / 2, 48, new T.Vector3(P.X_DIR * 1, 0, zTop));
+    const v = view[k]; goTo(v[0], v[1], fitR());
   });
   function pan(dx, dy) {
     const k = 2 * st.r * Math.tan(camera.fov * Math.PI / 360) / host.clientHeight;
@@ -290,14 +309,14 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     } else if (ptrs.size === 2) {
       const o = [...ptrs.entries()].find(([id]) => id !== e.pointerId)[1];
       const before = Math.hypot(p.x - o.x, p.y - o.y), after = Math.hypot(e.clientX - o.x, e.clientY - o.y);
-      if (after > 0) st.r = clamp(st.r * before / after, 40, 900);
+      if (after > 0) st.r = clamp(st.r * before / after, 12, 900);
       pan(dx / 2, dy / 2);
     }
     p.x = e.clientX; p.y = e.clientY; applyCam();
   });
   const up = e => ptrs.delete(e.pointerId);
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
-  el.addEventListener('wheel', e => { e.preventDefault(); st.r = clamp(st.r * Math.exp(e.deltaY * 0.0012), 40, 900); applyCam(); }, { passive: false });
+  el.addEventListener('wheel', e => { e.preventDefault(); st.r = clamp(st.r * Math.exp(e.deltaY * 0.0012), 12, 900); applyCam(); }, { passive: false });
 
   // ---- controls ----
   const $ = id => document.getElementById(id);
@@ -318,16 +337,21 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   const adjx = $('adjx'), adjy = $('adjy'), adjz = $('adjz');
   [adjx, adjy].forEach(r => { r.min = -P.ADJ; r.max = P.ADJ; });
   adjz.min = -P.ADJ_Z; adjz.max = P.ADJ_Z;
-  const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1) + ' mm';
-  function setAdj() {
+  const nums = { x: $('adjx-n'), y: $('adjy-n'), z: $('adjz-n') }, rngs = { x: adjx, y: adjy, z: adjz };
+  Object.entries(nums).forEach(([k, el]) => { el.min = rngs[k].min; el.max = rngs[k].max; });
+  function setAdj(from) {
     const dx = +adjx.value, dy = +adjy.value, dz = +adjz.value;
     carrier.position.set(P.X_DIR * dx, dy, dz); bridge.position.set(0, 0, dz);
     setDims(dx, dy);
-    $('adjx-val').textContent = sgn(dx); $('adjy-val').textContent = sgn(dy); $('adjz-val').textContent = sgn(dz);
+    Object.entries(nums).forEach(([k, el]) => { if (el !== from) el.value = (+rngs[k].value).toFixed(1); });
     $('stackpos').textContent = `X ${(P.STACK_DX + dx).toFixed(1)} · Y ${(P.Y_SIGN < 0 ? '−' : '+')}${Math.abs(P.STACK_DY * P.Y_SIGN + dy).toFixed(1)} · Z ${(P.X_Z + dz).toFixed(1)}`;
     dirty = true;
   }
-  adjx.oninput = adjy.oninput = adjz.oninput = setAdj;
+  Object.entries(nums).forEach(([k, el]) => el.addEventListener('input', () => {
+    const val = parseFloat(el.value); if (Number.isNaN(val)) return;
+    rngs[k].value = clamp(val, +rngs[k].min, +rngs[k].max); setAdj(el);
+  }));
+  [adjx, adjy, adjz].forEach(r => { r.oninput = () => setAdj(); });
   $('adj-reset').onclick = () => { adjx.value = 0; adjy.value = 0; adjz.value = 0; setAdj(); };
   setAdj();
 
