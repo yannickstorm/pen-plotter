@@ -8,9 +8,9 @@ Switches lie flat (screws vertical), their LONG side (the clicking side) towards
 
   BASE   thin plate that screws to the motor (2 x M3). Its tongue beyond the motor carries the X switch, which simply
          sits on top. The plate is exactly as thick as the switch's resting height, so the lever is at X_HIT.
-  YARM   flat plate that lies on the tongue and carries the Y switch. Behind the switch (+Y side) it steps down to
-         TAIL_T = 3 mm to clear the structure there. Two M3 x 5 screws from below (through the tongue) go into M3 nuts
-         held in hex pockets that open at the top of that thin tail. This is the part to reprint when the Y position
+  YARM   flat plate that lies on the tongue and carries the Y switch. On the +Y side it stops BEHIND_GAP = 2 mm behind
+         the switch's back face (structure to clear). Two M3 x 6 screws from below (through the tongue) go into M3
+         nuts held in hex pockets on the arm's underside, beside the switch. This is the part to reprint when the Y position
          needs correcting: change Y_HIT and run the script again.
 
 Both print flat, no supports. Switch screws: M2 x 8 (X) and M2 x 10 (Y), self-tapping through the switch into the printed part.
@@ -37,10 +37,10 @@ PIN_LEN = 3.5
 PAD = 3.0
 FILLET = 1.0
 # --- joint between the two parts: two M3 screws from below into nuts in the arm's underside ---
-JOINT_X = (26.0, 34.0)     # x of the two screws
-JOINT_Y = -14.0
-NUT_R, NUT_H = 3.6, 2.4    # hex pocket for an M3 nut (5.5 across flats, 2.4 thick): circumradius, depth
-TAIL_T = 3.0               # thickness of the arm behind the Y switch
+JOINT_X = (27.0, 37.0)     # x of the two screws, beside the Y switch
+# (JOINT_Y, the y of the two screws, is the middle of the Y arm's depth: set below)
+NUT_R, NUT_H = 3.6, 2.6    # hex pocket for an M3 nut (5.5 across flats, 2.4 thick): circumradius, depth
+BEHIND_GAP = 2.0           # the Y arm ends this far behind the Y switch's back face (+Y side)
 
 # --- switch positions from the lever contact points ---
 X_SW = (X_HIT[0] - LEVER_OUT - SW_W / 2, X_HIT[1], X_HIT[2])       # centre of the X switch body
@@ -48,8 +48,7 @@ Y_SW = (Y_HIT[0], Y_HIT[1] + LEVER_OUT + SW_W / 2, Y_HIT[2])       # centre of t
 X_SEAT, Y_SEAT = X_SW[2] - SW_H / 2, Y_SW[2] - SW_H / 2            # where each switch's underside rests
 BASE_T = X_SEAT                                                    # the base is as thick as the X switch's resting height
 assert BASE_T >= 1.5, "base plate would be thinner than 1.5 mm"
-assert TAIL_T >= NUT_H + 0.5, "tail too thin for the nut pockets"
-assert Y_SEAT - BASE_T >= TAIL_T, "tail would be thicker than the arm"
+assert Y_SEAT - BASE_T >= NUT_H + 1.2, "Y arm too thin for the nut pockets"
 
 def box(x0, x1, y0, y1, z0, z1):
     return Pos((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2) * Box(x1 - x0, y1 - y0, z1 - z0)
@@ -63,7 +62,7 @@ def cyl_z(x, y, z0, z1, d):
 # ------------------------------------------------------------------ BASE (screws to the motor, carries the X switch)
 x_front = X_SW[0] + SW_W / 2                      # front face of the X switch: the tongue ends here, the lever is free
 fx = HOLE_SPACING / 2 + MOTOR_SCREW / 2 + 4
-tongue_y0 = JOINT_Y - 4.0                         # tongue reaches over to the screws of the Y arm
+tongue_y0 = Y_SW[1] - SW_W / 2 + 0.5               # tongue reaches under the whole Y arm
 tongue_y1 = SW_L / 2 + PAD
 tongue_x0 = fx - 1.0
 
@@ -82,16 +81,14 @@ def build_base():
 arm_x0 = JOINT_X[0] - 4.0
 arm_x1 = Y_SW[0] + SW_L / 2 + PAD
 arm_y0 = Y_SW[1] - SW_W / 2                       # front edge flush with the switch's clicking face
-arm_y1 = JOINT_Y + 4.0
-
-step_y = Y_SW[1] + SW_W / 2 + 0.2                 # the arm steps down just behind the switch's back face
+arm_y1 = Y_SW[1] + SW_W / 2 + BEHIND_GAP          # back edge: 2 mm behind the switch
+JOINT_Y = (arm_y0 + arm_y1) / 2                   # the two screws sit in the middle of the arm's depth, beside the switch
 
 def build_yarm():
-    arm = slab(arm_x0, arm_x1, arm_y0, step_y, BASE_T, Y_SEAT)                  # full thickness under the switch
-    arm += slab(arm_x0, arm_x1, step_y - 1.0, arm_y1, BASE_T, BASE_T + TAIL_T)   # thin tail behind it
-    for x in JOINT_X:                              # hex pocket for an M3 nut, open at the top of the tail
-        arm -= Pos(x, JOINT_Y, BASE_T + TAIL_T - NUT_H) * extrude(RegularPolygon(radius=NUT_R, side_count=6), amount=NUT_H + 1)
-        arm -= cyl_z(x, JOINT_Y, BASE_T - 1, BASE_T + TAIL_T - NUT_H + 0.1, MOTOR_SCREW)
+    arm = slab(arm_x0, arm_x1, arm_y0, arm_y1, BASE_T, Y_SEAT)
+    for x in JOINT_X:                              # hex pocket for an M3 nut on the underside, and the screw's passage
+        arm -= Pos(x, JOINT_Y, BASE_T - 1) * extrude(RegularPolygon(radius=NUT_R, side_count=6), amount=NUT_H + 1)
+        arm -= cyl_z(x, JOINT_Y, BASE_T - 1, Y_SEAT + 1, MOTOR_SCREW)
     for k in (-1, 1):
         arm -= cyl_z(Y_SW[0] + k * SW_HOLE_SPACING / 2, Y_SW[1], BASE_T - 1, Y_SEAT + 1, SW_HOLE)
     return arm
@@ -115,7 +112,7 @@ checks = {
 }
 bad = {k: round(v, 3) for k, v in checks.items() if v > 1e-3}
 assert not bad, f"parts collide: {bad}"
-assert arm_y1 <= tongue_y1 and arm_y1 >= tongue_y0 + 1.0, "Y arm does not land on the base's tongue"
+assert tongue_y0 <= arm_y0 + 0.6 and arm_y1 <= tongue_y1, "Y arm does not land on the base's tongue"
 
 parts = (("base", base), ("yarm", yarm))
 for name, p in parts:
@@ -123,7 +120,7 @@ for name, p in parts:
     print(f"{name}: {bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f} mm (z {bb.min.Z:.1f} to {bb.max.Z:.1f}), "
           f"{p.volume:.0f} mm3, valid={p.is_valid}, solids={len(p.solids())}")
 print(f"X switch centre {tuple(round(v, 1) for v in X_SW)} (seat {X_SEAT:.1f}), Y switch centre {tuple(round(v, 1) for v in Y_SW)} "
-      f"(seat {Y_SEAT:.1f}, base {BASE_T:.1f} mm, arm {Y_SEAT - BASE_T:.1f} mm thick, {TAIL_T:.1f} mm behind the switch); no collisions")
+      f"(seat {Y_SEAT:.1f}, base {BASE_T:.1f} mm, arm {Y_SEAT - BASE_T:.1f} mm thick, ends {BEHIND_GAP:g} mm behind the switch); no collisions")
 for name, p in parts:
     export_step(p, f"limit_switch_{name}.step")
     export_stl(p, f"limit_switch_{name}.stl", tolerance=0.02, angular_tolerance=0.3)
@@ -132,4 +129,4 @@ export_stl(Compound([p for _, p in parts]), "limit_switch_assembly.stl", toleran
 import json
 json.dump({"X_HIT": X_HIT, "Y_HIT": Y_HIT, "X_SW": X_SW, "Y_SW": Y_SW, "LEVER_OUT": LEVER_OUT, "SW_L": SW_L, "SW_W": SW_W,
            "SW_H": SW_H, "SW_HOLE_SPACING": SW_HOLE_SPACING, "HOLE_SPACING": HOLE_SPACING, "BASE_T": BASE_T,
-           "X_SEAT": X_SEAT, "Y_SEAT": Y_SEAT}, open("viewer_params.json", "w"))
+           "X_SEAT": X_SEAT, "Y_SEAT": Y_SEAT, "BEHIND_GAP": BEHIND_GAP}, open("viewer_params.json", "w"))

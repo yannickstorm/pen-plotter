@@ -100,8 +100,8 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <h2>Fitting order</h2>
       <ol>
         <li>Screw the base to the motor with two M3 screws.</li>
-        <li>Press an M3 nut into each hex pocket on top of the Y arm's thin tail.</li>
-        <li>Lay the Y arm on the tongue and screw it on from below with two M3 × 5 screws through the tongue.</li>
+        <li>Press an M3 nut into each hex pocket on the underside of the Y arm.</li>
+        <li>Lay the Y arm on the tongue and screw it on from below with two M3 × 6 screws through the tongue.</li>
         <li>Fit each switch with two self-tapping M2 screws, M2 × 8 on the base and M2 × 10 on the arm.</li>
       </ol>
     </section>
@@ -316,7 +316,8 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   $('part').innerHTML =
     row('Base / Y arm', `${[baseP, armP].map(p => (p.vol / 1000).toFixed(1)).join(' / ')} cm³`) +
     row('Base thickness', `${f1(P.BASE_T)} mm`) +
-    row('Y arm thickness', `${f1(P.Y_SEAT - P.BASE_T)} mm, 3.0 mm behind the switch`) +
+    row('Y arm thickness', `${f1(P.Y_SEAT - P.BASE_T)} mm`) +
+    row('Y arm ends behind switch', `${P.BEHIND_GAP} mm`) +
     row('Assembled size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
     row('Triangles', n.toLocaleString('en'));
   $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · 2 flat parts`;
