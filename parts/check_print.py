@@ -13,8 +13,7 @@ BRIDGE = 15.0
 # service frame (x, y, z up) -> print frame (z up). Rotations only, so the part is never mirrored.
 Rx = lambda deg: trimesh.transformations.rotation_matrix(np.radians(deg), [1, 0, 0])
 ORIENT = {
-    "base":  ("flat, underside on the bed", np.eye(4)),
-    "yarm":  ("flat, underside on the bed", np.eye(4)),
+    "part": ("flat, underside on the bed", np.eye(4)),
 }
 
 def regions(mesh, mask):

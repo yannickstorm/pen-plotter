@@ -81,7 +81,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     <section>
       <h2>Lever hit points</h2>
       <dl><dt>X switch</dt><dd id="hitx"></dd><dt>Y switch</dt><dd id="hity"></dd></dl>
-      <p class="note">Measured from the midpoint of the two motor screws, Z above the motor face. To correct the Y position, tell me the new hit point and I regenerate the arm (the flat part on top) to reprint.</p>
+      <p class="note">Measured from the midpoint of the two motor screws, Z above the motor face. To correct a position, tell me the new hit point and I regenerate the part to reprint.</p>
     </section>
     <section class="cut">
       <h2>Cut</h2>
@@ -99,13 +99,11 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     <section>
       <h2>Fitting order</h2>
       <ol>
-        <li>Screw the base to the motor with two M3 screws.</li>
-        <li>Press an M3 nut into each hex pocket on the underside of the Y arm.</li>
-        <li>Lay the Y arm on the tongue and screw it on from below with two M3 × 6 screws through the tongue.</li>
-        <li>Fit each switch with two self-tapping M2 screws, M2 × 8 on the base and M2 × 10 on the arm.</li>
+        <li>Screw the part to the motor with two M3 screws.</li>
+        <li>Fit each switch with two self-tapping M2 screws: M2 × 8 for the X switch on the plate, M2 × 10 for the Y switch on the raised platform.</li>
       </ol>
     </section>
-    <p class="note">Both parts print flat, underside on the bed, with no supports. Two walls and 10 to 15 % infill are enough. The click side is the switch's long side, facing the lever direction. The lever is assumed to stick out 2.5 mm in front of the switch, and the switch thickness (5.8 mm) is assumed. The base is 2.1 mm thick, exactly the X switch's resting height, so the X switch sits on the plate.</p>
+    <p class="note">The part prints flat, underside on the bed, with no supports. Two walls and 10 to 15 % infill are enough. The click side is the switch's long side, facing the lever direction. The lever is assumed to stick out 2.5 mm in front of the switch, and the switch thickness (5.8 mm) is assumed. The plate is 2.1 mm thick, exactly the X switch's resting height; the Y switch sits on a platform 7.1 mm high that stops 2 mm behind it.</p>
   </aside>
 </div>
 
@@ -161,9 +159,9 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
     return { n, vol, geo, mat, edgeMat, mesh: new T.Mesh(geo, mat), edges: new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat) };
   }
-  const baseP = addPart(STL_BASE_B64), armP = addPart(STL_YARM_B64), parts = [baseP, armP];
-  scene.add(baseP.mesh, baseP.edges, armP.mesh, armP.edges);
-  const bb = parts.reduce((b, p) => b.union(p.geo.boundingBox), armP.geo.boundingBox.clone());
+  const baseP = addPart(STL_PART_B64), parts = [baseP];
+  scene.add(baseP.mesh, baseP.edges);
+  const bb = parts.reduce((b, p) => b.union(p.geo.boundingBox), baseP.geo.boundingBox.clone());
   const size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
   const vol = parts.reduce((s, p) => s + p.vol, 0), n = parts.reduce((s, p) => s + p.n, 0);
 
@@ -225,7 +223,7 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
 
   // ---- theme ----
   function theme() {
-    baseP.mat.color.set(css('--part')); armP.mat.color.set(css('--part2'));
+    baseP.mat.color.set(css('--part'));
     parts.forEach(p => p.edgeMat.color.set(css('--edge')));
     gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
   }
@@ -314,13 +312,12 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     row('Switch long side × depth × height', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
     row('Switch holes (along long side)', `${P.SW_HOLE_SPACING} mm apart`);
   $('part').innerHTML =
-    row('Base / Y arm', `${[baseP, armP].map(p => (p.vol / 1000).toFixed(1)).join(' / ')} cm³`) +
-    row('Base thickness', `${f1(P.BASE_T)} mm`) +
-    row('Y arm thickness', `${f1(P.Y_SEAT - P.BASE_T)} mm`) +
-    row('Y arm ends behind switch', `${P.BEHIND_GAP} mm`) +
+    row('Volume', `${(baseP.vol / 1000).toFixed(1)} cm³`) +
+    row('Plate thickness', `${f1(P.BASE_T)} mm`) +
+    row('Y platform ends behind switch', `${P.BEHIND_GAP} mm`) +
     row('Assembled size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
     row('Triangles', n.toLocaleString('en'));
-  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · 2 flat parts`;
+  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · 1 flat part`;
 
   // ---- sizing and render loop ----
   function resize() {

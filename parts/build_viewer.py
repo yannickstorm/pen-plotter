@@ -1,4 +1,4 @@
-"""Build viewer.html: the base and Y arm STLs and key numbers embedded in viewer_template.html.
+"""Build viewer.html: the part's STL and key numbers embedded in viewer_template.html.
 
     python limit_switch_bracket.py   (writes the STLs and viewer_params.json)
     python build_viewer.py
@@ -14,8 +14,7 @@ def stl_b64(name):
     return base64.b64encode(stl).decode()
 
 data = (f"const PARAMS = {json.dumps(params)};\n"
-        f"const STL_BASE_B64 = \"{stl_b64('limit_switch_base.stl')}\";\n"
-        f"const STL_YARM_B64 = \"{stl_b64('limit_switch_yarm.stl')}\";")
+        f"const STL_PART_B64 = \"{stl_b64('limit_switch_part.stl')}\";")
 out = (here / "viewer_template.html").read_text().replace("/*DATA*/", data)
 (here / "viewer.html").write_text(out)
 print(f"viewer.html: {len(out) / 1e6:.2f} MB")
