@@ -25,3 +25,4 @@ __pycache__/
 *.pyc
 parts/*.png
 parts/*.stl
+parts/publish/

@@ -293,6 +293,14 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     return new Blob([...chunks, ...central, end.buffer], { type: 'application/zip' });
   }
 
+  // ---- reading model files: published as base64 text (artifacts serve only web file types), decoded to the exact bytes ----
+  async function loadBytes(path) {
+    const r = await fetch(path); if (!r.ok) throw new Error(path + ' ' + r.status);
+    const bin = atob((await r.text()).trim()), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+
   // ---- parts list ----
   let models = [], current = null, downloads = null;
   const cache = new Map();
@@ -321,7 +329,7 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     if (!renderer) return;
     $('state').textContent = 'Loading part…'; $('state').hidden = false;
     try {
-      if (!cache.has(m.stl)) { const r = await fetch(m.stl); if (!r.ok) throw new Error(m.stl + ' ' + r.status); cache.set(m.stl, parseSTL(await r.arrayBuffer())); }
+      if (!cache.has(m.stl)) cache.set(m.stl, parseSTL((await loadBytes(m.stl)).buffer));
       if (current !== m) return;
       $('state').hidden = true; showGeometry(cache.get(m.stl).clone());
     } catch (e) { $('state').textContent = 'Could not load ' + m.name + '. ' + e.message; }
@@ -333,7 +341,7 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     btn.disabled = true; msg.textContent = 'Preparing…';
     try {
       const files = [];
-      for (const f of m.files) { const r = await fetch(f.path); if (!r.ok) throw new Error(f.name + ' ' + r.status); files.push({ name: f.name, data: new Uint8Array(await r.arrayBuffer()) }); }
+      for (const f of m.files) files.push({ name: f.name, data: await loadBytes(f.path) });
       await downloads.save({ filename: m.id + '.zip', data: makeZip(files) });
       msg.textContent = 'Saved ' + m.id + '.zip';
     } catch (e) {
