@@ -15,7 +15,7 @@ To correct a position, change X_HIT / Y_HIT and run the script again, then repri
 Switch screws: self-tapping M2 x 8 (X) and M2 x 10 (Y) through the switch into the printed part.
 Prints flat, underside on the bed, no supports.
 
-Run:  python limit_switch_bracket.py -> limit_switch_part.step/.stl
+Run:  python limit_switch_bracket.py -> models/limit_switch_part.step/.stl (the Parts viewer lists everything in models/)
 """
 import math
 from build123d import *
@@ -112,11 +112,8 @@ print(f"part: {bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f} mm (z {bb.min.
       f"{part.volume:.0f} mm3, valid={part.is_valid}, solids={len(part.solids())}")
 print(f"X switch centre {tuple(round(v, 1) for v in X_SW)} (rests at {X_SEAT:.1f}), "
       f"Y switch centre {tuple(round(v, 1) for v in Y_SW)} (rests at {Y_SEAT:.1f}); platform ends {BEHIND_GAP:g} mm behind it; no collisions")
-export_step(part, "limit_switch_part.step")
-export_stl(part, "limit_switch_part.stl", tolerance=0.02, angular_tolerance=0.3)
-export_stl(part, "limit_switch_assembly.stl", tolerance=0.02, angular_tolerance=0.3)
+import os
+os.makedirs("models", exist_ok=True)
+export_step(part, "models/limit_switch_part.step")
+export_stl(part, "models/limit_switch_part.stl", tolerance=0.02, angular_tolerance=0.3)
 
-import json
-json.dump({"X_HIT": X_HIT, "Y_HIT": Y_HIT, "X_SW": X_SW, "Y_SW": Y_SW, "LEVER_OUT": LEVER_OUT, "SW_L": SW_L, "SW_W": SW_W,
-           "SW_H": SW_H, "SW_HOLE_SPACING": SW_HOLE_SPACING, "HOLE_SPACING": HOLE_SPACING, "BASE_T": BASE_T,
-           "X_SEAT": X_SEAT, "Y_SEAT": Y_SEAT, "BEHIND_GAP": BEHIND_GAP}, open("viewer_params.json", "w"))

@@ -68,5 +68,5 @@ def check(name, path):
     return support
 
 if __name__ == "__main__":
-    tot = sum(check(n, f"limit_switch_{n}.stl") for n in ORIENT)
+    tot = sum(check(n, f"models/limit_switch_{n}.stl") for n in ORIENT)
     print(f"total needing support: {tot:.0f} mm2")

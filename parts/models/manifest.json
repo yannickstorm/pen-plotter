@@ -1,0 +1,56 @@
+{
+ "models": [
+  {
+   "id": "bar-5x2x30",
+   "name": "Bar 5 x 2 x 30",
+   "description": "A plain bar, 5 x 2 x 30 mm (X x Y x Z). Prints best lying flat on its 30 x 5 face.",
+   "stl": "models/bar_5x2x30.stl",
+   "files": [
+    {
+     "name": "bar_5x2x30.step",
+     "path": "models/bar_5x2x30.step",
+     "bytes": 15328
+    },
+    {
+     "name": "bar_5x2x30.stl",
+     "path": "models/bar_5x2x30.stl",
+     "bytes": 684
+    }
+   ],
+   "updated": "2026-11-06",
+   "size": [
+    5.0,
+    2.0,
+    30.0
+   ],
+   "volume_mm3": 300.0,
+   "triangles": 12
+  },
+  {
+   "id": "limit-switch-part",
+   "name": "Limit switch bracket",
+   "description": "One flat part for the pen plotter's X and Y micro limit switches. Plate screws to the motor (2 x M3). The X switch sits on the plate (lever hit at 40 / 0 / 5), the Y switch on a raised platform (lever hit at 35 / -35 / 10), measured from the midpoint of the two motor screws, Z above the motor face. Prints flat, no supports. Switch screws: self-tapping M2 x 8 (X) and M2 x 10 (Y).",
+   "stl": "models/limit_switch_part.stl",
+   "files": [
+    {
+     "name": "limit_switch_part.step",
+     "path": "models/limit_switch_part.step",
+     "bytes": 123098
+    },
+    {
+     "name": "limit_switch_part.stl",
+     "path": "models/limit_switch_part.stl",
+     "bytes": 78984
+    }
+   ],
+   "updated": "2026-11-06",
+   "size": [
+    61.2,
+    42.4,
+    7.1
+   ],
+   "volume_mm3": 3559.5,
+   "triangles": 1578
+  }
+ ]
+}
