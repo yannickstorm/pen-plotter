@@ -69,6 +69,8 @@ tongue_x0 = fx - 1.0
 def build_base():
     base = slab(-fx, fx, -BASE_W / 2, BASE_W / 2, 0, BASE_T, 1.5)
     base += slab(tongue_x0, x_front, tongue_y0, tongue_y1, 0, BASE_T, 1.5)
+    # wider part under the Y arm, clear of the X switch's pocket-free zone, so the joint screws have material around them
+    base += slab(tongue_x0, JOINT_X[1] + 6.0, tongue_y0, X_SW[1] - SW_L / 2 - 3.0, 0, BASE_T, 1.5)
     for k in (-1, 1):
         base -= cyl_z(k * HOLE_SPACING / 2, 0, -1, BASE_T + 1, MOTOR_SCREW)
     for k in (-1, 1):                              # pilot holes for the X switch, which sits on top of the tongue
@@ -78,7 +80,7 @@ def build_base():
     return base
 
 # ------------------------------------------------------------------ Y ARM (flat plate on the base, carries the Y switch)
-arm_x0 = JOINT_X[0] - 4.0
+arm_x0 = JOINT_X[0] - 5.5                        # leaves a 1.9 mm wall around the nut pocket
 arm_x1 = Y_SW[0] + SW_L / 2 + PAD
 arm_y0 = Y_SW[1] - SW_W / 2                       # front edge flush with the switch's clicking face
 arm_y1 = Y_SW[1] + SW_W / 2 + BEHIND_GAP          # back edge: 2 mm behind the switch
@@ -113,6 +115,21 @@ checks = {
 bad = {k: round(v, 3) for k, v in checks.items() if v > 1e-3}
 assert not bad, f"parts collide: {bad}"
 assert tongue_y0 <= arm_y0 + 0.6 and arm_y1 <= tongue_y1, "Y arm does not land on the base's tongue"
+
+def audit(name, part, holes):
+    """Every hole must have material all the way round it (no hole half outside the part)."""
+    for label, x, y, r, z in holes:
+        for i in range(16):
+            a = 2 * math.pi * i / 16
+            p = Vector(x + (r + 0.6) * math.cos(a), y + (r + 0.6) * math.sin(a), z)
+            assert part.is_inside(p), f"{name}: hole '{label}' at ({x:.1f}, {y:.1f}) has no material {r + 0.6:.1f} mm around it"
+
+z_b, z_a = BASE_T / 2, (BASE_T + Y_SEAT) / 2
+audit("base", base, [("motor screw", k * HOLE_SPACING / 2, 0, MOTOR_SCREW / 2, z_b) for k in (-1, 1)]
+      + [("X switch pilot", X_SW[0], k * SW_HOLE_SPACING / 2, SW_HOLE / 2, z_b) for k in (-1, 1)]
+      + [("joint screw", x, JOINT_Y, MOTOR_SCREW / 2, z_b) for x in JOINT_X])
+audit("yarm", yarm, [("nut pocket", x, JOINT_Y, NUT_R * math.cos(math.pi / 6), z_a) for x in JOINT_X]
+      + [("Y switch pilot", Y_SW[0] + k * SW_HOLE_SPACING / 2, Y_SW[1], SW_HOLE / 2, z_a) for k in (-1, 1)])
 
 parts = (("base", base), ("yarm", yarm))
 for name, p in parts:
