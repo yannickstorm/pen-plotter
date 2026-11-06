@@ -3,7 +3,7 @@
 Frame: origin = midpoint of the two NEMA motor screws (they lie on the X axis at x = +-15.5), Z up from the motor face.
 Lever contact points (where the carriage hits the levers):
   X switch lever at X_HIT = (40, 0, 5),    its lever points +X
-  Y switch lever at Y_HIT = (35, -30, 10), its lever points -Y
+  Y switch lever at Y_HIT = (35, -35, 10), its lever points -Y
 Switches lie flat (screws vertical), their LONG side (the clicking side) towards the lever direction.
 
 The part is a thin plate that screws to the motor (2 x M3). Its tongue beyond the motor carries the X switch, which simply
@@ -26,7 +26,7 @@ MOTOR_SCREW = 3.4          # clearance for M3
 BASE_W = 16.0
 # --- where the levers get hit (nominal) ---
 X_HIT = (40.0, 0.0, 5.0)
-Y_HIT = (35.0, -30.0, 10.0)
+Y_HIT = (35.0, -35.0, 10.0)
 LEVER_OUT = 2.5            # the lever sticks out this far in front of the switch's clicking face (assumed)
 # --- micro switch (1 A 125 V AC type): long side 12.8 with the lever on it, 6.2 deep from the clicking side to the
 # back (3 solder pins stick out of the back), 5.8 thick (assumed, measure it); 2 holes dia 2.0, 6.5 apart ---
