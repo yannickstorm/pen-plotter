@@ -8,7 +8,8 @@ Switches lie flat (screws vertical), their LONG side (the clicking side) towards
 
 The part is a thin plate that screws to the motor (2 x M3). Its tongue beyond the motor carries the X switch, which simply
 sits on it (the plate is as thick as the switch's resting height). A raised platform on the tongue carries the Y switch;
-it stops BEHIND_GAP = 2 mm behind the switch's back face on the +Y side (structure to clear).
+it stops BEHIND_GAP = 2 mm behind the switch's back face on the +Y side (structure to clear). No part of it reaches
+beyond the farthest lever contact point in X (X_LIMIT), so the Y switch may hang slightly over the platform's edge.
 To correct a position, change X_HIT / Y_HIT and run the script again, then reprint (about 25 minutes).
 
 Switch screws: self-tapping M2 x 8 (X) and M2 x 10 (Y) through the switch into the printed part.
@@ -59,7 +60,8 @@ def cyl_z(x, y, z0, z1, d):
 x_front = X_SW[0] + SW_W / 2                      # front face of the X switch: the tongue ends here, the lever is free
 fx = HOLE_SPACING / 2 + MOTOR_SCREW / 2 + 4
 tongue_x0 = fx - 1.0
-plat_x0, plat_x1 = Y_SW[0] - SW_L / 2 - PAD, Y_SW[0] + SW_L / 2 + PAD
+X_LIMIT = max(X_HIT[0], Y_HIT[0])                 # nothing may reach beyond the farthest lever contact point in X
+plat_x0, plat_x1 = Y_SW[0] - SW_L / 2 - PAD, min(Y_SW[0] + SW_L / 2 + PAD, X_LIMIT)
 plat_y0 = Y_SW[1] - SW_W / 2                      # front edge flush with the switch's clicking face
 plat_y1 = Y_SW[1] + SW_W / 2 + BEHIND_GAP         # back edge: 2 mm behind the switch
 tongue_y0 = plat_y0 - 0.5                         # the plate reaches under the whole platform
@@ -103,6 +105,7 @@ audit([("motor screw", k * HOLE_SPACING / 2, 0, MOTOR_SCREW / 2, BASE_T / 2) for
       + [("X switch pilot", X_SW[0], k * SW_HOLE_SPACING / 2, SW_HOLE / 2, BASE_T / 2) for k in (-1, 1)]
       + [("Y switch pilot", Y_SW[0] + k * SW_HOLE_SPACING / 2, Y_SW[1], SW_HOLE / 2, Y_SEAT - 1) for k in (-1, 1)])
 assert len(part.solids()) == 1 and part.is_valid
+assert part.bounding_box().max.X <= X_LIMIT + 1e-6, "the part reaches beyond the lever contact points in X"
 
 bb = part.bounding_box()
 print(f"part: {bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f} mm (z {bb.min.Z:.1f} to {bb.max.Z:.1f}), "
