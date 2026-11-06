@@ -13,7 +13,7 @@
   --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --part4: #cfb07a; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037;
-  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
+  --accent: #ff8a4c; --part: #86a9bd; --part2: #78b9a3; --part3: #a898d4; --part4: #cfb07a; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; }
 .app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 304px; }
@@ -67,7 +67,6 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <button type="button" data-view="front">Front</button>
       <button type="button" data-view="right">Right</button>
       <button type="button" data-view="readxy">Read X · Y</button>
-      <button type="button" data-view="readz">Read Z</button>
     </div>
     <div class="hint">drag: orbit · right-drag / shift: pan · wheel: zoom</div>
   </div>
@@ -77,59 +76,32 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <label class="row"><input type="checkbox" id="t-edges" checked> Edges</label>
       <label class="row"><input type="checkbox" id="t-wire"> Wireframe</label>
       <label class="row"><input type="checkbox" id="t-switches" checked><span class="swatch"></span> Switches and screws</label>
-      <label class="row"><input type="checkbox" id="t-dims" checked> Dimensions from front screw</label>
+      <label class="row"><input type="checkbox" id="t-dims" checked> Lever contact points</label>
       <label class="row"><input type="checkbox" id="t-grid" checked> Grid and axes</label>
     </section>
     <section class="cut" id="adjust">
-      <h2>Move the switch stack</h2>
+      <h2>Move the carrier</h2>
       <label for="adjx"><span>Along X</span><input type="number" id="adjx-n" class="num" step="0.5" aria-label="Along X offset in mm"></label>
       <input type="range" id="adjx" step="0.5" value="0">
       <label for="adjy"><span>Along Y</span><input type="number" id="adjy-n" class="num" step="0.5" aria-label="Along Y offset in mm"></label>
       <input type="range" id="adjy" step="0.5" value="0">
-      <label for="adjz"><span>Height (Z)</span><input type="number" id="adjz-n" class="num" step="0.5" aria-label="Height (Z) offset in mm"></label>
-      <input type="range" id="adjz" step="0.5" value="0">
-      <dl><dt>Stack</dt><dd id="stackpos"></dd></dl>
-      <p class="note">X and Y are measured from the front screw, Z is the X shelf top above the motor face. Tell me these three numbers once the switches trigger where you want and I set them in the design.</p>
+      <dl><dt>X lever hit</dt><dd id="hitx"></dd><dt>Y lever hit</dt><dd id="hity"></dd></dl>
+      <p class="note">Positions are measured from the midpoint of the two motor screws, Z above the motor face. Both switches move together. Tell me the two hit points once the switches trigger where you want and I set them in the design.</p>
       <button type="button" id="adj-reset" class="btn">Reset to nominal</button>
     </section>
     <section>
       <h2>Reading the printed parts</h2>
-      <p class="note">Each scale is engraved, 1 mm per tick, 0 is the nominal position, plus is towards +X, +Y and up. Type your three readings into the boxes above to get the final position.</p>
+      <p class="note">Each scale is engraved, 1 mm per tick, 0 is the nominal position, plus is towards +X and +Y. Type your two readings into the boxes above to get the final positions.</p>
       <ol class="read">
-        <li><b>Z</b>: on the side of the post, at its front edge, the top edge of the bridge plate sits next to a numbered tick.</li>
-        <li><b>Y</b>: on the bridge's pad, the +Y end edge of the cross-slide sits next to a numbered tick.</li>
+        <li><b>Y</b>: on the arm's block, the +Y end edge of the cross-slide sits next to a numbered tick.</li>
         <li><b>X</b>: on top of the cross-slide, the −X end edge of the carrier's plate sits next to a tick. The longest tick is 0, the medium ones are ±4 and ±8.</li>
       </ol>
-      <p class="note">The buttons Read X · Y and Read Z zoom to these scales.</p>
+      <p class="note">The button Read X · Y zooms to these scales. There is no Z slide: the heights come from the design.</p>
     </section>
     <section class="cut">
       <h2>Cut</h2>
       <label for="cut"><span>Remove above Z =</span><span id="cut-val"></span></label>
-      <input type="range" id="cut" min="0" max="35" step="0.5" value="35">
-    </section>
-    <section>
-      <h2>Layout</h2>
-      <dl id="layout"></dl>
-    </section>
-    <section>
-      <h2>Parts</h2>
-      <dl id="part"></dl>
-    </section>
-    <section>
-      <h2>Fitting order</h2>
-      <ol>
-        <li>Screw the arm to the motor with two M3 screws first.</li>
-        <li>Press an M3 heat-set insert into each of the three locking holes: on the front of the bridge plate, under the bridge pad and on the side of the cross-slide. Set screws: about M3 × 10 for the Z and X locks, M3 × 12 for the Y lock.</li>
-        <li>On the carrier, fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf. Then fit the upper (X) switch.</li>
-        <li>Slide the bridge down onto the post from the top. Slide the cross-slide into the pad along Y. Slide the carrier into the cross-slide along X.</li>
-        <li>Move each slide to the reading you want and lock it with its M3 set screw. The slides are a loose fit, so they hold only when locked.</li>
-      </ol>
-      <p class="note">The buttons Read X · Y and Read Z zoom to these scales.</p>
-    </section>
-    <section class="cut">
-      <h2>Cut</h2>
-      <label for="cut"><span>Remove above Z =</span><span id="cut-val"></span></label>
-      <input type="range" id="cut" min="0" max="35" step="0.5" value="35">
+      <input type="range" id="cut" min="0" max="18" step="0.5" value="18">
     </section>
     <section>
       <h2>Layout</h2>
@@ -143,13 +115,13 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
       <h2>Fitting order</h2>
       <ol>
         <li>Screw the arm to the motor with two M3 screws.</li>
-        <li>On the carrier, fit the lower (Y) switch first. Its screws go in through the two holes in the upper shelf.</li>
-        <li>Fit the upper (X) switch on top.</li>
-        <li>Bolt the bridge to the post: four M3 x 30 screws through the plate and the post slots, nuts on the far face. Slide it to the height you want and tighten.</li>
-        <li>Lay the carrier on the bridge's pad. An M3 screw through each pair of crossing slots, nut under the pad. Slide, test the switches, tighten.</li>
+        <li>Press an M3 heat-set insert into each of the two locking holes: on the +X face of the arm's block and on the +Y side of the cross-slide. Set screws: about M3 × 10.</li>
+        <li>Fit each switch from the front or the back into its holder, on the shelf under the plate. Its two M2 screws go in through the holes in the plate above it.</li>
+        <li>Slide the cross-slide into the arm's block along Y. Slide the carrier into the cross-slide along X.</li>
+        <li>Move the carrier to the reading you want and lock each slide with its set screw. The slides are a loose fit, so they hold only when locked.</li>
       </ol>
     </section>
-    <p class="note">Prototype settings: no supports needed. Print the arm on its side (on the post's +Y face, rail up), the bridge, the cross-slide and the carrier upside down (their top faces on the bed). Two walls and 10 to 15 % infill are enough. If the slides bind or wobble, change DT_CL (0.3 mm clearance per side) and reprint. The click side is the switch's long side, facing the axis direction. Switch thickness (5.8 mm) is assumed. The Y switch has 6 mm free behind it for its solder pins.</p>
+    <p class="note">Prototype settings: no supports needed. Print the arm flat (base on the bed), the cross-slide and the carrier upside down (top faces on the bed). Two walls and 10 to 15 % infill are enough. If the slides bind or wobble, change DT_CL (0.3 mm clearance per side) and reprint. The click side is the switch's long side, facing the lever direction. The lever is assumed to stick out 2.5 mm in front of the switch, and the switch thickness (5.8 mm) is assumed. The X shelf reaches 0.9 mm below the motor face level.</p>
   </aside>
 </div>
 
@@ -205,10 +177,10 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
     const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
     return { n, vol, geo, mat, edgeMat, mesh: new T.Mesh(geo, mat), edges: new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat) };
   }
-  const armP = addPart(STL_ARM_B64), brP = addPart(STL_BRIDGE_B64), csP = addPart(STL_CROSS_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, brP, csP, carP];
-  const bridge = new T.Group(), crossG = new T.Group(), carrier = new T.Group();   // bridge: Z; cross-slide: Y, Z; carrier: X, Y, Z
-  bridge.add(brP.mesh, brP.edges); crossG.add(csP.mesh, csP.edges); carrier.add(carP.mesh, carP.edges);
-  scene.add(armP.mesh, armP.edges, bridge, crossG, carrier);
+  const armP = addPart(STL_ARM_B64), csP = addPart(STL_CROSS_B64), carP = addPart(STL_CARRIER_B64), parts = [armP, csP, carP];
+  const crossG = new T.Group(), carrier = new T.Group();   // cross-slide: Y; carrier: X and Y
+  crossG.add(csP.mesh, csP.edges); carrier.add(carP.mesh, carP.edges);
+  scene.add(armP.mesh, armP.edges, crossG, carrier);
   const bb = parts.reduce((b, p) => b.union(p.geo.boundingBox), armP.geo.boundingBox.clone());
   const size = bb.getSize(new T.Vector3()), center = bb.getCenter(new T.Vector3());
   const vol = parts.reduce((s, p) => s + p.vol, 0), n = parts.reduce((s, p) => s + p.n, 0);
@@ -241,46 +213,40 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   });
   scene.add(axes);
 
-  // ---- ghost hardware and dimensions (built for X_DIR = +1, mirrored by scale) ----
+  // ---- ghost hardware: the two switches, the motor screws and the lever contact points ----
   const hw = new T.Group(), swGhost = new T.Group(), dims = new T.Group();
-  scene.add(hw, dims); carrier.add(swGhost);
-  const fx = P.HOLE_SPACING / 2, sx0 = fx + P.STACK_DX, sy0 = P.Y_SIGN * P.STACK_DY;
-  const yZ = P.X_Z - P.Y_DROP;
+  scene.add(hw); carrier.add(swGhost, dims);
+  const fx = P.HOLE_SPACING / 2;
   const accentMat = new T.MeshBasicMaterial({ color: 0xff8a4c, transparent: true, opacity: 0.5 });
   const accentLine = new T.LineBasicMaterial({ color: 0xff8a4c });
-  function sw(w, d, zTop, name, dir, at) {
+  function sw(centre, w, d, dir, name) {
     const m = new T.Mesh(new T.BoxGeometry(w, d, P.SW_H), accentMat);
-    m.position.set(sx0, sy0, zTop + P.SW_H / 2); swGhost.add(m);
+    m.position.set(centre[0], centre[1], centre[2]); swGhost.add(m);
     const l = new T.LineSegments(new T.EdgesGeometry(m.geometry), accentLine); l.position.copy(m.position); swGhost.add(l);
-    const front = new T.Vector3(sx0, sy0, zTop + P.SW_H / 2).addScaledVector(dir, (dir.x ? w : d) / 2);
-    swGhost.add(new T.ArrowHelper(dir, front, 15, 0xff8a4c, 4.5, 3.2));
-    const t = label(name, '#ffb48a', 3.6); t.position.copy(at); swGhost.add(t);
+    const front = new T.Vector3(...centre).addScaledVector(dir, (dir.x ? w : d) / 2);
+    swGhost.add(new T.ArrowHelper(dir, front, P.LEVER_OUT + 7, 0xff8a4c, 3.2, 2.4));
   }
-  sw(P.SW_W, P.SW_L, P.X_Z, 'X switch → +X', new T.Vector3(1, 0, 0), new T.Vector3(sx0, sy0, P.X_Z + P.SW_H + 4));
-  sw(P.SW_L, P.SW_W, yZ, 'Y switch → −Y', new T.Vector3(0, -1, 0), new T.Vector3(sx0 - 17, sy0, yZ + P.SW_H / 2));
+  sw(P.X_SW, P.SW_W, P.SW_L, new T.Vector3(1, 0, 0));
+  sw(P.Y_SW, P.SW_L, P.SW_W, new T.Vector3(0, -1, 0));
   const screwMat = new T.MeshBasicMaterial({ color: 0x9aa6af, transparent: true, opacity: 0.6 });
   [-1, 1].forEach(k => {
     const body = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, 12, 20), screwMat); body.rotation.x = Math.PI / 2; body.position.set(k * fx, 0, 1); hw.add(body);
     const head = new T.Mesh(new T.CylinderGeometry(2.8, 2.8, 2, 24), screwMat); head.rotation.x = Math.PI / 2; head.position.set(k * fx, 0, 5); hw.add(head);
   });
-  const dashed = new T.LineDashedMaterial({ color: 0xff8a4c, dashSize: 2.5, gapSize: 1.8, depthTest: false });
-  const path = new T.Line(new T.BufferGeometry(), dashed); path.renderOrder = 9; dims.add(path);
-  const lblFront = label('front screw', '#ffb48a', 3.4); lblFront.position.set(fx, 7, 7); dims.add(lblFront);
-  let lblX = null, lblY = null;
-  function setDims(dx, dy) {
-    const x = sx0 + dx, y = sy0 + dy;
-    path.geometry.setFromPoints([new T.Vector3(fx, 0, 0.3), new T.Vector3(x, 0, 0.3), new T.Vector3(x, y, 0.3)]);
-    path.computeLineDistances();
-    [lblX, lblY].forEach(l => { if (l) { dims.remove(l); l.material.map.dispose(); l.material.dispose(); } });
-    lblX = label((x - fx).toFixed(1) + ' mm', '#ffb48a', 3.6); lblX.position.set((fx + x) / 2, 0, 5);
-    lblY = label(Math.abs(y).toFixed(1) + ' mm', '#ffb48a', 3.6); lblY.position.set(x, y / 2, 5);
-    dims.add(lblX, lblY);
+  const dotMat = new T.MeshBasicMaterial({ color: 0xff3d00, depthTest: false });
+  [P.X_HIT, P.Y_HIT].forEach(h => { const d = new T.Mesh(new T.SphereGeometry(1.1, 16, 12), dotMat); d.position.set(...h); d.renderOrder = 11; dims.add(d); });
+  let lblA = null, lblB = null;
+  function setHits(dx, dy) {
+    [lblA, lblB].forEach(l => { if (l) { dims.remove(l); l.material.map.dispose(); l.material.dispose(); } });
+    const f = n => (Number.isInteger(n) ? n.toFixed(0) : n.toFixed(1)).replace('-', '−');
+    lblA = label(`X hit ${f(P.X_HIT[0] + dx)} · ${f(P.X_HIT[1] + dy)} · ${f(P.X_HIT[2])}`, '#ffb48a', 3.4); lblA.position.set(P.X_HIT[0] + 12, P.X_HIT[1] + 6, P.X_HIT[2] + 6);
+    lblB = label(`Y hit ${f(P.Y_HIT[0] + dx)} · ${f(P.Y_HIT[1] + dy)} · ${f(P.Y_HIT[2])}`, '#ffb48a', 3.4); lblB.position.set(P.Y_HIT[0] + 14, P.Y_HIT[1] - 5, P.Y_HIT[2] + 6);
+    dims.add(lblA, lblB);
   }
-  hw.scale.x = dims.scale.x = swGhost.scale.x = P.X_DIR;
 
   // ---- theme ----
   function theme() {
-    armP.mat.color.set(css('--part')); brP.mat.color.set(css('--part3')); csP.mat.color.set(css('--part4')); carP.mat.color.set(css('--part2'));
+    armP.mat.color.set(css('--part')); csP.mat.color.set(css('--part4')); carP.mat.color.set(css('--part2'));
     parts.forEach(p => p.edgeMat.color.set(css('--edge')));
     gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
   }
@@ -310,9 +276,8 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   function fitR() { const a = host.clientWidth / Math.max(1, host.clientHeight); return Math.max(size.x, size.y, size.z) * 2.5 * Math.max(1, 1.1 / a); }
   document.getElementById('views').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    const k = b.dataset.view, dz = +$('adjz').value;
-    if (k === 'readxy') return goTo(-Math.PI / 2, 0.02, 62, new T.Vector3(P.X_DIR * P.CX, P.CY + 2, P.Z_CS_TOP + dz));
-    if (k === 'readz') return goTo(Math.PI, Math.PI / 2, 40, new T.Vector3(P.X_DIR * -7, -6, P.Z_B + dz));
+    const k = b.dataset.view;
+    if (k === 'readxy') return goTo(-Math.PI / 2, 0.02, 62, new T.Vector3(P.CX, P.CY + 2, P.Z_CS_TOP));
     const v = view[k]; goTo(v[0], v[1], fitR());
   });
   function pan(dx, dy) {
@@ -357,44 +322,44 @@ ol { padding-left: 18px; display: grid; gap: 7px; font-size: 13px; line-height: 
   }
   cut.oninput = setCut; setCut();
 
-  // move the stack: +X goes away from the motor along the X lever direction; Z raises the bridge and everything on it
-  const adjx = $('adjx'), adjy = $('adjy'), adjz = $('adjz');
+  // move the carrier: both switches shift by (dx, dy); the cross-slide follows in Y
+  const adjx = $('adjx'), adjy = $('adjy');
   [adjx, adjy].forEach(r => { r.min = -P.ADJ; r.max = P.ADJ; });
-  adjz.min = -P.ADJ_Z; adjz.max = P.ADJ_Z;
-  const nums = { x: $('adjx-n'), y: $('adjy-n'), z: $('adjz-n') }, rngs = { x: adjx, y: adjy, z: adjz };
+  const nums = { x: $('adjx-n'), y: $('adjy-n') }, rngs = { x: adjx, y: adjy };
   Object.entries(nums).forEach(([k, el]) => { el.min = rngs[k].min; el.max = rngs[k].max; });
+  const f1 = n => n.toFixed(1).replace('-', '−');
   function setAdj(from) {
-    const dx = +adjx.value, dy = +adjy.value, dz = +adjz.value;
-    carrier.position.set(P.X_DIR * dx, dy, dz); crossG.position.set(0, dy, dz); bridge.position.set(0, 0, dz);
-    setDims(dx, dy);
+    const dx = +adjx.value, dy = +adjy.value;
+    carrier.position.set(dx, dy, 0); crossG.position.set(0, dy, 0);
+    setHits(dx, dy);
     Object.entries(nums).forEach(([k, el]) => { if (el !== from) el.value = (+rngs[k].value).toFixed(1); });
-    $('stackpos').textContent = `X ${(P.STACK_DX + dx).toFixed(1)} · Y ${(P.Y_SIGN < 0 ? '−' : '+')}${Math.abs(P.STACK_DY * P.Y_SIGN + dy).toFixed(1)} · Z ${(P.X_Z + dz).toFixed(1)}`;
+    $('hitx').textContent = `${f1(P.X_HIT[0] + dx)} · ${f1(P.X_HIT[1] + dy)} · ${f1(P.X_HIT[2])}`;
+    $('hity').textContent = `${f1(P.Y_HIT[0] + dx)} · ${f1(P.Y_HIT[1] + dy)} · ${f1(P.Y_HIT[2])}`;
     dirty = true;
   }
   Object.entries(nums).forEach(([k, el]) => el.addEventListener('input', () => {
     const val = parseFloat(el.value); if (Number.isNaN(val)) return;
     rngs[k].value = clamp(val, +rngs[k].min, +rngs[k].max); setAdj(el);
   }));
-  [adjx, adjy, adjz].forEach(r => { r.oninput = () => setAdj(); });
-  $('adj-reset').onclick = () => { adjx.value = 0; adjy.value = 0; adjz.value = 0; setAdj(); };
+  [adjx, adjy].forEach(r => { r.oninput = () => setAdj(); });
+  $('adj-reset').onclick = () => { adjx.value = 0; adjy.value = 0; setAdj(); };
   setAdj();
 
   // ---- readouts ----
   const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
   $('layout').innerHTML =
-    row('Nominal stack from front screw', `${P.STACK_DX} / ${P.Y_SIGN < 0 ? '−' : '+'}${P.STACK_DY} mm`) +
-    row('Sliding range', `±${P.ADJ} X, Y · ±${P.ADJ_Z} Z mm`) +
-    row('Upper (X) shelf top', `Z ${P.X_Z} mm`) +
-    row('Lower (Y) shelf top', `Z ${yZ} mm`) +
-    row('Screw spacing', `${P.HOLE_SPACING} mm`) +
+    row('X lever hit, nominal', `${P.X_HIT.map(f1).join(' · ')}`) +
+    row('Y lever hit, nominal', `${P.Y_HIT.map(f1).join(' · ')}`) +
+    row('Lever sticks out', `${P.LEVER_OUT} mm`) +
+    row('Moves', `±${P.ADJ} mm in X and Y`) +
     row('Switch long side × depth × height', `${P.SW_L} × ${P.SW_W} × ${P.SW_H}`) +
     row('Switch holes (along long side)', `${P.SW_HOLE_SPACING} mm apart`);
   $('part').innerHTML =
-    row('Arm / bridge / cross / carrier', `${[armP, brP, csP, carP].map(p => (p.vol / 1000).toFixed(1)).join(' / ')} cm³`) +
+    row('Arm / cross / carrier', `${[armP, csP, carP].map(p => (p.vol / 1000).toFixed(1)).join(' / ')} cm³`) +
     row('Dovetail clearance', `${P.DT_CL} mm per side`) +
     row('Assembled size', `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`) +
-        row('Triangles', n.toLocaleString('en'));
-  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · 4 parts, dovetail slides`;
+    row('Triangles', n.toLocaleString('en'));
+  $('status').textContent = `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · 3 parts, dovetail slides`;
 
   // ---- sizing and render loop ----
   function resize() {
