@@ -15,7 +15,7 @@ ID, OD = 30.0, 51.0
 THICK = 3.0       # maximum thickness: the lip at the recess edge
 RIM_T = 0.6       # thickness left at the outer edge (a true knife edge cannot be printed)
 RECESS_D = 35.0   # recess in the top (sloped) side, concentric with the hole
-RECESS_T = 2.0    # thickness left over the recess (1.8 to 2 mm asked for)
+RECESS_T = 1.8    # thickness left over the recess (1.8 to 2 mm asked for)
 
 ri, rr, ro = ID / 2, RECESS_D / 2, OD / 2
 profile = Polygon((ri, 0), (ro, 0), (ro, RIM_T), (rr, THICK), (rr, RECESS_T), (ri, RECESS_T), align=None)   # (radius, height)
