@@ -63,9 +63,11 @@ The same settings can come from the environment: `PLOTTER_PORT`, `PLOTTER_BAUD`,
 
 ## Machine settings
 
-`machine.json` in `--state` holds the plotter's name, a permanent id and its settings (`bedW`, `bedH`, `up`, `down`, `dwell`, `feed`, `travel`, `travelG0`, `parkX`, `parkY`, `park`, `homeSet`, `homeX`, `homeY`, `mirrorX`, `decimals`, `header`, `footer`), with a revision that counts saves. Add the plotter from Plot Studio (Machine → Add → Plotter Bridge): the wizard reads what GRBL reports, sets up the pen, checks the direction and saves the result here. The id lets a browser recognise the bridge again after its address or name changes. The monitor reads the pen values and drawing area from these settings; change them in Plot Studio.
+`machine.json` in `--state` holds the plotter's name, a permanent id and its settings (`bedW`, `bedH`, `up`, `down`, `dwell`, `feed`, `travel`, `travelG0`, `parkX`, `parkY`, `park`, `homeSet`, `homeX`, `homeY`, `preHomeSet`, `preHomeY`, `mirrorX`, `decimals`, `header`, `footer`), with a revision that counts saves. Add the plotter from Plot Studio (Machine → Add → Plotter Bridge): the wizard reads what GRBL reports, sets up the pen, checks the direction and saves the result here. The id lets a browser recognise the bridge again after its address or name changes. The monitor reads the pen values and drawing area from these settings; change them in Plot Studio.
 
 **Home position.** GRBL ends a homing cycle (`$H`) at machine position 0 (switch at the + end) or −travel (switch at the − end), so the readout says 0 at a switch at the far right. With `homeSet` on, the bridge answers every successful `$H` — from the monitor, Plot Studio or the console — with `G10 L20 P1 X<homeX> Y<homeY>`, so the pen's work position at the switch is what you entered (X 310 for a switch at the right end of a 310 mm bed). The offset is kept in the controller's EEPROM; the setting is under Machine → Settings → Home position in Plot Studio.
+
+**Y move before homing.** With `preHomeSet` the *Home* button (monitor or Plot Studio, `POST home`) first sends `$X` if the controller is locked, jogs Y by `preHomeY` mm (signed: + is the direction of the + jog button; use the direction away from the Y switch), waits until the move has finished, and then sends `$H`. If the controller refuses the move, homing is cancelled. A `$H` typed in the console stays literal.
 
 ## Resuming an interrupted plot
 

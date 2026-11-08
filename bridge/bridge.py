@@ -333,8 +333,8 @@ class JobStore:
 #  browser and phone that connects reads the same profile from here and writes changes back.
 # ---------------------------------------------------------------------------
 PROFILE_KEYS = {'bedW': (1, 5000), 'bedH': (1, 5000), 'up': (0, 1000), 'down': (0, 1000), 'dwell': (0, 10), 'feed': (1, 100000),
-                'travel': (1, 100000), 'parkX': (-5000, 5000), 'parkY': (-5000, 5000), 'homeX': (-5000, 5000), 'homeY': (-5000, 5000), 'decimals': (0, 6)}
-PROFILE_FLAGS = ('travelG0', 'park', 'mirrorX', 'homeSet')
+                'travel': (1, 100000), 'parkX': (-5000, 5000), 'parkY': (-5000, 5000), 'homeX': (-5000, 5000), 'homeY': (-5000, 5000), 'preHomeY': (-200, 200), 'decimals': (0, 6)}
+PROFILE_FLAGS = ('travelG0', 'park', 'mirrorX', 'homeSet', 'preHomeSet')
 PROFILE_TEXT = ('header', 'footer')
 
 
@@ -713,7 +713,7 @@ class Plotter:
                     sent = b.decode().strip()
                     msg = f'{text} on "{sent}"' + (f' (line {idx + 1})' if idx is not None and idx >= 0 else '')
                     self.say('err', msg)
-                    if idx is None and sent.startswith('$J=') and not self.no_jog:   # no jog command in this firmware: do it with a plain move
+                    if idx is None and sent.startswith('$J=') and not self.no_jog and re.match(r'error:[23]\b', text):   # no jog command in this firmware: do it with a plain move
                         self.no_jog = True
                         self.say('sys', 'This GRBL has no $J jog command (it is older than 1.1) — jogging with plain moves instead')
                         if self._last_jog:
@@ -768,6 +768,57 @@ class Plotter:
             if m:   # GRBL 1.1 / grblHAL build options: planner blocks and serial buffer size
                 self.planner_blocks, self.rx_buffer = int(m.group(1)), max(64, min(int(m.group(2)), 1024) - 1)
             self.say('rx', text)
+
+    def home(self):
+        """$H. With `preHomeSet` in the machine settings the pen first moves Y by `preHomeY` mm (so it starts clear of the
+        Y switch, before X is homed): unlock if the controller is locked, jog, wait until it stopped, then $H."""
+        p = self.machine.get().get('profile') or {}
+        try:
+            mm = float(p.get('preHomeY') or 0)
+        except (TypeError, ValueError):
+            mm = 0.0
+        if not p.get('preHomeSet') or not mm:
+            return self.queue('$H')
+        with self.lock:
+            if not self.ser:
+                raise RuntimeError('The plotter is not connected')
+            if self.job and self.job['running']:
+                raise RuntimeError('A plot is running — wait for it to finish or stop it')
+        threading.Thread(target=self._pre_home, args=(mm, min(float(p.get('travel') or 3000), 3000.0)), daemon=True, name='prehome').start()
+
+    def _unlock(self):
+        self.say('sys', 'Unlocking ($X) before homing')
+        self.queue('$X')
+        t0 = time.time()
+        time.sleep(0.3)
+        while self.state == 'Alarm' and time.time() - t0 < 3:
+            time.sleep(0.05)
+
+    def _pre_home(self, mm, feed):
+        try:
+            if self.state == 'Alarm':
+                self._unlock()
+            for attempt in (1, 2):
+                with self.lock:
+                    seq = self.log_seq
+                self.say('sys', f'Moving Y by {mm:g} mm before homing')
+                self.jog(0, mm, feed)
+                time.sleep(0.4)
+                t0 = time.time()
+                while time.time() - t0 < 20 and (self.manual or self.inflight or self.state in ('Run', 'Jog', 'Hold')):
+                    time.sleep(0.05)
+                with self.lock:
+                    refused = [e['m'] for e in self.log if e['seq'] > seq and e['k'] == 'err' and e['m'].startswith('error')]
+                if not refused:
+                    break
+                if attempt == 1 and refused[0].startswith('error:9'):      # locked, and the status had not said so yet
+                    self._unlock()
+                    continue
+                self.say('err', f'The move was refused ({refused[0]}) — homing cancelled')
+                return
+            self.queue('$H')
+        except RuntimeError as e:
+            self.say('err', f'Homing cancelled: {e}')
 
     def _homed(self):
         """After a homing cycle: the pen is at the home position, so give it the work position the machine settings name
@@ -1693,7 +1744,7 @@ class Handler(BaseHTTPRequestHandler):
             elif cmd == 'unlock':
                 P.queue('$X')
             elif cmd == 'home':
-                P.queue('$H')
+                P.home()
             elif cmd == 'jog':
                 if P.job and P.job['running']:
                     raise RuntimeError('A plot is running')
