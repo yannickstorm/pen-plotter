@@ -105,7 +105,6 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
       <dl id="d-info"></dl>
       <ul class="files" id="d-files"></ul>
       <button type="button" class="btn" id="dl">Download .zip</button>
-      <button type="button" class="btn" id="dl-stl" style="margin-top:6px">Download STL only</button>
       <button type="button" class="btn" id="del" style="margin-top:6px">Delete part…</button>
       <p class="note" id="dl-msg" style="margin-top:8px"></p>
     </section>
@@ -387,19 +386,6 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     } finally { btn.disabled = false; }
   };
 
-  // The viewer's downloads capability cannot save a bare .stl (or .3mf), so the STL goes out alone in a small zip.
-  $('dl-stl').onclick = async () => {
-    if (!current || !downloads) return;
-    const m = current, btn = $('dl-stl'), msg = $('dl-msg');
-    btn.disabled = true; msg.textContent = 'Preparing…';
-    try {
-      const f = m.files.find(x => /\.stl$/i.test(x.name)) || { name: m.id + '.stl', path: m.stl };
-      await downloads.save({ filename: m.id + '-stl.zip', data: makeZip([{ name: f.name, data: await loadBytes(f.path) }]) });
-      msg.textContent = 'Saved ' + m.id + '-stl.zip. Unzip it, then open the .stl in Bambu Studio (File > Import, or drag it in).';
-    } catch (e) {
-      msg.textContent = e && e.code === 'declined' ? 'Download cancelled.' : 'Could not download: ' + ((e && e.message) || e);
-    } finally { btn.disabled = false; }
-  };
   // Deleting only hides a part for everybody (a list in the page database, no agent involved); the files stay in the repo and can be restored.
   const setHidden = ids => rdb.doc('config/hidden').set({ ids: [...new Set(ids)] });
   function applyHidden() {
@@ -441,14 +427,14 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
 
   (async () => {
     if (window.claude && window.claude.use) { try { downloads = await window.claude.use('downloads'); } catch (e) { downloads = null; } }
-    if (!downloads) { $('dl').hidden = true; $('dl-stl').hidden = true; $('dl-msg').textContent = 'Downloads work when this page is open in claude.ai.'; }
+    if (!downloads) { $('dl').hidden = true; $('dl-msg').textContent = 'Downloads work when this page is open in claude.ai.'; }
     try {
       const r = await fetch('models/manifest.json', { cache: 'no-store' }); if (!r.ok) throw new Error('models/manifest.json ' + r.status);
       allModels = (await r.json()).models || []; models = allModels.filter(m => !hidden.has(m.id));
     } catch (e) { $('state').textContent = 'The parts list could not be loaded. ' + e.message; $('status').textContent = 'no parts'; return; }
     if (!allModels.length) { $('state').textContent = 'No parts yet. Ask Claude to add one.'; $('status').textContent = 'no parts'; return; }
     applyHidden(); if (models.length) select(location.hash.slice(1));
-    if (!downloads) { $('dl').hidden = true; $('dl-stl').hidden = true; }
+    if (!downloads) { $('dl').hidden = true; }
   })();
 
   // ---- tabs ----
