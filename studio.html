@@ -2099,7 +2099,7 @@ function importGcode(text) {
 // =====================================================================
 const DEFAULTS = {
   paper: {preset: 'a4l', w: 297, h: 210, x: 0, y: 0, margin: 10, clip: true, color: '#fbfaf6'},
-  machine: {bedW: 310, bedH: 210, up: 0, down: 35, dwell: 0.3, feed: 2000, travel: 4000, travelG0: false, parkX: 0, parkY: 0, park: true, homeSet: false, homeX: 0, homeY: 0, mirrorX: false, decimals: 3, header: '', footer: ''},
+  machine: {bedW: 310, bedH: 210, up: 0, down: 35, dwell: 0.3, feed: 2000, travel: 4000, travelG0: false, parkX: 0, parkY: 0, park: true, homeSet: false, homeX: 0, homeY: 0, preHomeSet: false, preHomeY: 10, mirrorX: false, decimals: 3, header: '', footer: ''},
   opt: {order: true, merge: 0.15, simplify: 0.03, minLen: 0.1},
 };
 let S = structuredClone(DEFAULTS);
@@ -4817,9 +4817,11 @@ function renderMach() {
       ${fieldHTML(['check', 'park', 'Return to park after each pen'], M)}
     </div></div>
     <div class="card"><h3>Home position <small>after homing ($H)</small></h3><div class="fields" id="mfh">
+      ${fieldHTML(['check', 'preHomeSet', 'Before homing, first move Y (so it starts clear of its switch)'], M)}
+      ${fieldHTML(['num', 'preHomeY', 'Move Y by', {unit: 'mm', step: 1}], M)}<div></div>
       ${fieldHTML(['check', 'homeSet', 'After homing, set the pen position to the values below'], M)}
       ${fieldHTML(['num', 'homeX', 'Home X', {unit: 'mm', step: 1}], M)}${fieldHTML(['num', 'homeY', 'Home Y', {unit: 'mm', step: 1}], M)}
-    </div><p class="note">GRBL itself ends homing at 0 (a switch at the + end) or at −travel (a switch at the − end). Enter the position the pen should have at the switch, for example X 310 for a switch at the far right of a 310 mm bed, and every home puts it there. It is kept in the controller (G54), so a plot never has to be re-aligned; leave it off to keep GRBL's own value.</p></div>
+    </div><p class="note">The Y move is relative: + goes in the direction of the + jog button, so use the direction <b>away</b> from the Y switch (− if it is on the + side). It happens when you press Home, not for a <span class="mono">$H</span> typed in the console. GRBL itself ends homing at 0 (a switch at the + end) or at −travel (a switch at the − end). Enter the position the pen should have at the switch, for example X 310 for a switch at the far right of a 310 mm bed, and every home puts it there. It is kept in the controller (G54), so a plot never has to be re-aligned; leave it off to keep GRBL's own value.</p></div>
     <div class="card"><h3>Machine</h3><div class="fields" id="mf3">
       ${fieldHTML(['num', 'bedW', 'Bed width', {unit: 'mm', step: 1}], M)}${fieldHTML(['num', 'bedH', 'Bed height', {unit: 'mm', step: 1}], M)}
       ${fieldHTML(['check', 'mirrorX', 'Mirror X in output (if your plots come out mirrored)'], M)}
@@ -5367,7 +5369,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
       const f = this.inflight.shift() || {}, j = this.job;
       if (t.startsWith('error')) {
         const msg = `${t} on "${(f.line || '').trim()}"${isLine(f.idx) ? ` (line ${f.idx + 1})` : ''}`; this.say('err', msg);
-        if (f.idx == null && (f.line || '').startsWith('$J=') && !this.noJog) {   // no jog command in this firmware: do it with a plain move
+        if (f.idx == null && (f.line || '').startsWith('$J=') && !this.noJog && /^error:[23]\b/.test(t)) {   // no jog command in this firmware: do it with a plain move
           this.noJog = true; this.say('sys', 'This GRBL has no $J jog command (it is older than 1.1) — jogging with plain moves instead');
           if (this.lastJog) setTimeout(() => this.jog(...this.lastJog), 0);
         }
@@ -5517,6 +5519,23 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
     this.inflight = [];
     if (penUp && this.state !== 'Alarm') { this.manual.push(penUp); this.pump(); }
   }
+  home() {   // $H, with the machine settings' Y move first (so the pen starts clear of the Y switch)
+    const M = S.machine, mm = +M.preHomeY || 0;
+    if (!M.preHomeSet || !mm) return this.queue('$H');
+    if (!this.port) throw new Error('The plotter is not connected');
+    if (this.job && this.job.running) throw new Error('A plot is running — wait for it to finish or stop it');
+    (async () => {
+      try {
+        if (this.state === 'Alarm') { this.say('sys', 'Unlocking ($X) before homing'); this.queue('$X'); await this.waitFor(() => this.state !== 'Alarm', 3000); }
+        this.say('sys', `Moving Y by ${mm} mm before homing`);
+        this.jog(0, mm, Math.min(+M.travel || 3000, 3000));
+        await sleep(400);
+        await this.waitFor(() => !this.manual.length && !this.inflight.length && !['Run', 'Jog', 'Hold'].includes(this.state), 20000);
+        if (this.state === 'Alarm') { this.say('err', 'The controller is still locked — homing cancelled'); return; }
+        this.queue('$H');
+      } catch (e) { this.say('err', 'Homing cancelled: ' + e.message); }
+    })();
+  }
   queue(line) {
     if (!this.port) throw new Error('The plotter is not connected');
     const lines = String(line).split('\n').map(s => s.trim()).filter(Boolean);
@@ -5556,7 +5575,7 @@ class GrblSerial {   // streams G-code to GRBL from this tab with GRBL's charact
       case 'stop': await this.stop('Stopped by user', body.penUp); break;
       case 'send': this.queue(body.line); break;
       case 'unlock': this.queue('$X'); break;
-      case 'home': this.queue('$H'); break;
+      case 'home': this.home(); break;
       case 'origin': if (this.job && this.job.running) throw new Error('A plot is running'); this.queue(`G10 L20 P1 X${(+body.x || 0).toFixed(3)} Y${(+body.y || 0).toFixed(3)}`); break;
       case 'jog': if (this.job && this.job.running) throw new Error('A plot is running'); this.jog(+body.x || 0, +body.y || 0, +body.feed || 3000); break;
       case 'jogcancel': this.raw('\x85'); break;

@@ -59,6 +59,7 @@ class FakeGrbl:
         self.s = 0.0
         self.hold = False
         self.cfg = {3: 3, 5: 1, 22: 1, 23: 3, 130: 310, 131: 210}   # the `$` settings, kept like GRBL keeps them in EEPROM
+        self.alarm, self.stuck = False, False  # locked ($X unlocks, unless stuck); the lock refuses $J= with error:9
         self.pins = ''                        # limit switches held closed, e.g. 'XY' (reported as Pn:XY)
         self.dwell_until = 0.0
         self.ink = []
@@ -137,7 +138,7 @@ class FakeGrbl:
             self._emit("Grbl 1.1h ['$' for help]")
 
     def _status(self):
-        state = 'Hold:0' if self.hold else 'Run' if (self.cur or self.planner or self.dwell_until > time.time()) else 'Idle'
+        state = 'Alarm' if self.alarm else 'Hold:0' if self.hold else 'Run' if (self.cur or self.planner or self.dwell_until > time.time()) else 'Idle'
         ln = f'|Ln:{self.cur[2]}' if self.report_ln and self.cur and self.cur[2] else ''
         pn = f'|Pn:{self.pins}' if self.pins else ''
         return f'<{state}|MPos:{self.mpos[0]:.3f},{self.mpos[1]:.3f},0.000|FS:0,0{pn}{ln}|WCO:{self.wco[0]:.3f},{self.wco[1]:.3f},0.000>'
@@ -181,6 +182,12 @@ class FakeGrbl:
         if body == '$$':
             for k, v in sorted(self.cfg.items()):
                 self._emit(f'${k}={v}' + {3: ' (dir port invert mask:00000011)', 5: ' (limit pins invert, bool)', 130: ' (x max travel, mm)'}.get(k, ''))
+        elif body == '$X':
+            if not self.stuck:
+                self.alarm = False
+        elif body.startswith('$J=') and self.alarm:
+            self._emit('error:9')
+            return True
         elif body == '$#':
             for name in ('G54', 'G55', 'G56', 'G57', 'G58', 'G59', 'G28', 'G30', 'G92'):
                 v = self.wco if name == 'G54' else [0.0, 0.0]
@@ -683,6 +690,58 @@ def firmware_flash(tmp):
         srv.shutdown(); P2.disconnect()
 
 
+def pre_home(tmp):
+    print('moving Y before homing')
+    with tempfile.TemporaryDirectory() as d:
+        P = new_bridge(d)
+        P.connect()
+        g = FakeGrbl.instances[-1]
+        wait_for(lambda: P.settings.get(130), 3)
+        P.home()
+        check(wait_for(lambda: '$H' in g.seen, 3), 'without the setting Home is just $H')
+        check(not [x for x in g.seen if x.startswith('$J=')], 'and nothing moves first')
+        P.machine.save(None, {'preHomeSet': True, 'preHomeY': 10}, None)
+        g.seen.clear(); g.alarm = True
+        wait_for(lambda: P.state == 'Alarm', 3)
+        P.home()
+        check(wait_for(lambda: g.seen.count('$H') == 1, 8), f'with the setting Home still happens ({g.seen})')
+        order = [x for x in g.seen if x in ('$X', '$H') or x.startswith('$J=')]
+        check(order[0] == '$X' and order[1].startswith('$J=') and 'Y10' in order[1] and 'X0' in order[1] and order[2] == '$H', f'unlock, move Y by 10, then $H ({order})')
+        check(len([x for x in g.seen if x.startswith('$J=')]) == 1, 'only Y moves, once')
+        # the controller got locked and the bridge has not seen it yet: the refused move is retried after $X
+        wait_for(lambda: P.state == 'Idle', 3)
+        g.seen.clear(); g.alarm = False; P.state = 'Idle'
+        g.alarm = True
+        P.home()
+        check(wait_for(lambda: g.seen.count('$H') == 1, 10), f'a refused (locked) move is retried after unlocking ({g.seen})')
+        order = [x for x in g.seen if x in ('$X', '$H') or x.startswith('$J=')]
+        check(len(order) == 4 and order[1] == '$X' and order[2].startswith('$J=') and order[3] == '$H' or order[0] == '$X', f'$J refused, $X, $J, $H ({order})')
+        check(not P.no_jog, 'a refused jog while locked does not make the bridge think there is no $J command')
+        wait_for(lambda: P.state == 'Idle', 3)
+        g.seen.clear(); g.alarm = False
+        P.machine.save(None, {'preHomeSet': True, 'preHomeY': -10}, None)
+        P.home()
+        check(wait_for(lambda: '$H' in g.seen, 8) and [x for x in g.seen if x.startswith('$J=')][0].count('Y-10') == 1, 'a negative value moves the other way, and no unlock when it is not locked')
+        check('$X' not in g.seen, 'no $X when the controller is not locked')
+        # a move the controller refuses (still locked): homing is cancelled
+        g.seen.clear(); g.alarm = g.stuck = True
+        wait_for(lambda: P.state == 'Alarm', 3)
+        P.home()
+        check(wait_for(lambda: any('homing cancelled' in e['m'] for e in P.status(0)['log']), 10), 'a refused move cancels homing')
+        check('$H' not in g.seen, 'and $H is not sent')
+        # no moves during a plot, and the check box off again
+        g.alarm = g.stuck = False
+        P.machine.save(None, {'preHomeSet': False, 'preHomeY': 10}, None)
+        g.seen.clear(); P.home()
+        check(wait_for(lambda: '$H' in g.seen, 3) and not [x for x in g.seen if x.startswith('$J=')], 'switched off again: just $H')
+        for bad in ({'preHomeY': 999}, {'preHomeY': 'far'}):
+            try:
+                P.machine.save(None, bad, None); check(False, f'{bad} is refused')
+            except ValueError:
+                check(True, f'{bad} is refused')
+        P.disconnect()
+
+
 def machine_profile(tmp):
     print('machine profile on the bridge')
     P = new_bridge(tmp)
@@ -962,7 +1021,7 @@ def update_script(tmp):
 
 def main():
     helpers()
-    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, home_position, firmware_flash, self_update, update_script):
+    for fn in (full_run, lambda t: crash_and_resume(t, True), lambda t: crash_and_resume(t, False), stop_and_resume, unplug, silent_reset, http_api, machine_profile, studio_and_https, jogging, limit_switches, grbl_settings, home_position, pre_home, firmware_flash, self_update, update_script):
         with tempfile.TemporaryDirectory() as tmp:
             fn(tmp)
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
