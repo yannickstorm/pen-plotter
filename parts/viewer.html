@@ -32,6 +32,20 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .state[hidden] { display: none; }
 .panel { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-height: 0;
   padding-block: 16px 20px; padding-left: 18px; padding-right: max(18px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 22px; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tabs button { font: 500 12px var(--font-data); color: var(--muted); background: var(--card); border: 1px solid var(--line); padding: 8px 10px; border-radius: 5px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab { display: flex; flex-direction: column; gap: 22px; }
+.tab[hidden] { display: none; }
+.msgs { display: grid; gap: 12px; }
+.msg { display: grid; gap: 5px; }
+.bubble { font-size: 13px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.me { background: var(--card); border: 1px solid var(--line); }
+.bubble.agent { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.meta { font: 400 11px var(--font-data); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.meta button { font: 500 11px var(--font-data); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; cursor: pointer; }
+.ask { display: grid; gap: 8px; }
+.ask textarea { font: 400 13px var(--font-body); color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; resize: vertical; min-height: 78px; width: 100%; }
 .panel h2 { font: 500 11px var(--font-data); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 9px; }
 .list { display: grid; gap: 6px; }
 .item { text-align: left; font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; cursor: pointer; display: grid; gap: 3px; }
@@ -75,6 +89,11 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     <div class="state" id="state">Loading parts…</div>
   </div>
   <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tb-parts" data-tab="parts" aria-selected="true">Parts</button>
+      <button type="button" role="tab" id="tb-chat" data-tab="chat" aria-selected="false">Ask the agent</button>
+    </div>
+    <div class="tab" id="tab-parts">
     <section>
       <h2>Parts</h2>
       <div class="list" id="list"></div>
@@ -99,7 +118,20 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
       <label for="cut"><span>Remove above Z =</span><span id="cut-val">off</span></label>
       <input type="range" id="cut" min="0" max="10" step="0.5" value="10">
     </section>
-    <p class="note">New parts appear here when Claude adds them to the parts folder and republishes this page. Each download is a zip with the STL for printing and the STEP file for CAD.</p>
+    <p class="note">New parts appear here when the agent adds them to the parts folder and republishes this page. Each download is a zip with the STL for printing and the STEP file for CAD.</p>
+    </div>
+    <div class="tab" id="tab-chat" hidden>
+      <section>
+        <h2>Ask the parts agent</h2>
+        <p class="note" id="agent-state">Connecting…</p>
+      </section>
+      <div class="msgs" id="msgs"></div>
+      <form class="ask" id="ask">
+        <textarea id="ask-text" rows="3" placeholder="Describe the part: what it is, its size in mm, holes, how it is printed…" aria-label="Request for the parts agent"></textarea>
+        <button type="submit" class="btn" id="ask-send">Send to the agent</button>
+        <p class="note" id="ask-note"></p>
+      </form>
+    </div>
   </aside>
 </div>
 
@@ -370,6 +402,81 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     if (!models.length) { $('state').textContent = 'No parts yet. Ask Claude to add one.'; $('status').textContent = 'no parts'; return; }
     renderList(); select(location.hash.slice(1));
     if (!downloads) { $('dl').hidden = true; }
+  })();
+
+  // ---- tabs ----
+  function showTab(name) {
+    ['parts', 'chat'].forEach(t => { $('tab-' + t).hidden = t !== name; $('tb-' + t).setAttribute('aria-selected', t === name ? 'true' : 'false'); });
+  }
+  document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+
+  // ---- chat with the parts agent ----
+  // The page saves every request in the artifact's database, then wakes the agent session directly through the Claude Code
+  // Remote connector. The agent writes its status and reply into the same document. Nothing polls.
+  const AGENT_SERVER = 'Claude Code Remote';
+  let rdb = null, rmcp = null, sessionId = null, canSend = false;
+  const stateEl = $('agent-state');
+  function agentState() {
+    let t;
+    if (!rdb) t = 'The chat needs a signed-in view of this page in claude.ai. You can still browse and download parts.';
+    else if (!sessionId) t = 'No agent is set up for this page yet. Ask Claude in the session that built it to start one.';
+    else if (!rmcp) t = 'This view cannot message the agent directly. Requests are saved, and the agent picks them up when you tell it in its session to process pending requests.';
+    else t = 'Requests are saved and the agent is messaged straight away. It builds the part with the CAD tools, adds it to the parts list and republishes this page. That takes a few minutes.';
+    stateEl.textContent = t; canSend = !!rdb;
+    $('ask-send').disabled = !canSend;
+  }
+  const STATUS = { sent: 'sent', working: 'agent is working', done: 'done', error: 'failed', needs_info: 'agent has a question' };
+  const DELIVERY = { delivered: 'agent notified', pending: 'sending…', saved: 'saved, agent not messaged', 'no-mcp': 'saved, agent cannot be messaged from this view', 'no-agent': 'saved, no agent set up' };
+  function renderMsgs(snap) {
+    const box = $('msgs'); box.innerHTML = '';
+    snap.docs.forEach(d => {
+      const r = d.data() || {}, wrap = document.createElement('div'); wrap.className = 'msg';
+      const me = document.createElement('div'); me.className = 'bubble me'; me.textContent = r.text || '';
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const st = document.createElement('span'); st.textContent = (STATUS[r.status] || r.status || '') + (r.delivery && DELIVERY[r.delivery] ? ' · ' + DELIVERY[r.delivery] : (r.delivery && r.delivery.startsWith('not-delivered') ? ' · saved, agent could not be messaged (' + r.delivery.split(':')[1] + ')' : ''));
+      meta.append(st);
+      wrap.append(me, meta);
+      if (r.reply) { const a = document.createElement('div'); a.className = 'bubble agent'; a.textContent = r.reply; wrap.append(a); }
+      (Array.isArray(r.parts) ? r.parts : []).forEach(pid => {
+        if (!models.some(m => m.id === pid)) return;
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Show ' + pid; b.onclick = () => { location.hash = pid; showTab('parts'); };
+        meta.append(b);
+      });
+      box.append(wrap);
+    });
+    box.parentElement.scrollTop = box.parentElement.scrollHeight;
+  }
+  $('ask').onsubmit = async e => {
+    e.preventDefault();
+    const ta = $('ask-text'), text = ta.value.trim(), note = $('ask-note');
+    if (!text || !rdb) return;
+    $('ask-send').disabled = true; note.textContent = '';
+    const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ref = rdb.collection('requests').doc(id);
+    try { await ref.set({ text, status: 'sent', delivery: 'pending', reply: '', created: Date.now() }); ta.value = ''; }
+    catch (err) { note.textContent = 'Could not save the request' + (err && err.code ? ' (' + err.code + ')' : '') + '. Try again.'; $('ask-send').disabled = !canSend; return; }
+    let delivery = 'saved';
+    if (!sessionId) delivery = 'no-agent';
+    else if (!rmcp) delivery = 'no-mcp';
+    else {
+      try { await rmcp.callTool(AGENT_SERVER, 'send_message', { session_id: sessionId, message: JSON.stringify({ from: 'parts-viewer', request_id: id, text }) }, { cache: false }); delivery = 'delivered'; }
+      catch (err) {
+        const c = (err && err.code) || 'error'; delivery = 'not-delivered:' + c;
+        note.textContent = c === 'approval_required' || c === 'not_in_manifest' ? 'Messaging the agent needs your approval. The request is saved; send it again after allowing the connector.'
+          : c === 'server_not_connected' || c === 'needs_reauth' ? 'Add or reconnect the Claude Code Remote connector in claude.ai Settings → Connectors. The request is saved.'
+          : 'The agent could not be messaged (' + c + '). The request is saved; tell the agent in its session to process pending requests.';
+      }
+    }
+    try { await ref.update({ delivery }); } catch (err) { /* the request is saved either way */ }
+    $('ask-send').disabled = !canSend;
+  };
+  (async () => {
+    if (!(window.claude && window.claude.use)) { agentState(); return; }
+    try { rdb = await window.claude.use('db'); } catch (e) { rdb = null; }
+    try { rmcp = await window.claude.use('mcp'); } catch (e) { rmcp = null; }
+    agentState();
+    if (!rdb) return;
+    rdb.doc('config/agent').onSnapshot(s => { sessionId = s.exists && s.data() ? s.data().sessionId || null : null; agentState(); }, () => agentState());
+    rdb.collection('requests').orderBy('created', 'asc').limit(200).onSnapshot(renderMsgs, () => { stateEl.textContent = 'The chat history could not be loaded.'; });
   })();
 })();
 </script>
