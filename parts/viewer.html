@@ -105,6 +105,8 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
       <dl id="d-info"></dl>
       <ul class="files" id="d-files"></ul>
       <button type="button" class="btn" id="dl">Download .zip</button>
+      <button type="button" class="btn" id="dl-stl" style="margin-top:6px">Download STL only</button>
+      <button type="button" class="btn" id="del" style="margin-top:6px">Delete part…</button>
       <p class="note" id="dl-msg" style="margin-top:8px"></p>
     </section>
     <section>
@@ -381,6 +383,31 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     } finally { btn.disabled = false; }
   };
 
+  // The viewer's downloads capability cannot save a bare .stl (or .3mf), so the STL goes out alone in a small zip.
+  $('dl-stl').onclick = async () => {
+    if (!current || !downloads) return;
+    const m = current, btn = $('dl-stl'), msg = $('dl-msg');
+    btn.disabled = true; msg.textContent = 'Preparing…';
+    try {
+      const f = m.files.find(x => /\.stl$/i.test(x.name)) || { name: m.id + '.stl', path: m.stl };
+      await downloads.save({ filename: m.id + '-stl.zip', data: makeZip([{ name: f.name, data: await loadBytes(f.path) }]) });
+      msg.textContent = 'Saved ' + m.id + '-stl.zip. Unzip it, then open the .stl in Bambu Studio (File > Import, or drag it in).';
+    } catch (e) {
+      msg.textContent = e && e.code === 'declined' ? 'Download cancelled.' : 'Could not download: ' + ((e && e.message) || e);
+    } finally { btn.disabled = false; }
+  };
+  let delArmed = null;
+  $('del').onclick = async () => {
+    if (!current) return;
+    if (!rdb) { $('dl-msg').textContent = 'Deleting works when this page is open in claude.ai.'; return; }
+    const m = current, btn = $('del'), msg = $('dl-msg');
+    if (delArmed !== m.id) { delArmed = m.id; btn.textContent = 'Really delete ' + m.name + '? Click again'; setTimeout(() => { if (delArmed === m.id) { delArmed = null; btn.textContent = 'Delete part…'; } }, 5000); return; }
+    delArmed = null; btn.textContent = 'Delete part…'; btn.disabled = true;
+    const note = await submitRequest('DELETE PART ' + m.id + ': remove this part and all its files from the parts folder and republish. Do not ask for confirmation, the viewer already confirmed.', m.id);
+    msg.textContent = note || 'Delete request sent to the agent. The part disappears from the list once it has republished the page.';
+    btn.disabled = false;
+  };
+
   // ---- start ----
   function resize() {
     if (!renderer) return;
@@ -394,14 +421,14 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
 
   (async () => {
     if (window.claude && window.claude.use) { try { downloads = await window.claude.use('downloads'); } catch (e) { downloads = null; } }
-    if (!downloads) { $('dl').hidden = true; $('dl-msg').textContent = 'Downloads work when this page is open in claude.ai.'; }
+    if (!downloads) { $('dl').hidden = true; $('dl-stl').hidden = true; $('dl-msg').textContent = 'Downloads work when this page is open in claude.ai.'; }
     try {
       const r = await fetch('models/manifest.json', { cache: 'no-store' }); if (!r.ok) throw new Error('models/manifest.json ' + r.status);
       models = (await r.json()).models || [];
     } catch (e) { $('state').textContent = 'The parts list could not be loaded. ' + e.message; $('status').textContent = 'no parts'; return; }
     if (!models.length) { $('state').textContent = 'No parts yet. Ask Claude to add one.'; $('status').textContent = 'no parts'; return; }
     renderList(); select(location.hash.slice(1));
-    if (!downloads) { $('dl').hidden = true; }
+    if (!downloads) { $('dl').hidden = true; $('dl-stl').hidden = true; }
   })();
 
   // ---- tabs ----
@@ -446,14 +473,10 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     });
     box.parentElement.scrollTop = box.parentElement.scrollHeight;
   }
-  $('ask').onsubmit = async e => {
-    e.preventDefault();
-    const ta = $('ask-text'), text = ta.value.trim().replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' '), note = $('ask-note');
-    if (!text || !rdb) return;
-    $('ask-send').disabled = true; note.textContent = '';
+  // Saves a request in the db and wakes the agent with a comment. Returns a note for the viewer, or '' when all went well.
+  async function submitRequest(text, viewing, onSaved) {
     const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ref = rdb.collection('requests').doc(id);
     // start both at once: the comment must go out while the viewer's click is still recent
-    const viewing = current ? current.id : '';      // the part on screen, so "that part" means something
     const saving = ref.set({ text, viewing, status: 'sent', delivery: 'pending', reply: '', created: Date.now() });
     let sending = Promise.resolve(sessionId ? 'no-comments' : 'no-agent');
     if (sessionId && rcom && sendState === 'available') {
@@ -462,16 +485,25 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
         catch (err) { return 'not-delivered:' + ((err && err.code) || 'error'); }
       })();
     }
-    try { await saving; ta.value = ''; }
-    catch (err) { note.textContent = 'Could not save the request' + (err && err.code ? ' (' + err.code + ')' : '') + '. Try again.'; $('ask-send').disabled = !canSend; return; }
+    try { await saving; if (onSaved) onSaved(); }
+    catch (err) { return 'Could not save the request' + (err && err.code ? ' (' + err.code + ')' : '') + '. Try again.'; }
     const delivery = await sending;
+    let note = '';
     if (delivery.startsWith('not-delivered')) {
       const c = delivery.split(':')[1];
-      note.textContent = c === 'consent_required' ? 'Allow this page to write comments, then send the request again. It is saved.'
+      note = c === 'consent_required' ? 'Allow this page to write comments, then send the request again. It is saved.'
         : c === 'rate_limited' ? 'Sending too often. The request is saved; wait a moment and tell the agent in its session to process pending requests.'
         : 'Claude could not be notified (' + c + '). The request is saved; tell the agent in its session to process pending requests.';
     }
     try { await ref.update({ delivery }); } catch (err) { /* the request is saved either way */ }
+    return note;
+  }
+  $('ask').onsubmit = async e => {
+    e.preventDefault();
+    const ta = $('ask-text'), text = ta.value.trim().replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' '), note = $('ask-note');
+    if (!text || !rdb) return;
+    $('ask-send').disabled = true; note.textContent = '';
+    note.textContent = await submitRequest(text, current ? current.id : '', () => { ta.value = ''; });
     $('ask-send').disabled = !canSend;
   };
   (async () => {

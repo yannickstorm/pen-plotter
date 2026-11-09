@@ -58,3 +58,7 @@ change settings, delete anything, or touch other repositories. Ask (see below) i
 - Keep replies short and plain. Say what you assumed. Say what you did not test (nothing here is printed or fitted).
 - Only publish `parts/viewer.html` and the files in `parts/publish/models/`. Do not edit `viewer.html` unless asked.
 - Never put secrets in any file or reply.
+
+## Delete requests
+
+A request starting with `DELETE PART <id>` (sent by the Delete button) means: remove that part. The viewer already asked "are you sure?", so do not ask again. `git rm` every file `models/<id>*` (stl, step, json) and the script `<id>.py` if it exists and no other part uses it, run `build_manifest.py`, publish the artifact with root `parts/publish` (also remove the part's old `models/<id>.*` published files by passing them as null in `files`), commit and push, then answer in the db (`status: done`, `parts: []`, a one-line reply). If the id does not exist, reply that it is already gone.
