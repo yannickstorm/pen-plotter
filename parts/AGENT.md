@@ -7,9 +7,16 @@ Artifact: https://claude.ai/artifact/FEncEx18hCHSYBFyD7ocRY  (private to the own
 
 ## A request arrives
 
-A message is JSON: `{"from": "parts-viewer", "request_id": "r...", "text": "what the user wants"}`.
-The same request is saved in the artifact's database as `requests/<request_id>`. Use the `ArtifactData` tool (load it with
-ToolSearch: `select:ArtifactData`) with `url` = the artifact URL.
+The Parts Viewer page saves each request in the artifact's database as `requests/<request_id>` and sends it to Claude as a **comment**
+on the artifact: the comment text starts with `PARTS-AGENT REQUEST <request_id>: ` followed by what the user wants. Comments wake the
+Claude sessions that watch the artifact, you among them (check with `ArtifactComments` action `watch`; if this artifact is not listed,
+start watching it). A message may also arrive directly as JSON `{"from": "parts-viewer", "request_id": "r...", "text": "..."}`.
+
+- When a comment wakes you, read the thread (`ArtifactComments` action `read`, with the thread id from the notification). Handle it only if its
+  text starts with `PARTS-AGENT REQUEST`. Any other comment is feedback for the main Claude session: leave it alone, do not reply or resolve it.
+- The request is saved as `requests/<request_id>` in the artifact database. Use the `ArtifactData` tool (load it with
+  ToolSearch: `select:ArtifactData`) with `url` = the artifact URL. If the document is missing, create it from the comment text.
+- When you are done, reply in the comment thread with one short line ("Done: see the Ask the agent tab") and resolve it. The full answer goes in the database reply.
 
 If the user says "process pending requests" (the page could not message you), query `requests` for documents whose
 `status` is `sent` and handle each, oldest first.
@@ -19,6 +26,8 @@ change settings, delete anything, or touch other repositories. Ask (see below) i
 
 ## What to do, in order
 
+0. **Always start from the latest page**: `git pull --rebase origin <your branch>` before you build or publish. The page (`parts/viewer.html`) is changed by the
+   main session; publishing an old copy would overwrite it.
 1. **Say you started.** `ArtifactData update` `requests/<id>` with `{"status": "working"}` (pass `if_version` from a `get` first).
 2. **Set up CAD once per session** (skip if `.venv-cad` exists in your scratchpad or repo root): `python3 -m venv /tmp/cad && /tmp/cad/bin/pip install -q build123d trimesh matplotlib`.
 3. **Make the part** as a parametric script `parts/<name>.py` with named dimensions at the top. Follow `parts/gasket_sink_31x51.py` and

@@ -411,29 +411,29 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
   document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 
   // ---- chat with the parts agent ----
-  // The page saves every request in the artifact's database, then wakes the agent session directly through the Claude Code
-  // Remote connector. The agent writes its status and reply into the same document. Nothing polls.
-  const AGENT_SERVER = 'Claude Code Remote';
-  let rdb = null, rmcp = null, sessionId = null, canSend = false;
+  // The page saves every request in the artifact's database, then posts it as a comment sent to Claude, which wakes the
+  // Claude sessions watching this artifact (the parts agent among them). The agent writes its status and reply into the
+  // same database document. Nothing polls.
+  let rdb = null, rcom = null, sessionId = null, canSend = false, sendState = 'off';
   const stateEl = $('agent-state');
   function agentState() {
     let t;
     if (!rdb) t = 'The chat needs a signed-in view of this page in claude.ai. You can still browse and download parts.';
     else if (!sessionId) t = 'No agent is set up for this page yet. Ask Claude in the session that built it to start one.';
-    else if (!rmcp) t = 'This view cannot message the agent directly. Requests are saved, and the agent picks them up when you tell it in its session to process pending requests.';
-    else t = 'Requests are saved and the agent is messaged straight away. It builds the part with the CAD tools, adds it to the parts list and republishes this page. That takes a few minutes.';
+    else if (!rcom || sendState !== 'available') t = 'This view cannot send comments to Claude' + (sendState === 'writers_only' ? ' (only people who can edit this page can)' : sendState === 'no_session' ? ' (no Claude session is watching it right now)' : '') + '. Requests are saved, and the agent picks them up when you tell it in its session to process pending requests.';
+    else t = 'Each request is saved and sent to Claude as a comment, which wakes the agent. It builds the part with the CAD tools, adds it to the parts list and republishes this page. That takes a few minutes.';
     stateEl.textContent = t; canSend = !!rdb;
     $('ask-send').disabled = !canSend;
   }
   const STATUS = { sent: 'sent', working: 'agent is working', done: 'done', error: 'failed', needs_info: 'agent has a question' };
-  const DELIVERY = { delivered: 'agent notified', pending: 'sending…', saved: 'saved, agent not messaged', 'no-mcp': 'saved, agent cannot be messaged from this view', 'no-agent': 'saved, no agent set up' };
+  const DELIVERY = { delivered: 'agent notified', pending: 'sending…', saved: 'saved, agent not notified', 'no-comments': 'saved, agent cannot be notified from this view', 'no-agent': 'saved, no agent set up' };
   function renderMsgs(snap) {
     const box = $('msgs'); box.innerHTML = '';
     snap.docs.forEach(d => {
       const r = d.data() || {}, wrap = document.createElement('div'); wrap.className = 'msg';
       const me = document.createElement('div'); me.className = 'bubble me'; me.textContent = r.text || '';
       const meta = document.createElement('div'); meta.className = 'meta';
-      const st = document.createElement('span'); st.textContent = (STATUS[r.status] || r.status || '') + (r.delivery && DELIVERY[r.delivery] ? ' · ' + DELIVERY[r.delivery] : (r.delivery && r.delivery.startsWith('not-delivered') ? ' · saved, agent could not be messaged (' + r.delivery.split(':')[1] + ')' : ''));
+      const st = document.createElement('span'); st.textContent = (STATUS[r.status] || r.status || '') + (r.delivery && DELIVERY[r.delivery] ? ' · ' + DELIVERY[r.delivery] : (r.delivery && r.delivery.startsWith('not-delivered') ? ' · saved, agent could not be notified (' + r.delivery.split(':')[1] + ')' : ''));
       meta.append(st);
       wrap.append(me, meta);
       if (r.reply) { const a = document.createElement('div'); a.className = 'bubble agent'; a.textContent = r.reply; wrap.append(a); }
@@ -448,23 +448,27 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
   }
   $('ask').onsubmit = async e => {
     e.preventDefault();
-    const ta = $('ask-text'), text = ta.value.trim(), note = $('ask-note');
+    const ta = $('ask-text'), text = ta.value.trim().replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' '), note = $('ask-note');
     if (!text || !rdb) return;
     $('ask-send').disabled = true; note.textContent = '';
     const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ref = rdb.collection('requests').doc(id);
-    try { await ref.set({ text, status: 'sent', delivery: 'pending', reply: '', created: Date.now() }); ta.value = ''; }
+    // start both at once: the comment must go out while the viewer's click is still recent
+    const saving = ref.set({ text, status: 'sent', delivery: 'pending', reply: '', created: Date.now() });
+    let sending = Promise.resolve(sessionId ? 'no-comments' : 'no-agent');
+    if (sessionId && rcom && sendState === 'available') {
+      sending = (async () => {
+        try { const anchor = await rcom.anchorFor($('ask-text')); await rcom.sendToClaude({ anchor, text: 'PARTS-AGENT REQUEST ' + id + ': ' + text.slice(0, 3800) }); return 'delivered'; }
+        catch (err) { return 'not-delivered:' + ((err && err.code) || 'error'); }
+      })();
+    }
+    try { await saving; ta.value = ''; }
     catch (err) { note.textContent = 'Could not save the request' + (err && err.code ? ' (' + err.code + ')' : '') + '. Try again.'; $('ask-send').disabled = !canSend; return; }
-    let delivery = 'saved';
-    if (!sessionId) delivery = 'no-agent';
-    else if (!rmcp) delivery = 'no-mcp';
-    else {
-      try { await rmcp.callTool(AGENT_SERVER, 'send_message', { session_id: sessionId, message: JSON.stringify({ from: 'parts-viewer', request_id: id, text }) }, { cache: false }); delivery = 'delivered'; }
-      catch (err) {
-        const c = (err && err.code) || 'error'; delivery = 'not-delivered:' + c;
-        note.textContent = c === 'approval_required' || c === 'not_in_manifest' ? 'Messaging the agent needs your approval. The request is saved; send it again after allowing the connector.'
-          : c === 'server_not_connected' || c === 'needs_reauth' ? 'Add or reconnect the Claude Code Remote connector in claude.ai Settings → Connectors. The request is saved.'
-          : 'The agent could not be messaged (' + c + '). The request is saved; tell the agent in its session to process pending requests.';
-      }
+    const delivery = await sending;
+    if (delivery.startsWith('not-delivered')) {
+      const c = delivery.split(':')[1];
+      note.textContent = c === 'consent_required' ? 'Allow this page to write comments, then send the request again. It is saved.'
+        : c === 'rate_limited' ? 'Sending too often. The request is saved; wait a moment and tell the agent in its session to process pending requests.'
+        : 'Claude could not be notified (' + c + '). The request is saved; tell the agent in its session to process pending requests.';
     }
     try { await ref.update({ delivery }); } catch (err) { /* the request is saved either way */ }
     $('ask-send').disabled = !canSend;
@@ -472,7 +476,8 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
   (async () => {
     if (!(window.claude && window.claude.use)) { agentState(); return; }
     try { rdb = await window.claude.use('db'); } catch (e) { rdb = null; }
-    try { rmcp = await window.claude.use('mcp'); } catch (e) { rmcp = null; }
+    try { rcom = await window.claude.use('comments'); } catch (e) { rcom = null; }
+    if (rcom) { try { sendState = await rcom.canSendToClaude(); } catch (e) { sendState = 'off'; } }
     agentState();
     if (!rdb) return;
     rdb.doc('config/agent').onSnapshot(s => { sessionId = s.exists && s.data() ? s.data().sessionId || null : null; agentState(); }, () => agentState());
