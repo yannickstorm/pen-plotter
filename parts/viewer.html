@@ -109,6 +109,10 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
       <button type="button" class="btn" id="del" style="margin-top:6px">Delete part…</button>
       <p class="note" id="dl-msg" style="margin-top:8px"></p>
     </section>
+    <section id="hid-sec" hidden>
+      <h2>Deleted parts</h2>
+      <div class="list" id="hid-list"></div>
+    </section>
     <section>
       <h2>Show</h2>
       <label class="row"><input type="checkbox" id="t-edges" checked> Edges</label>
@@ -336,7 +340,7 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
   }
 
   // ---- parts list ----
-  let models = [], current = null, downloads = null;
+  let models = [], allModels = [], hidden = new Set(), current = null, downloads = null;
   const cache = new Map();
   function renderList() {
     $('list').innerHTML = '';
@@ -396,6 +400,22 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
       msg.textContent = e && e.code === 'declined' ? 'Download cancelled.' : 'Could not download: ' + ((e && e.message) || e);
     } finally { btn.disabled = false; }
   };
+  // Deleting only hides a part for everybody (a list in the page database, no agent involved); the files stay in the repo and can be restored.
+  const setHidden = ids => rdb.doc('config/hidden').set({ ids: [...new Set(ids)] });
+  function applyHidden() {
+    models = allModels.filter(m => !hidden.has(m.id));
+    const back = allModels.filter(m => hidden.has(m.id));
+    $('hid-sec').hidden = !back.length; $('hid-list').innerHTML = '';
+    back.forEach(m => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'item'; b.textContent = 'Restore ' + m.name;
+      b.onclick = () => setHidden([...hidden].filter(x => x !== m.id)); $('hid-list').append(b);
+    });
+    if (!allModels.length) return;
+    if (!models.length) { current = null; $('detail').hidden = true; renderList(); $('title').textContent = 'Parts'; $('status').textContent = 'no parts'; showEmpty(); return; }
+    renderList();
+    if (!current || !models.some(x => x.id === current.id)) select(location.hash.slice(1));
+  }
+  function showEmpty() { while (stuff.children.length) { const o = stuff.children.pop(); o.geometry && o.geometry.dispose(); } dirty = true; $('state').textContent = 'No parts. Restore one below or ask the agent for a new one.'; $('state').hidden = false; }
   let delArmed = null;
   $('del').onclick = async () => {
     if (!current) return;
@@ -403,8 +423,8 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     const m = current, btn = $('del'), msg = $('dl-msg');
     if (delArmed !== m.id) { delArmed = m.id; btn.textContent = 'Really delete ' + m.name + '? Click again'; setTimeout(() => { if (delArmed === m.id) { delArmed = null; btn.textContent = 'Delete part…'; } }, 5000); return; }
     delArmed = null; btn.textContent = 'Delete part…'; btn.disabled = true;
-    const note = await submitRequest('DELETE PART ' + m.id + ': remove this part and all its files from the parts folder and republish. Do not ask for confirmation, the viewer already confirmed.', m.id);
-    msg.textContent = note || 'Delete request sent to the agent. The part disappears from the list once it has republished the page.';
+    try { await setHidden([...hidden, m.id]); msg.textContent = 'Deleted ' + m.name + '. You can restore it under "Deleted parts".'; }
+    catch (e) { msg.textContent = 'Could not delete: ' + ((e && e.message) || e); }
     btn.disabled = false;
   };
 
@@ -424,10 +444,10 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     if (!downloads) { $('dl').hidden = true; $('dl-stl').hidden = true; $('dl-msg').textContent = 'Downloads work when this page is open in claude.ai.'; }
     try {
       const r = await fetch('models/manifest.json', { cache: 'no-store' }); if (!r.ok) throw new Error('models/manifest.json ' + r.status);
-      models = (await r.json()).models || [];
+      allModels = (await r.json()).models || []; models = allModels.filter(m => !hidden.has(m.id));
     } catch (e) { $('state').textContent = 'The parts list could not be loaded. ' + e.message; $('status').textContent = 'no parts'; return; }
-    if (!models.length) { $('state').textContent = 'No parts yet. Ask Claude to add one.'; $('status').textContent = 'no parts'; return; }
-    renderList(); select(location.hash.slice(1));
+    if (!allModels.length) { $('state').textContent = 'No parts yet. Ask Claude to add one.'; $('status').textContent = 'no parts'; return; }
+    applyHidden(); if (models.length) select(location.hash.slice(1));
     if (!downloads) { $('dl').hidden = true; $('dl-stl').hidden = true; }
   })();
 
@@ -513,6 +533,7 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     if (rcom) { try { sendState = await rcom.canSendToClaude(); } catch (e) { sendState = 'off'; } }
     agentState();
     if (!rdb) return;
+    rdb.doc('config/hidden').onSnapshot(s => { hidden = new Set(s.exists && s.data() && Array.isArray(s.data().ids) ? s.data().ids : []); applyHidden(); }, () => {});
     rdb.doc('config/agent').onSnapshot(s => { sessionId = s.exists && s.data() ? s.data().sessionId || null : null; agentState(); }, () => agentState());
     rdb.collection('requests').orderBy('created', 'asc').limit(200).onSnapshot(renderMsgs, () => { stateEl.textContent = 'The chat history could not be loaded.'; });
   })();
