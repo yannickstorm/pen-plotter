@@ -8,7 +8,8 @@ Artifact: https://claude.ai/artifact/FEncEx18hCHSYBFyD7ocRY  (private to the own
 ## A request arrives
 
 The Parts Viewer page saves each request in the artifact's database as `requests/<request_id>` and sends it to Claude as a **comment**
-on the artifact: the comment text starts with `PARTS-AGENT REQUEST <request_id>: ` followed by what the user wants. Comments wake the
+on the artifact: the comment text starts with `PARTS-AGENT REQUEST <request_id>` (then `[viewing <part id>]` when a part is on screen) `: ` followed by what the user wants.
+`[viewing ...]` and the `viewing` field of the request document name the part the user is looking at: "that part", "it" or "this" mean that part. Comments wake the
 Claude sessions that watch the artifact, you among them (check with `ArtifactComments` action `watch`; if this artifact is not listed,
 start watching it). A message may also arrive directly as JSON `{"from": "parts-viewer", "request_id": "r...", "text": "..."}`.
 

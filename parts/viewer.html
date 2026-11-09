@@ -453,11 +453,12 @@ dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: t
     $('ask-send').disabled = true; note.textContent = '';
     const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ref = rdb.collection('requests').doc(id);
     // start both at once: the comment must go out while the viewer's click is still recent
-    const saving = ref.set({ text, status: 'sent', delivery: 'pending', reply: '', created: Date.now() });
+    const viewing = current ? current.id : '';      // the part on screen, so "that part" means something
+    const saving = ref.set({ text, viewing, status: 'sent', delivery: 'pending', reply: '', created: Date.now() });
     let sending = Promise.resolve(sessionId ? 'no-comments' : 'no-agent');
     if (sessionId && rcom && sendState === 'available') {
       sending = (async () => {
-        try { const anchor = await rcom.anchorFor($('ask-text')); await rcom.sendToClaude({ anchor, text: 'PARTS-AGENT REQUEST ' + id + ': ' + text.slice(0, 3800) }); return 'delivered'; }
+        try { const anchor = await rcom.anchorFor($('ask-text')); await rcom.sendToClaude({ anchor, text: 'PARTS-AGENT REQUEST ' + id + (viewing ? ' [viewing ' + viewing + ']' : '') + ': ' + text.slice(0, 3700) }); return 'delivered'; }
         catch (err) { return 'not-delivered:' + ((err && err.code) || 'error'); }
       })();
     }
