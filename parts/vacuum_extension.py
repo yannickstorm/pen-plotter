@@ -5,8 +5,8 @@ The old extension's thin tongue (the part that goes in) ends in a wider collar t
 at SLANT_DEG to the tongue axis, with its rounded side nearer the tip. So the socket's rim is cut at the same angle (the wall on the rounded
 side is shorter) and the collar lands flat on it all the way round. The socket is also SOCKET_THIN mm thinner than the vacuum opening.
 
-Prints standing on the plug end with the socket opening up, no supports: the socket floor (flat) faces up, the plug's top edge (on the bed) is a
-45 degree chamfer, and the tube's shoulder over the plug is a 45 degree chamfer too.
+Prints standing on the plug end with the socket opening up, no supports: the socket floor faces up and the plug's tip (on the bed) has a small
+chamfer. The tube's shoulder over the plug is only a 1.7 mm step on the two short ends (0.2 mm on the long sides), an easy bridge.
 
     python vacuum_extension.py   ->  models/vacuum_extension.(step|stl) + short test pieces (fit_test = plug only, socket_test = socket only)
 """
@@ -29,7 +29,7 @@ SOCKET_RIB = 0.3               # small crush ribs inside the socket for a snug f
 PLUG_L = 25.0                  # plug length that goes into the vacuum
 SAG = HOLE_H_MID - HOLE_H_SIDES
 # the tube is only as long as the socket needs: rim plane + depth at the deepest point (rounded side) + a 3 mm floor
-BODY_L = math.ceil((HOLE_H_MID + SOCKET_CLEAR - SOCKET_THIN / 2 + SOCKET_CLEAR + WALL) / math.tan(math.radians(SLANT_DEG)) + SOCKET_DEPTH + 3.0)
+BODY_L = math.ceil((HOLE_H_MID + 2 * SOCKET_CLEAR - SOCKET_THIN + WALL) / math.tan(math.radians(SLANT_DEG)) + SOCKET_DEPTH + 3.0)
 
 def prism(w, ybot, ysides, ymid, r, z0, length):
     """Cross-section: flat bottom at y=ybot, sides up to ysides, curved top bulging to ymid; extruded along Z, corners rounded."""
@@ -48,18 +48,20 @@ def make(body_l, plug_l, depth=SOCKET_DEPTH):
     c, k = CLEAR / 2, SOCKET_CLEAR
     pw = HOLE_W - CLEAR
     plug = prism(pw, c, HOLE_H_SIDES - c, HOLE_H_MID - c, PLUG_R, body_l, plug_l)
-    body = prism(HOLE_W + 2 * k + 2 * WALL, -k - WALL, HOLE_H_SIDES + k + WALL, HOLE_H_MID + k + WALL, PLUG_R + k + WALL, 0, body_l)
-    body = chamfer(body.edges().filter_by_position(Axis.Z, body_l - 0.01, body_l + 0.01), WALL + 0.1)   # 45 degree shoulder: prints without support
+    T2 = SOCKET_THIN / 2
+    # tube outer = the (thinner) socket + one wall all round, so the tube walls are WALL thick everywhere
+    body = prism(HOLE_W + 2 * k + 2 * WALL, -k + T2 - WALL, HOLE_H_SIDES + k - T2 + WALL, HOLE_H_MID + k - T2 + WALL, PLUG_R + k + WALL, 0, body_l)
+    ends = [e for e in body.edges().filter_by_position(Axis.Z, body_l - 0.01, body_l + 0.01) if abs(e.center().X) > HOLE_W / 2 - 1.0]
+    body = chamfer(ends, WALL + 0.1)                             # 45 degree shoulder on the two short ends (the long sides only step 0.2 mm)
     part = body + plug
     part = chamfer(part.edges().filter_by_position(Axis.Z, body_l + plug_l - 0.01, body_l + plug_l + 0.01), LEAD)
-    T2 = SOCKET_THIN / 2
     bore = prism(pw - 2 * WALL, c + WALL, HOLE_H_SIDES + k - T2 - 0.6, HOLE_H_MID + k - T2 - 0.6, PLUG_R - WALL, -1, body_l + plug_l + 2)   # stays inside the thinner socket
     part = part - bore                                           # the air channel straight through
     if depth <= 0:
         return part
     # socket: `depth` long, rim AND floor both slanted at SLANT_DEG. The old part's thin tongue ends in a wider collar that must NOT go in
     # and sits at a slant, so the rim is cut at the same angle (the wall on the rounded side is shorter) and the collar lands flat on it.
-    yf, yr = -k - WALL, HOLE_H_MID + k + WALL                    # outer faces of the tube on the flat and the rounded side
+    yf, yr = -k + T2 - WALL, HOLE_H_MID + k - T2 + WALL                    # outer faces of the tube on the flat and the rounded side
     zp = lambda y: (y - yf) / math.tan(math.radians(SLANT_DEG))  # rim plane at SLANT_DEG to the axis: z = 0 at the flat outer face, deeper towards the rounded side
     socket = prism(HOLE_W + 2 * k, -k + T2, HOLE_H_SIDES + k - T2, HOLE_H_MID + k - T2, PLUG_R + k, -1, body_l)
     with BuildPart() as fl:                                      # everything above the rim and below the slanted floor plane
