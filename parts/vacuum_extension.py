@@ -19,14 +19,14 @@ HOLE_H_SIDES, HOLE_H_MID = 18.0, 20.0   # measured: one long side is curved out,
 CLEAR = 0.2                    # plug gap to the hole so it slides in, before the ribs
 RIB = 0.4                      # height of the plug's crush ribs
 PLUG_R = 3.0                   # corner radius of the plug
-WALL = 2.0                     # wall of the plug and tube
-LEAD = 0.8                     # 45 degree lead-in chamfer on the plug's tip
+WALL = 1.5                     # wall of the plug and tube
+LEAD = 0.6                     # 45 degree lead-in chamfer on the plug's tip
 SOCKET_DEPTH = 23.0            # socket length along the axis; its floor is slanted parallel to the rim (measured: the adapter is only 23 mm long)
 SLANT_DEG = 50.0               # angle between the old part's slanted collar and the tongue axis (measured ~45, "more like 50")
 SOCKET_THIN = 3.0              # the socket is this much thinner (in the 18/20 mm direction) than the vacuum opening: the old tongue is thinner
 SOCKET_CLEAR = 0.1             # per side, so the old part slides in
 SOCKET_RIB = 0.3               # small crush ribs inside the socket for a snug fit
-PLUG_L = 35.0                  # plug length that goes into the vacuum
+PLUG_L = 25.0                  # plug length that goes into the vacuum
 SAG = HOLE_H_MID - HOLE_H_SIDES
 # the tube is only as long as the socket needs: rim plane + depth at the deepest point (rounded side) + a 3 mm floor
 BODY_L = math.ceil((HOLE_H_MID + SOCKET_CLEAR - SOCKET_THIN / 2 + SOCKET_CLEAR + WALL) / math.tan(math.radians(SLANT_DEG)) + SOCKET_DEPTH + 3.0)
@@ -53,7 +53,7 @@ def make(body_l, plug_l, depth=SOCKET_DEPTH):
     part = body + plug
     part = chamfer(part.edges().filter_by_position(Axis.Z, body_l + plug_l - 0.01, body_l + plug_l + 0.01), LEAD)
     T2 = SOCKET_THIN / 2
-    bore = prism(pw - 2 * WALL, c + WALL, HOLE_H_SIDES + k - T2 - 1.0, HOLE_H_MID + k - T2 - 1.0, PLUG_R - WALL, -1, body_l + plug_l + 2)   # stays inside the thinner socket
+    bore = prism(pw - 2 * WALL, c + WALL, HOLE_H_SIDES + k - T2 - 0.6, HOLE_H_MID + k - T2 - 0.6, PLUG_R - WALL, -1, body_l + plug_l + 2)   # stays inside the thinner socket
     part = part - bore                                           # the air channel straight through
     if depth <= 0:
         return part
