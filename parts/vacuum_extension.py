@@ -21,13 +21,15 @@ RIB = 0.4                      # height of the plug's crush ribs
 PLUG_R = 3.0                   # corner radius of the plug
 WALL = 2.0                     # wall of the plug and tube
 LEAD = 0.8                     # 45 degree lead-in chamfer on the plug's tip
-SOCKET_DEPTH_FLAT = 45.0       # socket depth measured from the rim on the flat side (shorter on the rounded side after the slanted rim)
+SOCKET_DEPTH = 23.0            # socket length along the axis; its floor is slanted parallel to the rim (measured: the adapter is only 23 mm long)
 SLANT_DEG = 50.0               # angle between the old part's slanted collar and the tongue axis (measured ~45, "more like 50")
 SOCKET_THIN = 3.0              # the socket is this much thinner (in the 18/20 mm direction) than the vacuum opening: the old tongue is thinner
 SOCKET_CLEAR = 0.1             # per side, so the old part slides in
 SOCKET_RIB = 0.3               # small crush ribs inside the socket for a snug fit
-BODY_L, PLUG_L = 65.0, 35.0    # tube length and plug length -> 100 mm in total
+PLUG_L = 35.0                  # plug length that goes into the vacuum
 SAG = HOLE_H_MID - HOLE_H_SIDES
+# the tube is only as long as the socket needs: rim plane + depth at the deepest point (rounded side) + a 3 mm floor
+BODY_L = math.ceil((HOLE_H_MID + SOCKET_CLEAR - SOCKET_THIN / 2 + SOCKET_CLEAR + WALL) / math.tan(math.radians(SLANT_DEG)) + SOCKET_DEPTH + 3.0)
 
 def prism(w, ybot, ysides, ymid, r, z0, length):
     """Cross-section: flat bottom at y=ybot, sides up to ysides, curved top bulging to ymid; extruded along Z, corners rounded."""
@@ -41,7 +43,7 @@ def prism(w, ybot, ysides, ymid, r, z0, length):
         extrude(amount=length)
     return fillet(p.part.edges().filter_by(Axis.Z), r)
 
-def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT):
+def make(body_l, plug_l, depth=SOCKET_DEPTH):
     """Built with the body at the bottom (z=0) and the plug on top; flipped for printing in main()."""
     c, k = CLEAR / 2, SOCKET_CLEAR
     pw = HOLE_W - CLEAR
@@ -53,15 +55,18 @@ def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT):
     T2 = SOCKET_THIN / 2
     bore = prism(pw - 2 * WALL, c + WALL, HOLE_H_SIDES + k - T2 - 1.0, HOLE_H_MID + k - T2 - 1.0, PLUG_R - WALL, -1, body_l + plug_l + 2)   # stays inside the thinner socket
     part = part - bore                                           # the air channel straight through
-    if depth_flat <= 0:
+    if depth <= 0:
         return part
-    # socket: flat floor at depth_flat (measured from the rim on the flat side). The old part's thin tongue ends in a wider collar that
-    # must NOT go in and sits at a slant (SLANT_DEG). So the socket's rim is cut at the same angle:
-    # the wall on the rounded side is shorter, and the old part's collar lands flat on the rim all the way round.
+    # socket: `depth` long, rim AND floor both slanted at SLANT_DEG. The old part's thin tongue ends in a wider collar that must NOT go in
+    # and sits at a slant, so the rim is cut at the same angle (the wall on the rounded side is shorter) and the collar lands flat on it.
     yf, yr = -k - WALL, HOLE_H_MID + k + WALL                    # outer faces of the tube on the flat and the rounded side
     zp = lambda y: (y - yf) / math.tan(math.radians(SLANT_DEG))  # rim plane at SLANT_DEG to the axis: z = 0 at the flat outer face, deeper towards the rounded side
-    socket = prism(HOLE_W + 2 * k, -k + T2, HOLE_H_SIDES + k - T2, HOLE_H_MID + k - T2, PLUG_R + k, -1, depth_flat + 1)
-    part = part - socket
+    socket = prism(HOLE_W + 2 * k, -k + T2, HOLE_H_SIDES + k - T2, HOLE_H_MID + k - T2, PLUG_R + k, -1, body_l)
+    with BuildPart() as fl:                                      # everything above the rim and below the slanted floor plane
+        with BuildSketch(Plane.YZ):
+            Polygon((-6, -2), (26, -2), (26, zp(26) + depth), (-6, zp(-6) + depth), align=None)
+        extrude(amount=30, both=True)
+    part = part - (socket & fl.part)
     with BuildPart() as w:                                       # the wedge above the slanted rim plane, cut away, as a wedge across X
         with BuildSketch(Plane.YZ):
             Polygon((-6, -2), (26, -2), (26, zp(26)), (-6, zp(-6)), align=None)
@@ -70,7 +75,7 @@ def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT):
     Rs = ((HOLE_W / 2 + k) ** 2 + SAG ** 2) / (2 * SAG)
     for x in (-HOLE_W / 4, HOLE_W / 4):                          # small crush ribs inside, 2 mm in from the rim to 3 mm short of the floor
         for y in (-k + T2, HOLE_H_MID + k - T2 - (Rs - (Rs * Rs - x * x) ** 0.5)):
-            z_lo, z_hi = zp(y) + 2.0, depth_flat - 3.0
+            z_lo, z_hi = zp(y) + 2.0, zp(y) + depth - 3.0
             if z_hi > z_lo:
                 part = part + Pos(x, y, (z_lo + z_hi) / 2) * Box(1.2, 2 * SOCKET_RIB, z_hi - z_lo)
     z0, z1 = body_l + 1.0, body_l + plug_l - 3.0                 # plug crush ribs on both wide faces, stopping short of the lead-in
@@ -82,9 +87,9 @@ def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT):
 
 if __name__ == "__main__":
     os.makedirs("models", exist_ok=True)
-    for name, bl, pl, dr in (("vacuum_extension", BODY_L, PLUG_L, SOCKET_DEPTH_FLAT),
+    for name, bl, pl, dr in (("vacuum_extension", BODY_L, PLUG_L, SOCKET_DEPTH),
                              ("vacuum_extension_fit_test", 4.0, 25.0, 0),
-                             ("vacuum_extension_socket_test", SOCKET_DEPTH_FLAT + 4.0, 3.0, SOCKET_DEPTH_FLAT)):
+                             ("vacuum_extension_socket_test", BODY_L, 3.0, SOCKET_DEPTH)):
         part = make(bl, pl, dr)
         part = Pos(0, 0, bl + pl) * part.rotate(Axis.Y, 180)      # flip: plug end on the bed, socket opening up
         bb = part.bounding_box()
