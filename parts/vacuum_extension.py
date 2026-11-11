@@ -2,14 +2,15 @@
 back end = a socket of the SAME shape that takes the old brush extension.
 
 The old extension's thin tongue (the part that goes in) ends in a wider collar that must NOT go in, and that collar is slanted:
-on the rounded side it sits SLANT mm nearer the tip (measured). So the socket's rim is cut at the same slant (the wall on the rounded side
-is SLANT mm shorter) and the collar lands flat on it all the way round, instead of touching only one side.
+at SLANT_DEG to the tongue axis, with its rounded side nearer the tip. So the socket's rim is cut at the same angle (the wall on the rounded
+side is shorter) and the collar lands flat on it all the way round. The socket is also SOCKET_THIN mm thinner than the vacuum opening.
 
 Prints standing on the plug end with the socket opening up, no supports: the socket floor (flat) faces up, the plug's top edge (on the bed) is a
 45 degree chamfer, and the tube's shoulder over the plug is a 45 degree chamfer too.
 
     python vacuum_extension.py   ->  models/vacuum_extension.(step|stl) + short test pieces (fit_test = plug only, socket_test = socket only)
 """
+import math
 import os
 from build123d import *
 
@@ -20,8 +21,9 @@ RIB = 0.4                      # height of the plug's crush ribs
 PLUG_R = 3.0                   # corner radius of the plug
 WALL = 2.0                     # wall of the plug and tube
 LEAD = 0.8                     # 45 degree lead-in chamfer on the plug's tip
-SOCKET_DEPTH_FLAT = 45.0       # socket depth measured from the rim on the flat side (30 mm on the rounded side after the slanted rim)
-SLANT = 15.0                   # the old part's collar is slanted: its rounded side lands this much deeper in the socket (measured)
+SOCKET_DEPTH_FLAT = 45.0       # socket depth measured from the rim on the flat side (shorter on the rounded side after the slanted rim)
+SLANT_DEG = 50.0               # angle between the old part's slanted collar and the tongue axis (measured ~45, "more like 50")
+SOCKET_THIN = 3.0              # the socket is this much thinner (in the 18/20 mm direction) than the vacuum opening: the old tongue is thinner
 SOCKET_CLEAR = 0.1             # per side, so the old part slides in
 SOCKET_RIB = 0.3               # small crush ribs inside the socket for a snug fit
 BODY_L, PLUG_L = 65.0, 35.0    # tube length and plug length -> 100 mm in total
@@ -39,7 +41,7 @@ def prism(w, ybot, ysides, ymid, r, z0, length):
         extrude(amount=length)
     return fillet(p.part.edges().filter_by(Axis.Z), r)
 
-def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT, slant=SLANT):
+def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT):
     """Built with the body at the bottom (z=0) and the plug on top; flipped for printing in main()."""
     c, k = CLEAR / 2, SOCKET_CLEAR
     pw = HOLE_W - CLEAR
@@ -48,16 +50,17 @@ def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT, slant=SLANT):
     body = chamfer(body.edges().filter_by_position(Axis.Z, body_l - 0.01, body_l + 0.01), WALL + 0.1)   # 45 degree shoulder: prints without support
     part = body + plug
     part = chamfer(part.edges().filter_by_position(Axis.Z, body_l + plug_l - 0.01, body_l + plug_l + 0.01), LEAD)
-    bore = prism(pw - 2 * WALL, c + WALL, HOLE_H_SIDES - c - WALL, HOLE_H_MID - c - WALL, PLUG_R - WALL, -1, body_l + plug_l + 2)
+    T2 = SOCKET_THIN / 2
+    bore = prism(pw - 2 * WALL, c + WALL, HOLE_H_SIDES + k - T2 - 1.0, HOLE_H_MID + k - T2 - 1.0, PLUG_R - WALL, -1, body_l + plug_l + 2)   # stays inside the thinner socket
     part = part - bore                                           # the air channel straight through
     if depth_flat <= 0:
         return part
     # socket: flat floor at depth_flat (measured from the rim on the flat side). The old part's thin tongue ends in a wider collar that
-    # must NOT go in and sits at a slant: its rounded side is `slant` mm nearer the tip. So the socket's rim is cut at the same slant:
-    # the wall on the rounded side is `slant` mm shorter, and the old part's collar lands flat on the rim all the way round.
+    # must NOT go in and sits at a slant (SLANT_DEG). So the socket's rim is cut at the same angle:
+    # the wall on the rounded side is shorter, and the old part's collar lands flat on the rim all the way round.
     yf, yr = -k - WALL, HOLE_H_MID + k + WALL                    # outer faces of the tube on the flat and the rounded side
-    zp = lambda y: slant * (y - yf) / (yr - yf)                  # rim plane: z = 0 on the flat side, z = slant on the rounded side
-    socket = prism(HOLE_W + 2 * k, -k, HOLE_H_SIDES + k, HOLE_H_MID + k, PLUG_R + k, -1, depth_flat + 1)
+    zp = lambda y: (y - yf) / math.tan(math.radians(SLANT_DEG))  # rim plane at SLANT_DEG to the axis: z = 0 at the flat outer face, deeper towards the rounded side
+    socket = prism(HOLE_W + 2 * k, -k + T2, HOLE_H_SIDES + k - T2, HOLE_H_MID + k - T2, PLUG_R + k, -1, depth_flat + 1)
     part = part - socket
     with BuildPart() as w:                                       # the wedge above the slanted rim plane, cut away, as a wedge across X
         with BuildSketch(Plane.YZ):
@@ -66,7 +69,7 @@ def make(body_l, plug_l, depth_flat=SOCKET_DEPTH_FLAT, slant=SLANT):
     part = part - w.part
     Rs = ((HOLE_W / 2 + k) ** 2 + SAG ** 2) / (2 * SAG)
     for x in (-HOLE_W / 4, HOLE_W / 4):                          # small crush ribs inside, 2 mm in from the rim to 3 mm short of the floor
-        for y in (-k, HOLE_H_MID + k - (Rs - (Rs * Rs - x * x) ** 0.5)):
+        for y in (-k + T2, HOLE_H_MID + k - T2 - (Rs - (Rs * Rs - x * x) ** 0.5)):
             z_lo, z_hi = zp(y) + 2.0, depth_flat - 3.0
             if z_hi > z_lo:
                 part = part + Pos(x, y, (z_lo + z_hi) / 2) * Box(1.2, 2 * SOCKET_RIB, z_hi - z_lo)
