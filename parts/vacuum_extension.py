@@ -9,7 +9,7 @@ Holding: the plug is made HOLE - CLEAR, and two crush ribs per wide face add RIB
 import os
 from build123d import *
 
-HOLE_W = 32.0                  # estimated inner width (long side) of the nozzle opening: MEASURE IT
+HOLE_W = 42.0                  # measured inner width (long side) of the nozzle opening
 HOLE_H_SIDES, HOLE_H_MID = 18.0, 20.0   # measured: one long side is curved out, 18 mm high at the ends, 20 mm in the middle
 CLEAR = 0.2                    # gap to the hole so it slides in, before the ribs
 RIB = 0.4                      # height of the crush ribs (extra grip, they squash a little)
