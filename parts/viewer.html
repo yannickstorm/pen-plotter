@@ -1,0 +1,527 @@
+<title>Parts Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-height viewer; the 3D stage on the left, the parts list and details in a side panel (below on phones). */
+:root {
+  --bg: #e8ebee; --panel: #f6f7f8; --fg: #14181c; --muted: #58646e; --line: #cfd5da;
+  --accent: #c2410c; --accent-fg: #ffffff; --part: #6f8fa3; --edge: #1d272e; --grid: #c3cbd1; --grid-main: #9aa6af; --card: #ffffff;
+  --font-body: 'Archivo', system-ui, sans-serif; --font-data: 'JetBrains Mono', ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037; --card: #1b2126;
+  --accent: #ff8a4c; --accent-fg: #14181c; --part: #86a9bd; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1316; --panel: #161b1f; --fg: #e5e9ec; --muted: #8b97a1; --line: #283037; --card: #1b2126;
+  --accent: #ff8a4c; --accent-fg: #14181c; --part: #86a9bd; --edge: #0a0d0f; --grid: #232b31; --grid-main: #36424b; color-scheme: dark; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.stage { position: relative; min-height: 0; background: var(--bg); }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.tag { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); right: 16px; pointer-events: none; }
+.tag h1 { font-size: 15px; font-weight: 600; letter-spacing: .01em; }
+.tag p { font: 400 11px var(--font-data); color: var(--muted); margin-top: 3px; }
+.views { position: absolute; bottom: 14px; left: max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-wrap: wrap; gap: 6px; }
+.views button { font: 500 12px var(--font-data); color: var(--fg); background: var(--panel); border: 1px solid var(--line); padding: 7px 11px; border-radius: 4px; cursor: pointer; }
+.views button:hover { border-color: var(--muted); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { position: absolute; bottom: 18px; right: 16px; font: 400 11px var(--font-data); color: var(--muted); pointer-events: none; text-align: right; }
+.state { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.5; pointer-events: none; }
+.state[hidden] { display: none; }
+.panel { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-height: 0;
+  padding-block: 16px 20px; padding-left: 18px; padding-right: max(18px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 22px; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tabs button { font: 500 12px var(--font-data); color: var(--muted); background: var(--card); border: 1px solid var(--line); padding: 8px 10px; border-radius: 5px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab { display: flex; flex-direction: column; gap: 22px; }
+.tab[hidden] { display: none; }
+.msgs { display: grid; gap: 12px; }
+.msg { display: grid; gap: 5px; }
+.bubble { font-size: 13px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.me { background: var(--card); border: 1px solid var(--line); }
+.bubble.agent { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.meta { font: 400 11px var(--font-data); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.meta button { font: 500 11px var(--font-data); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; cursor: pointer; }
+.ask { display: grid; gap: 8px; }
+.ask textarea { font: 400 13px var(--font-body); color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; resize: vertical; min-height: 78px; width: 100%; }
+.panel h2 { font: 500 11px var(--font-data); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 9px; }
+.list { display: grid; gap: 6px; }
+.item { text-align: left; font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; cursor: pointer; display: grid; gap: 3px; }
+.item:hover { border-color: var(--muted); }
+.item[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.item b { font-size: 13px; font-weight: 600; }
+.item span { font: 400 11px var(--font-data); color: var(--muted); }
+.detail h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; margin: 12px 0; }
+dt { color: var(--muted); }
+dd { font: 500 12px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+.files { list-style: none; display: grid; gap: 4px; font: 400 12px var(--font-data); margin-bottom: 12px; }
+.files li { display: flex; justify-content: space-between; gap: 10px; }
+.files li span:last-child { color: var(--muted); }
+.btn { font: 600 13px var(--font-body); color: var(--accent-fg); background: var(--accent); border: 0; padding: 10px 14px; border-radius: 5px; cursor: pointer; width: 100%; }
+.btn:disabled { opacity: .55; cursor: default; }
+.row { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 4px 0; cursor: pointer; }
+.row input { accent-color: var(--accent); width: 15px; height: 15px; }
+.cut { display: grid; gap: 7px; }
+.cut label { font: 400 12px var(--font-data); display: flex; justify-content: space-between; }
+.cut input { width: 100%; accent-color: var(--accent); }
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 46%); }
+  .panel { border-left: 0; border-top: 1px solid var(--line); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <div class="tag"><h1 id="title">Parts</h1><p id="status">loading…</p></div>
+    <div class="views" id="views">
+      <button type="button" data-view="iso">Iso</button>
+      <button type="button" data-view="top">Top</button>
+      <button type="button" data-view="front">Front</button>
+      <button type="button" data-view="right">Right</button>
+    </div>
+    <div class="hint">drag: orbit · right-drag / shift: pan · wheel: zoom</div>
+    <div class="state" id="state">Loading parts…</div>
+  </div>
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tb-parts" data-tab="parts" aria-selected="true">Parts</button>
+      <button type="button" role="tab" id="tb-chat" data-tab="chat" aria-selected="false">Ask the agent</button>
+    </div>
+    <div class="tab" id="tab-parts">
+    <section>
+      <h2>Parts</h2>
+      <div class="list" id="list"></div>
+    </section>
+    <section class="detail" id="detail" hidden>
+      <h2>Selected part</h2>
+      <h3 id="d-name"></h3>
+      <p class="note" id="d-desc"></p>
+      <dl id="d-info"></dl>
+      <ul class="files" id="d-files"></ul>
+      <button type="button" class="btn" id="dl">Download .zip</button>
+      <button type="button" class="btn" id="del" style="margin-top:6px">Delete part…</button>
+      <p class="note" id="dl-msg" style="margin-top:8px"></p>
+    </section>
+    <section id="hid-sec" hidden>
+      <h2>Deleted parts</h2>
+      <div class="list" id="hid-list"></div>
+    </section>
+    <section>
+      <h2>Show</h2>
+      <label class="row"><input type="checkbox" id="t-edges" checked> Edges</label>
+      <label class="row"><input type="checkbox" id="t-wire"> Wireframe</label>
+      <label class="row"><input type="checkbox" id="t-grid" checked> Grid and axes</label>
+    </section>
+    <section class="cut">
+      <h2>Cut</h2>
+      <label for="cut"><span>Remove above Z =</span><span id="cut-val">off</span></label>
+      <input type="range" id="cut" min="0" max="10" step="0.5" value="10">
+    </section>
+    <p class="note">New parts appear here when the agent adds them to the parts folder and republishes this page. Each download is a zip with the STL for printing and the STEP file for CAD.</p>
+    </div>
+    <div class="tab" id="tab-chat" hidden>
+      <section>
+        <h2>Ask the parts agent</h2>
+        <p class="note" id="agent-state">Connecting…</p>
+      </section>
+      <div class="msgs" id="msgs"></div>
+      <form class="ask" id="ask">
+        <textarea id="ask-text" rows="3" placeholder="Describe the part: what it is, its size in mm, holes, how it is printed…" aria-label="Request for the parts agent"></textarea>
+        <button type="submit" class="btn" id="ask-send">Send to the agent</button>
+        <p class="note" id="ask-note"></p>
+      </form>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const T = window.THREE;
+  const $ = id => document.getElementById(id);
+  const host = $('stage');
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const fmt = n => (Math.round(n * 100) / 100).toString();
+  const kb = n => n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1000)) + ' kB';
+
+  // ---- renderer and scene ----
+  let renderer;
+  try { renderer = new T.WebGLRenderer({ antialias: true, alpha: true }); }
+  catch (e) { $('state').textContent = 'This browser cannot draw 3D (WebGL is unavailable). The downloads still work.'; renderer = null; }
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(32, 1, 0.1, 5000);
+  camera.up.set(0, 0, 1);
+  scene.add(new T.HemisphereLight(0xffffff, 0x3a444d, 0.5));
+  const key = new T.DirectionalLight(0xffffff, 0.62); key.position.set(1, -1.2, 2); scene.add(key);
+  const fill = new T.DirectionalLight(0xffffff, 0.18); fill.position.set(-1, 1, 0.4); scene.add(fill);
+  let dirty = true;
+  if (renderer) {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.localClippingEnabled = true;
+    host.insertBefore(renderer.domElement, host.firstChild);
+  }
+  const cutPlane = new T.Plane(new T.Vector3(0, 0, -1), 1e5);
+  const partMat = new T.MeshStandardMaterial({ color: 0x6f8fa3, roughness: 0.62, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: [cutPlane] });
+  const edgeMat = new T.LineBasicMaterial({ color: 0x1d272e, transparent: true, opacity: 0.85, clippingPlanes: [cutPlane] });
+  const gridMat = new T.LineBasicMaterial({ color: 0xc3cbd1 }), gridMainMat = new T.LineBasicMaterial({ color: 0x9aa6af });
+  const stuff = new T.Group(); scene.add(stuff);          // everything that belongs to the shown part
+  let mesh = null, edges = null, grid = null, axes = null, bounds = null;
+
+  // ---- STL parsing (binary and ASCII) ----
+  function parseSTL(buf) {
+    const dv = new DataView(buf);
+    const n = buf.byteLength >= 84 ? dv.getUint32(80, true) : -1;
+    let pos;
+    if (buf.byteLength === 84 + 50 * n) {
+      pos = new Float32Array(n * 9);
+      for (let i = 0; i < n; i++) { const o = 84 + i * 50 + 12; for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + k * 4, true); }
+    } else {
+      const txt = new TextDecoder().decode(buf), v = [], re = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/g; let m;
+      while ((m = re.exec(txt))) v.push(+m[1], +m[2], +m[3]);
+      pos = new Float32Array(v);
+    }
+    const geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+    geo.computeVertexNormals(); geo.computeBoundingBox();
+    return geo;
+  }
+
+  // ---- helpers ----
+  function label(text, color) {
+    const c = document.createElement('canvas'), g = c.getContext('2d'); g.font = 'bold 30px monospace';
+    const w = Math.ceil(g.measureText(text).width) + 26; c.width = w; c.height = 46;
+    g.font = 'bold 30px monospace'; g.fillStyle = 'rgba(16,21,25,.86)'; g.beginPath(); g.roundRect ? g.roundRect(0, 0, w, 46, 8) : g.rect(0, 0, w, 46); g.fill();
+    g.fillStyle = color; g.textBaseline = 'middle'; g.fillText(text, 13, 24);
+    const s = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), depthTest: false, transparent: true }));
+    s.userData.aspect = w / 46; s.renderOrder = 10; return s;
+  }
+  function niceStep(span) { const raw = span / 12, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p; }
+
+  function showGeometry(geo) {
+    while (stuff.children.length) { const o = stuff.children.pop(); o.geometry && o.geometry.dispose(); }
+    const bb = geo.boundingBox; bounds = bb.clone();
+    const size = bb.getSize(new T.Vector3()), centre = bb.getCenter(new T.Vector3()), span = Math.max(size.x, size.y, size.z, 1);
+    mesh = new T.Mesh(geo, partMat); stuff.add(mesh);
+    edges = new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat); stuff.add(edges);
+    // grid on the lowest plane of the part, with the axes at the part's minimum corner
+    const step = niceStep(span * 2.2), half = Math.ceil(span * 1.4 / step) * step, z0 = bb.min.z - span * 0.002;
+    const gx = Math.round(centre.x / step) * step, gy = Math.round(centre.y / step) * step;
+    grid = new T.Group();
+    const minor = [], main = [];
+    for (let k = -half; k <= half + 1e-6; k += step) { (Math.abs(gx + k) < 1e-6 ? main : minor).push(gx + k, gy - half, z0, gx + k, gy + half, z0); (Math.abs(gy + k) < 1e-6 ? main : minor).push(gx - half, gy + k, z0, gx + half, gy + k, z0); }
+    const mk = (a, m) => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(a, 3)); return new T.LineSegments(g, m); };
+    grid.add(mk(minor, gridMat), mk(main, gridMainMat)); stuff.add(grid);
+    axes = new T.Group();
+    const L = span * 0.35, o = bb.min;
+    [['X', [L, 0, 0], 0xe5484d, '#ff7b80'], ['Y', [0, L, 0], 0x30a46c, '#5fd69a'], ['Z', [0, 0, L], 0x3e63dd, '#8ea6ff']].forEach(([t, v, col, txt]) => {
+      const g = new T.BufferGeometry().setFromPoints([new T.Vector3(o.x, o.y, o.z), new T.Vector3(o.x + v[0], o.y + v[1], o.z + v[2])]);
+      const ln = new T.Line(g, new T.LineBasicMaterial({ color: col, depthTest: false })); ln.renderOrder = 9; axes.add(ln);
+      const s = label(t, txt), h = span * 0.07; s.scale.set(h * s.userData.aspect, h, 1);
+      s.position.set(o.x + v[0] * 1.15, o.y + v[1] * 1.15, o.z + v[2] * 1.15); axes.add(s);
+    });
+    stuff.add(axes);
+    grid.visible = axes.visible = $('t-grid').checked; edges.visible = $('t-edges').checked; partMat.wireframe = $('t-wire').checked;
+    // cut slider covers the part's height
+    const cut = $('cut'); cut.min = fmt(bb.min.z); cut.max = fmt(Math.ceil(bb.max.z * 2) / 2); cut.step = size.z > 20 ? 0.5 : 0.1; cut.value = cut.max; setCut();
+    st.t.copy(centre); st.span = span; goTo(-0.9, 1.0, fitR(), centre);
+    theme(); dirty = true;
+  }
+
+  function theme() {
+    partMat.color.set(css('--part')); edgeMat.color.set(css('--edge'));
+    gridMainMat.color.set(css('--grid-main')); gridMat.color.set(css('--grid')); dirty = true;
+  }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme);
+  new MutationObserver(theme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---- camera: orbit around a target, Z up ----
+  const st = { th: -0.9, ph: 1.0, r: 100, t: new T.Vector3(), span: 50 };
+  const view = { iso: [-0.9, 1.0], top: [-Math.PI / 2, 0.02], front: [-Math.PI / 2, Math.PI / 2], right: [0, Math.PI / 2] };
+  function applyCam() {
+    const s = Math.sin(st.ph);
+    camera.position.set(st.t.x + st.r * s * Math.cos(st.th), st.t.y + st.r * s * Math.sin(st.th), st.t.z + st.r * Math.cos(st.ph));
+    camera.lookAt(st.t); camera.updateMatrixWorld(); dirty = true;
+  }
+  let tween = 0;
+  function goTo(th, ph, r, tgt) {
+    cancelAnimationFrame(tween);
+    const a = { th: st.th, ph: st.ph, r: st.r, t: st.t.clone() }, t0 = performance.now(), dur = 380;
+    const dth = ((th - a.th + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    (function step(now) {
+      const u = clamp((now - t0) / dur, 0, 1), e = u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      st.th = a.th + dth * e; st.ph = a.ph + (ph - a.ph) * e; st.r = a.r + (r - a.r) * e; st.t.lerpVectors(a.t, tgt || st.t, e);
+      applyCam(); if (u < 1) tween = requestAnimationFrame(step);
+    })(t0);
+  }
+  function fitR() { const a = host.clientWidth / Math.max(1, host.clientHeight); return st.span * 2.4 * Math.max(1, 1.1 / a); }
+  $('views').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !bounds) return;
+    const v = view[b.dataset.view]; goTo(v[0], v[1], fitR(), bounds.getCenter(new T.Vector3()));
+  });
+  function pan(dx, dy) {
+    const k = 2 * st.r * Math.tan(camera.fov * Math.PI / 360) / host.clientHeight;
+    const rt = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    st.t.addScaledVector(rt, -dx * k).addScaledVector(up, dy * k);
+  }
+  if (renderer) {
+    const el = renderer.domElement, ptrs = new Map();
+    el.addEventListener('contextmenu', e => e.preventDefault());
+    el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); cancelAnimationFrame(tween); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button }); });
+    el.addEventListener('pointermove', e => {
+      const p = ptrs.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      if (ptrs.size === 1) {
+        if (p.b === 2 || p.b === 1 || e.shiftKey) pan(dx, dy);
+        else { st.th -= dx * 0.008; st.ph = clamp(st.ph - dy * 0.008, 0.02, Math.PI - 0.02); }
+      } else if (ptrs.size === 2) {
+        const o = [...ptrs.entries()].find(([id]) => id !== e.pointerId)[1];
+        const before = Math.hypot(p.x - o.x, p.y - o.y), after = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+        if (after > 0) st.r = clamp(st.r * before / after, st.span * 0.3, st.span * 20);
+        pan(dx / 2, dy / 2);
+      }
+      p.x = e.clientX; p.y = e.clientY; applyCam();
+    });
+    const up = e => ptrs.delete(e.pointerId);
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('wheel', e => { e.preventDefault(); st.r = clamp(st.r * Math.exp(e.deltaY * 0.0012), st.span * 0.3, st.span * 20); applyCam(); }, { passive: false });
+  }
+
+  // ---- show options ----
+  $('t-edges').onchange = e => { if (edges) edges.visible = e.target.checked; dirty = true; };
+  $('t-wire').onchange = e => { partMat.wireframe = e.target.checked; dirty = true; };
+  $('t-grid').onchange = e => { if (grid) grid.visible = axes.visible = e.target.checked; dirty = true; };
+  function setCut() {
+    const cut = $('cut'), v = +cut.value, off = v >= +cut.max;
+    cutPlane.constant = off ? 1e5 : v; partMat.side = off ? T.FrontSide : T.DoubleSide; partMat.needsUpdate = true;
+    $('cut-val').textContent = off ? 'off' : fmt(v) + ' mm'; dirty = true;
+  }
+  $('cut').oninput = setCut;
+
+  // ---- zip (stored, no compression) so STL and STEP can be saved: the page may only save listed file types ----
+  const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  function makeZip(files) {
+    const enc = new TextEncoder(), chunks = [], central = [], d = new Date();
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(), dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    let offset = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+      lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      chunks.push(lh.buffer, name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+      ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+      central.push(ch.buffer, name);
+      offset += 30 + name.length + size;
+    }
+    const cSize = central.reduce((s, b) => s + b.byteLength, 0), end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cSize, true); end.setUint32(16, offset, true);
+    return new Blob([...chunks, ...central, end.buffer], { type: 'application/zip' });
+  }
+
+  // ---- reading model files: published as base64 text (artifacts serve only web file types), decoded to the exact bytes ----
+  async function loadBytes(path) {
+    const r = await fetch(path); if (!r.ok) throw new Error(path + ' ' + r.status);
+    const bin = atob((await r.text()).trim()), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+
+  // ---- parts list ----
+  let models = [], allModels = [], hidden = new Set(), current = null, downloads = null;
+  const cache = new Map();
+  function renderList() {
+    $('list').innerHTML = '';
+    models.forEach(m => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'item'; b.dataset.id = m.id;
+      b.setAttribute('aria-current', current && current.id === m.id ? 'true' : 'false');
+      const n = document.createElement('b'); n.textContent = m.name;
+      const s = document.createElement('span'); s.textContent = `${m.size.map(fmt).join(' × ')} mm · ${m.updated}`;
+      b.append(n, s); b.onclick = () => { location.hash = m.id; }; $('list').append(b);
+    });
+  }
+  async function select(id) {
+    const m = models.find(x => x.id === id) || models[0]; if (!m) return;
+    current = m; renderList();
+    $('title').textContent = m.name; $('status').textContent = `${m.size.map(fmt).join(' × ')} mm · ${m.triangles.toLocaleString('en')} triangles`;
+    $('detail').hidden = false; $('d-name').textContent = m.name; $('d-desc').textContent = m.description || '';
+    $('d-info').innerHTML = '';
+    [['Size (X × Y × Z)', `${m.size.map(fmt).join(' × ')} mm`], ['Volume', `${(m.volume_mm3 / 1000).toFixed(2)} cm³`], ['Updated', m.updated]].forEach(([k, v]) => {
+      const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; $('d-info').append(dt, dd);
+    });
+    $('d-files').innerHTML = '';
+    m.files.forEach(f => { const li = document.createElement('li'), a = document.createElement('span'), b = document.createElement('span'); a.textContent = f.name; b.textContent = kb(f.bytes); li.append(a, b); $('d-files').append(li); });
+    $('dl').textContent = `Download ${m.id}.zip`; $('dl-msg').textContent = downloads ? '' : 'Downloads work when this page is open in claude.ai.';
+    if (!renderer) return;
+    $('state').textContent = 'Loading part…'; $('state').hidden = false;
+    try {
+      if (!cache.has(m.stl)) cache.set(m.stl, parseSTL((await loadBytes(m.stl)).buffer));
+      if (current !== m) return;
+      $('state').hidden = true; showGeometry(cache.get(m.stl).clone());
+    } catch (e) { $('state').textContent = 'Could not load ' + m.name + '. ' + e.message; }
+  }
+
+  $('dl').onclick = async () => {
+    if (!current || !downloads) return;
+    const m = current, btn = $('dl'), msg = $('dl-msg');
+    btn.disabled = true; msg.textContent = 'Preparing…';
+    try {
+      const files = [];
+      for (const f of m.files) files.push({ name: f.name, data: await loadBytes(f.path) });
+      await downloads.save({ filename: m.id + '.zip', data: makeZip(files) });
+      msg.textContent = 'Saved ' + m.id + '.zip';
+    } catch (e) {
+      msg.textContent = e && e.code === 'declined' ? 'Download cancelled.' : e && (e.code === 'unavailable' || e.code === 'not_granted') ? 'Downloads are not available in this view.' : 'Could not download: ' + ((e && e.message) || e);
+    } finally { btn.disabled = false; }
+  };
+
+  // Deleting only hides a part for everybody (a list in the page database, no agent involved); the files stay in the repo and can be restored.
+  const setHidden = ids => rdb.doc('config/hidden').set({ ids: [...new Set(ids)] });
+  function applyHidden() {
+    models = allModels.filter(m => !hidden.has(m.id));
+    const back = allModels.filter(m => hidden.has(m.id));
+    $('hid-sec').hidden = !back.length; $('hid-list').innerHTML = '';
+    back.forEach(m => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'item'; b.textContent = 'Restore ' + m.name;
+      b.onclick = () => setHidden([...hidden].filter(x => x !== m.id)); $('hid-list').append(b);
+    });
+    if (!allModels.length) return;
+    if (!models.length) { current = null; $('detail').hidden = true; renderList(); $('title').textContent = 'Parts'; $('status').textContent = 'no parts'; showEmpty(); return; }
+    renderList();
+    if (!current || !models.some(x => x.id === current.id)) select(location.hash.slice(1));
+  }
+  function showEmpty() { while (stuff.children.length) { const o = stuff.children.pop(); o.geometry && o.geometry.dispose(); } dirty = true; $('state').textContent = 'No parts. Restore one below or ask the agent for a new one.'; $('state').hidden = false; }
+  let delArmed = null;
+  $('del').onclick = async () => {
+    if (!current) return;
+    if (!rdb) { $('dl-msg').textContent = 'Deleting works when this page is open in claude.ai.'; return; }
+    const m = current, btn = $('del'), msg = $('dl-msg');
+    if (delArmed !== m.id) { delArmed = m.id; btn.textContent = 'Really delete ' + m.name + '? Click again'; setTimeout(() => { if (delArmed === m.id) { delArmed = null; btn.textContent = 'Delete part…'; } }, 5000); return; }
+    delArmed = null; btn.textContent = 'Delete part…'; btn.disabled = true;
+    try { await setHidden([...hidden, m.id]); msg.textContent = 'Deleted ' + m.name + '. You can restore it under "Deleted parts".'; }
+    catch (e) { msg.textContent = 'Could not delete: ' + ((e && e.message) || e); }
+    btn.disabled = false;
+  };
+
+  // ---- start ----
+  function resize() {
+    if (!renderer) return;
+    const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); dirty = true;
+  }
+  new ResizeObserver(resize).observe(host);
+  (function loop() { if (renderer && dirty) { dirty = false; renderer.render(scene, camera); } requestAnimationFrame(loop); })();
+  window.addEventListener('hashchange', () => select(location.hash.slice(1)));
+  theme(); resize(); applyCam();
+
+  (async () => {
+    if (window.claude && window.claude.use) { try { downloads = await window.claude.use('downloads'); } catch (e) { downloads = null; } }
+    if (!downloads) { $('dl').hidden = true; $('dl-msg').textContent = 'Downloads work when this page is open in claude.ai.'; }
+    try {
+      const r = await fetch('models/manifest.json', { cache: 'no-store' }); if (!r.ok) throw new Error('models/manifest.json ' + r.status);
+      allModels = (await r.json()).models || []; models = allModels.filter(m => !hidden.has(m.id));
+    } catch (e) { $('state').textContent = 'The parts list could not be loaded. ' + e.message; $('status').textContent = 'no parts'; return; }
+    if (!allModels.length) { $('state').textContent = 'No parts yet. Ask Claude to add one.'; $('status').textContent = 'no parts'; return; }
+    applyHidden(); if (models.length) select(location.hash.slice(1));
+    if (!downloads) { $('dl').hidden = true; }
+  })();
+
+  // ---- tabs ----
+  function showTab(name) {
+    ['parts', 'chat'].forEach(t => { $('tab-' + t).hidden = t !== name; $('tb-' + t).setAttribute('aria-selected', t === name ? 'true' : 'false'); });
+  }
+  document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+
+  // ---- chat with the parts agent ----
+  // The page saves every request in the artifact's database, then posts it as a comment sent to Claude, which wakes the
+  // Claude sessions watching this artifact (the parts agent among them). The agent writes its status and reply into the
+  // same database document. Nothing polls.
+  let rdb = null, rcom = null, sessionId = null, canSend = false, sendState = 'off';
+  const stateEl = $('agent-state');
+  function agentState() {
+    let t;
+    if (!rdb) t = 'The chat needs a signed-in view of this page in claude.ai. You can still browse and download parts.';
+    else if (!sessionId) t = 'No agent is set up for this page yet. Ask Claude in the session that built it to start one.';
+    else if (!rcom || sendState !== 'available') t = 'This view cannot send comments to Claude' + (sendState === 'writers_only' ? ' (only people who can edit this page can)' : sendState === 'no_session' ? ' (no Claude session is watching it right now)' : '') + '. Requests are saved, and the agent picks them up when you tell it in its session to process pending requests.';
+    else t = 'Each request is saved and sent to Claude as a comment, which wakes the agent. It builds the part with the CAD tools, adds it to the parts list and republishes this page. That takes a few minutes.';
+    stateEl.textContent = t; canSend = !!rdb;
+    $('ask-send').disabled = !canSend;
+  }
+  const STATUS = { sent: 'sent', working: 'agent is working', done: 'done', error: 'failed', needs_info: 'agent has a question' };
+  const DELIVERY = { delivered: 'agent notified', pending: 'sending…', saved: 'saved, agent not notified', 'no-comments': 'saved, agent cannot be notified from this view', 'no-agent': 'saved, no agent set up' };
+  function renderMsgs(snap) {
+    const box = $('msgs'); box.innerHTML = '';
+    snap.docs.forEach(d => {
+      const r = d.data() || {}, wrap = document.createElement('div'); wrap.className = 'msg';
+      const me = document.createElement('div'); me.className = 'bubble me'; me.textContent = r.text || '';
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const st = document.createElement('span'); st.textContent = (STATUS[r.status] || r.status || '') + (r.delivery && DELIVERY[r.delivery] ? ' · ' + DELIVERY[r.delivery] : (r.delivery && r.delivery.startsWith('not-delivered') ? ' · saved, agent could not be notified (' + r.delivery.split(':')[1] + ')' : ''));
+      meta.append(st);
+      wrap.append(me, meta);
+      if (r.reply) { const a = document.createElement('div'); a.className = 'bubble agent'; a.textContent = r.reply; wrap.append(a); }
+      (Array.isArray(r.parts) ? r.parts : []).forEach(pid => {
+        if (!models.some(m => m.id === pid)) return;
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Show ' + pid; b.onclick = () => { location.hash = pid; showTab('parts'); };
+        meta.append(b);
+      });
+      box.append(wrap);
+    });
+    box.parentElement.scrollTop = box.parentElement.scrollHeight;
+  }
+  // Saves a request in the db and wakes the agent with a comment. Returns a note for the viewer, or '' when all went well.
+  async function submitRequest(text, viewing, onSaved) {
+    const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ref = rdb.collection('requests').doc(id);
+    // start both at once: the comment must go out while the viewer's click is still recent
+    const saving = ref.set({ text, viewing, status: 'sent', delivery: 'pending', reply: '', created: Date.now() });
+    let sending = Promise.resolve(sessionId ? 'no-comments' : 'no-agent');
+    if (sessionId && rcom && sendState === 'available') {
+      sending = (async () => {
+        try { const anchor = await rcom.anchorFor($('ask-text')); await rcom.sendToClaude({ anchor, text: 'PARTS-AGENT REQUEST ' + id + (viewing ? ' [viewing ' + viewing + ']' : '') + ': ' + text.slice(0, 3700) }); return 'delivered'; }
+        catch (err) { return 'not-delivered:' + ((err && err.code) || 'error'); }
+      })();
+    }
+    try { await saving; if (onSaved) onSaved(); }
+    catch (err) { return 'Could not save the request' + (err && err.code ? ' (' + err.code + ')' : '') + '. Try again.'; }
+    const delivery = await sending;
+    let note = '';
+    if (delivery.startsWith('not-delivered')) {
+      const c = delivery.split(':')[1];
+      note = c === 'consent_required' ? 'Allow this page to write comments, then send the request again. It is saved.'
+        : c === 'rate_limited' ? 'Sending too often. The request is saved; wait a moment and tell the agent in its session to process pending requests.'
+        : 'Claude could not be notified (' + c + '). The request is saved; tell the agent in its session to process pending requests.';
+    }
+    try { await ref.update({ delivery }); } catch (err) { /* the request is saved either way */ }
+    return note;
+  }
+  $('ask').onsubmit = async e => {
+    e.preventDefault();
+    const ta = $('ask-text'), text = ta.value.trim().replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' '), note = $('ask-note');
+    if (!text || !rdb) return;
+    $('ask-send').disabled = true; note.textContent = '';
+    note.textContent = await submitRequest(text, current ? current.id : '', () => { ta.value = ''; });
+    $('ask-send').disabled = !canSend;
+  };
+  (async () => {
+    if (!(window.claude && window.claude.use)) { agentState(); return; }
+    try { rdb = await window.claude.use('db'); } catch (e) { rdb = null; }
+    try { rcom = await window.claude.use('comments'); } catch (e) { rcom = null; }
+    if (rcom) { try { sendState = await rcom.canSendToClaude(); } catch (e) { sendState = 'off'; } }
+    agentState();
+    if (!rdb) return;
+    rdb.doc('config/hidden').onSnapshot(s => { hidden = new Set(s.exists && s.data() && Array.isArray(s.data().ids) ? s.data().ids : []); applyHidden(); }, () => {});
+    rdb.doc('config/agent').onSnapshot(s => { sessionId = s.exists && s.data() ? s.data().sessionId || null : null; agentState(); }, () => agentState());
+    rdb.collection('requests').orderBy('created', 'asc').limit(200).onSnapshot(renderMsgs, () => { stateEl.textContent = 'The chat history could not be loaded.'; });
+  })();
+})();
+</script>

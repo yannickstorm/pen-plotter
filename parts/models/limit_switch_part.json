@@ -1,0 +1,4 @@
+{
+  "name": "Limit switch bracket",
+  "description": "One flat part for the pen plotter's X and Y micro limit switches. Plate screws to the motor (2 x M3). The X switch sits on the plate (lever hit at 40 / 0 / 5), the Y switch on a raised platform (lever hit at 35 / -35 / 10), measured from the midpoint of the two motor screws, Z above the motor face. Prints flat, no supports. Switch screws: self-tapping M2 x 8 (X) and M2 x 10 (Y)."
+}
