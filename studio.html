@@ -324,6 +324,23 @@
   .modes button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 6px; border-radius: 9px; border: 1px solid var(--line); background: var(--raise); color: var(--muted); cursor: pointer; font-size: 10.5px; font-weight: 500; }
   .modes button svg { width: 22px; height: 22px; }
   .modes button.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--raise)); }
+  /* drawings (SVG): one row per fill / line colour, its style opens underneath */
+  .vlist { display: flex; flex-direction: column; gap: 3px; grid-column: 1 / -1; }
+  .vrow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 14px; column-gap: 8px; row-gap: 3px; align-items: center; padding: 6px 7px; border-radius: 9px; border: 1px solid transparent; cursor: pointer; }
+  .vrow:hover { background: var(--raise); }
+  .vrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .vrow.on { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .vrow .sw { grid-row: 1 / 3; }
+  .vrow b { grid-column: 2 / 4; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vrow .vmeta { grid-column: 2; font-size: 10.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vrow select { grid-column: 3 / 5; width: 118px; height: 26px; font-size: 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); padding: 0 6px; cursor: default; }
+  .vrow .chev { grid-column: 4; width: 14px; height: 14px; color: var(--faint); transition: transform .15s; }
+  .vrow.on .chev { transform: rotate(90deg); color: var(--accent); }
+  .vstyle { padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin: 2px 0 8px; }
+  .vstyle .modes button { padding: 6px 0 5px; }
+  .vstyle .modes button svg { width: 20px; height: 20px; }
+  .card.vpick { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+  .vtag { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 
   /* menus + modals */
   .menu { position: fixed; z-index: 30; min-width: 190px; padding: 5px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 16px 40px rgba(0,0,0,.35); display: none; }
@@ -485,6 +502,10 @@
           <button id="mIn" title="Zoom into the map">+</button>
         </div>
         <div class="pill" id="mHint" hidden></div>
+      </div>
+      <div class="hud mt" id="vecTools" data-only="design" hidden>
+        <div class="tools"><button id="vPick" title="Pick single shapes of the drawing to give them their own style (or double-click the drawing)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-6 2-2 6z"/></svg>Pick shapes</button></div>
+        <div class="pill" id="vHint" hidden></div>
       </div>
       <div class="hud bl" data-only="design">
         <div class="tools">
@@ -1722,45 +1743,6 @@ function hatchFill(rings, o, angleOffset = 0) {
   if (o.cross) out.push(...hatchRings(rings, o.spacing, o.angle + angleOffset + 90));
   return out;
 }
-// segment / segment intersection parameter along a→b, or null
-function segT(ax, ay, bx, by, p, q) {
-  const rx = bx - ax, ry = by - ay, sx = q[0] - p[0], sy = q[1] - p[1], d = rx * sy - ry * sx;
-  if (Math.abs(d) < 1e-12) return null;
-  const t = ((p[0] - ax) * sy - (p[1] - ay) * sx) / d, u = ((p[0] - ax) * ry - (p[1] - ay) * rx) / d;
-  return t > 0 && t < 1 && u >= 0 && u <= 1 ? t : null;
-}
-// keep only the parts of a polyline outside every occluder ({rings, bb})
-function clipByOccluders(poly, occs) {
-  if (!occs.length) return [poly];
-  const pb = bboxOf([poly]);
-  occs = occs.filter(o => !(o.bb[0] > pb[2] || o.bb[2] < pb[0] || o.bb[1] > pb[3] || o.bb[3] < pb[1]));
-  if (!occs.length) return [poly];
-  const out = []; let cur = null;
-  const hidden = (x, y) => occs.some(o => x >= o.bb[0] && x <= o.bb[2] && y >= o.bb[1] && y <= o.bb[3] && insideRings(o.rings, x, y));
-  for (let i = 1; i < poly.length; i++) {
-    const [ax, ay] = poly[i - 1], [bx, by] = poly[i];
-    const sx0 = Math.min(ax, bx), sx1 = Math.max(ax, bx), sy0 = Math.min(ay, by), sy1 = Math.max(ay, by);
-    const ts = [0, 1];
-    for (const o of occs) {
-      if (o.bb[0] > sx1 || o.bb[2] < sx0 || o.bb[1] > sy1 || o.bb[3] < sy0) continue;
-      for (const r of o.rings) for (let j = 0, k = r.length - 1; j < r.length; k = j++) {
-        const p = r[k], q = r[j];
-        if (Math.max(p[0], q[0]) < sx0 || Math.min(p[0], q[0]) > sx1 || Math.max(p[1], q[1]) < sy0 || Math.min(p[1], q[1]) > sy1) continue;
-        const t = segT(ax, ay, bx, by, p, q); if (t !== null) ts.push(t);
-      }
-    }
-    ts.sort((p, q) => p - q);
-    for (let j = 1; j < ts.length; j++) {
-      const t0 = ts[j - 1], t1 = ts[j]; if (t1 - t0 < 1e-9) continue;
-      const tm = (t0 + t1) / 2;
-      if (!hidden(ax + (bx - ax) * tm, ay + (by - ay) * tm)) {
-        if (!cur) { cur = [[ax + (bx - ax) * t0, ay + (by - ay) * t0]]; out.push(cur); }
-        cur.push([ax + (bx - ax) * t1, ay + (by - ay) * t1]);
-      } else cur = null;
-    }
-  }
-  return out.filter(p => p.length > 1);
-}
 // clip a polyline to an axis-aligned rectangle (Liang–Barsky per segment)
 function clipRect(poly, x0, y0, x1, y1) {
   const out = []; let cur = null;
@@ -1782,6 +1764,383 @@ function clipRect(poly, x0, y0, x1, y1) {
     if (t1 < 1) cur = null;
   }
   return out.filter(p => p.length > 1);
+}
+
+// =====================================================================
+//  vector styles: fill patterns, line effects, outline weight, echoes, shadows
+//  (local mm, Y up; a shape's rings are closed polylines filled even-odd)
+// =====================================================================
+const ringClosed = p => p.length > 2 && Math.abs(p[0][0] - p[p.length - 1][0]) < 1e-9 && Math.abs(p[0][1] - p[p.length - 1][1]) < 1e-9;
+const closeRing = r => ringClosed(r) ? r : [...r, r[0]];
+// a grid over the edges of a ring set: "is this point inside" and "where does this segment cross an edge" without testing every edge
+function ringIndex(rings) {
+  const E = [];
+  for (const r of rings) for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const p = r[j], q = r[i]; if (p[0] === q[0] && p[1] === q[1]) continue; E.push(p[0], p[1], q[0], q[1]);
+  }
+  const bb = bboxOf(rings), n = E.length / 4, G = clamp(Math.ceil(Math.sqrt(n) / 2), 1, 96);
+  const gw = Math.max((bb[2] - bb[0]) / G, 1e-9), gh = Math.max((bb[3] - bb[1]) / G, 1e-9);
+  const cx = x => clamp(Math.floor((x - bb[0]) / gw), 0, G - 1), cy = y => clamp(Math.floor((y - bb[1]) / gh), 0, G - 1);
+  const cells = Array.from({length: G * G}, () => []), rows = Array.from({length: G}, () => []);
+  for (let e = 0; e < n; e++) {
+    const k = e * 4, x0 = cx(Math.min(E[k], E[k + 2])), x1 = cx(Math.max(E[k], E[k + 2])), y0 = cy(Math.min(E[k + 1], E[k + 3])), y1 = cy(Math.max(E[k + 1], E[k + 3]));
+    for (let j = y0; j <= y1; j++) { rows[j].push(e); for (let i = x0; i <= x1; i++) cells[j * G + i].push(e); }
+  }
+  return {E, bb, G, cells, rows, cx, cy, stamp: new Uint32Array(n), mark: 0};
+}
+function ringInside(R, x, y) {   // even-odd
+  const bb = R.bb; if (x < bb[0] || x > bb[2] || y < bb[1] || y > bb[3]) return false;
+  const E = R.E; let c = false;
+  for (const e of R.rows[R.cy(y)]) {
+    const k = e * 4, yi = E[k + 1], yj = E[k + 3];
+    if ((yi > y) !== (yj > y) && x < (E[k + 2] - E[k]) * (y - yi) / (yj - yi) + E[k]) c = !c;
+  }
+  return c;
+}
+function ringHits(R, ax, ay, bx, by, ts) {   // parameters along a→b where it crosses an edge (strictly between the ends)
+  const bb = R.bb;
+  if (Math.max(ax, bx) < bb[0] || Math.min(ax, bx) > bb[2] || Math.max(ay, by) < bb[1] || Math.min(ay, by) > bb[3]) return;
+  const x0 = R.cx(Math.min(ax, bx)), x1 = R.cx(Math.max(ax, bx)), y0 = R.cy(Math.min(ay, by)), y1 = R.cy(Math.max(ay, by));
+  const m = ++R.mark, E = R.E, rx = bx - ax, ry = by - ay;
+  for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) for (const e of R.cells[j * R.G + i]) {
+    if (R.stamp[e] === m) continue; R.stamp[e] = m;
+    const k = e * 4, px = E[k], py = E[k + 1], sx = E[k + 2] - px, sy = E[k + 3] - py, d = rx * sy - ry * sx;
+    if (Math.abs(d) < 1e-12) continue;
+    const t = ((px - ax) * sy - (py - ay) * sx) / d, u = ((px - ax) * ry - (py - ay) * rx) / d;
+    if (t > 1e-7 && t < 1 - 1e-7 && u >= 0 && u <= 1) ts.push(t);
+  }
+}
+// the parts of a polyline inside (keep = true) or outside a ring set
+function clipToRings(poly, R, keep = true) {
+  const pb = bboxOf([poly]), bb = R.bb;
+  if (pb[0] > bb[2] || pb[2] < bb[0] || pb[1] > bb[3] || pb[3] < bb[1]) return keep ? [] : [poly];
+  const out = [], ts = []; let cur = null;
+  for (let i = 1; i < poly.length; i++) {
+    const [ax, ay] = poly[i - 1], [bx, by] = poly[i];
+    ts.length = 0; ts.push(0, 1); ringHits(R, ax, ay, bx, by, ts);
+    if (ts.length > 2) ts.sort((p, q) => p - q);
+    for (let j = 1; j < ts.length; j++) {
+      const t0 = ts[j - 1], t1 = ts[j]; if (t1 - t0 < 1e-9) continue;
+      const tm = (t0 + t1) / 2;
+      if (ringInside(R, ax + (bx - ax) * tm, ay + (by - ay) * tm) === keep) {
+        if (!cur) { cur = [[ax + (bx - ax) * t0, ay + (by - ay) * t0]]; out.push(cur); }
+        cur.push([ax + (bx - ax) * t1, ay + (by - ay) * t1]);
+      } else cur = null;
+    }
+  }
+  return out.filter(p => p.length > 1);
+}
+const segInside = (R, p, q) => { const ts = []; ringHits(R, p[0], p[1], q[0], q[1], ts); return !ts.length && ringInside(R, (p[0] + q[0]) / 2, (p[1] + q[1]) / 2); };
+// signed distance to the outline on a grid (mm, positive inside): exact Euclidean distance transform (Felzenszwalb) of a raster of the rings
+function edt1(f, n, d, v, z) {
+  let k = 0; v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+    k++; v[k] = q; z[k] = s; z[k + 1] = Infinity;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+}
+function edt2(g, W, H) {   // squared distance to the nearest 0 cell, in place
+  const n = Math.max(W, H), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+  for (let x = 0; x < W; x++) { for (let y = 0; y < H; y++) f[y] = g[y * W + x]; edt1(f, H, d, v, z); for (let y = 0; y < H; y++) g[y * W + x] = d[y]; }
+  for (let y = 0; y < H; y++) { const o = y * W; for (let x = 0; x < W; x++) f[x] = g[o + x]; edt1(f, W, d, v, z); for (let x = 0; x < W; x++) g[o + x] = d[x]; }
+}
+const sdfCell = (rings, want, margin = 0) => { const b = bboxOf(rings); return Math.max(want, (Math.max(b[2] - b[0], b[3] - b[1]) + 2 * margin) / 900, 0.03); };
+function ringSDF(rings, cell, margin = 0) {
+  const bb = bboxOf(rings), pad = margin + 2 * cell, x0 = bb[0] - pad, y0 = bb[1] - pad;
+  const W = Math.ceil((bb[2] - bb[0] + 2 * pad) / cell) + 1, H = Math.ceil((bb[3] - bb[1] + 2 * pad) / cell) + 1;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', {willReadFrequently: true});
+  g.beginPath();
+  for (const r of rings) { r.forEach(([x, y], i) => i ? g.lineTo((x - x0) / cell, (y - y0) / cell) : g.moveTo((x - x0) / cell, (y - y0) / cell)); g.closePath(); }
+  g.fill('evenodd');
+  const a = g.getImageData(0, 0, W, H).data, n = W * H, fin = new Float64Array(n), fout = new Float64Array(n);
+  for (let i = 0; i < n; i++) { const ins = a[i * 4 + 3] >= 128; fin[i] = ins ? 1e20 : 0; fout[i] = ins ? 0 : 1e20; }
+  edt2(fin, W, H); edt2(fout, W, H);
+  const f = new Float32Array(n); let max = 0;
+  for (let i = 0; i < n; i++) { f[i] = (a[i * 4 + 3] >= 128 ? Math.sqrt(fin[i]) - 0.5 : 0.5 - Math.sqrt(fout[i])) * cell; if (f[i] > max) max = f[i]; }
+  return {f, W, H, x0, y0, cell, max};
+}
+function sdfLines(S, level) {   // the line at this distance from the outline (negative: outside)
+  return isoLines(S.f, S.W, S.H, level).map(l => {
+    let p = l.map(([gx, gy]) => [S.x0 + (gx + 0.5) * S.cell, S.y0 + (gy + 0.5) * S.cell]);
+    if (p.length > 4) p = chaikin(p);
+    return rdp(p, S.cell * 0.15);
+  }).filter(p => p.length > 1 && pathLen(p) > S.cell * 1.5);
+}
+function ringCentre(rings) {   // centre of the filled area (holes count as holes), else of the box
+  let A = 0, X = 0, Y = 0;
+  for (const r of rings) {
+    let a = 0, x = 0, y = 0;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const c = r[j][0] * r[i][1] - r[i][0] * r[j][1]; a += c; x += (r[j][0] + r[i][0]) * c; y += (r[j][1] + r[i][1]) * c; }
+    if (Math.abs(a) < 1e-12) continue;
+    const depth = rings.filter(q => q !== r && insideRings([q], r[0][0], r[0][1])).length, sg = depth % 2 ? -1 : 1;
+    A += sg * Math.abs(a); X += sg * Math.abs(a) * x / (3 * a); Y += sg * Math.abs(a) * y / (3 * a);
+  }
+  if (Math.abs(A) > 1e-9) return [X / A, Y / A];
+  const b = bboxOf(rings); return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+}
+// positions from start to b, each step = sp; fade (−100…100 %) lets the step grow across [a, b] (up to 5×)
+function fadeSteps(a, b, sp, fade, start) {
+  const out = [], L = Math.max(b - a, 1e-9), g = Math.abs(fade || 0) / 100 * 4;
+  sp = Math.max(sp, L / 20000);
+  for (let y = start; y <= b; ) { if (y >= a) out.push(y); const t = clamp((y - a) / L, 0, 1); y += sp * (1 + g * (fade > 0 ? t : 1 - t)); }
+  return out;
+}
+// the scan lines across the rings at angle ang (rotated frame u along, v across): rows of runs, each run [start, end] left to right
+function ringSpan(rings, ang) {
+  const a = ang * D2R, c = Math.cos(a), s = Math.sin(a); let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+  for (const r of rings) for (const [x, y] of r) { const u = x * c + y * s, v = -x * s + y * c; if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v; }
+  return {c, s, u0, u1, v0, v1};
+}
+function rowYs(rings, ang, sp, fade, margin = 0) {
+  const {v0, v1} = ringSpan(rings, ang), a = v0 - margin, b = v1 + margin;
+  if (fade) return fadeSteps(a, b, sp, fade, a + sp / 2);
+  sp = Math.max(sp, (b - a) / 20000);
+  return fadeSteps(a, b, sp, 0, (Math.ceil(a / sp - 0.5) + 0.5) * sp);   // whole steps from 0, so neighbouring shapes' lines line up
+}
+function scanRings(rings, ang, ys) {
+  const a = ang * D2R, c = Math.cos(a), s = Math.sin(a), E = [];
+  for (const r of rings) for (let i = 0, n = r.length; i < n; i++) {
+    const p = r[i], q = r[(i + 1) % n];
+    const x0 = p[0] * c + p[1] * s, y0 = -p[0] * s + p[1] * c, x1 = q[0] * c + q[1] * s, y1 = -q[0] * s + q[1] * c;
+    if (y0 === y1) continue;
+    E.push(y0 < y1 ? [y0, y1, x0, (x1 - x0) / (y1 - y0)] : [y1, y0, x1, (x0 - x1) / (y0 - y1)]);
+  }
+  E.sort((p, q) => p[0] - q[0]);
+  const rows = []; let next = 0, act = [];
+  for (const y of ys) {
+    while (next < E.length && E[next][0] <= y) act.push(E[next++]);
+    act = act.filter(e => e[1] > y);
+    const xs = act.map(e => e[2] + (y - e[0]) * e[3]).sort((p, q) => p - q), runs = [];
+    for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > 1e-6) runs.push([[xs[i] * c - y * s, xs[i] * s + y * c], [xs[i + 1] * c - y * s, xs[i + 1] * s + y * c]]);
+    rows.push(runs);
+  }
+  return rows;
+}
+// link the runs of neighbouring rows end to end (where the link stays inside): fewer pen lifts, and the base of scribble
+function chainRuns(rows, R, maxLink) {
+  const done = []; let open = [];
+  rows.forEach((runs, k) => {
+    const nxt = [];
+    for (const run of runs) {
+      let best = -1, bd = maxLink, flip = false;
+      open.forEach((ch, ci) => { if (ch.used) return; const e = ch.pts[ch.pts.length - 1]; for (const f of [0, 1]) { const d = Math.hypot(run[f][0] - e[0], run[f][1] - e[1]); if (d < bd) { bd = d; best = ci; flip = f === 1; } } });
+      const r = flip ? [run[1], run[0]] : run;
+      if (best >= 0 && segInside(R, open[best].pts[open[best].pts.length - 1], r[0])) { const ch = open[best]; ch.used = true; ch.pts.push(r[0], r[1]); nxt.push(ch); }
+      else { const ch = {pts: k & 1 ? [run[1], run[0]] : [run[0], run[1]], used: true}; done.push(ch); nxt.push(ch); }
+    }
+    for (const ch of nxt) ch.used = false;
+    open = nxt;
+  });
+  return done.map(ch => ch.pts);
+}
+const boustro = rows => rows.flatMap((runs, k) => k & 1 ? runs.slice().reverse().map(r => [r[1], r[0]]) : runs);
+function circlePts(x, y, r, step = 0.3) { const n = clamp(Math.ceil(TAU * r / step), 6, 720), o = []; for (let k = 0; k <= n; k++) o.push([x + r * Math.cos(k / n * TAU), y + r * Math.sin(k / n * TAU)]); return o; }
+function hilbertXY(n, d) {
+  let x = 0, y = 0, t = d;
+  for (let s = 1; s < n; s *= 2) {
+    const rx = 1 & (t / 2), ry = 1 & (t ^ rx);
+    if (ry === 0) { if (rx === 1) { x = s - 1 - x; y = s - 1 - y; } const tmp = x; x = y; y = tmp; }
+    x += s * rx; y += s * ry; t = Math.floor(t / 4);
+  }
+  return [x, y];
+}
+function patternCentre(rings, P) {
+  const [cx, cy] = ringCentre(rings), b = bboxOf(rings);
+  return [cx + (P.ox || 0) / 100 * (b[2] - b[0]), cy + (P.oy || 0) / 100 * (b[3] - b[1])];
+}
+const farCorner = (rings, c) => { const b = bboxOf(rings); return Math.max(...[[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]].map(q => Math.hypot(q[0] - c[0], q[1] - c[1]))); };
+// fill patterns: (rings, ring index, params with sp = spacing in mm, random) → polylines inside the rings
+const FILLS = {
+  none: () => [],
+  hatch: (rings, R, P) => {
+    const rows = scanRings(rings, P.angle, rowYs(rings, P.angle, P.sp, P.fade));
+    return P.join ? chainRuns(rows, R, P.sp * 3) : boustro(rows);
+  },
+  cross: (rings, R, P) => { const n = clamp(Math.round(+P.dirs || 2), 2, 4), out = []; for (let k = 0; k < n; k++) out.push(...FILLS.hatch(rings, R, {...P, angle: P.angle + k * 180 / n})); return out; },
+  waves: (rings, R, P, rnd, zig) => {   // rows that wave up and down (zig: in straight zigzags)
+    const S = ringSpan(rings, P.angle), amp = Math.max(0, +P.amp || 0), wl = Math.max(0.5, +P.wave || 5), out = [];
+    const st = zig ? wl / 2 : clamp(wl / 16, 0.1, 0.6), u0 = zig ? (Math.floor(S.u0 / st) - 1) * st : S.u0 - st;
+    rowYs(rings, P.angle, P.sp, P.fade, amp).forEach((y, k) => {
+      const l = [];
+      for (let u = u0, j = Math.round(u0 / st); u <= S.u1 + st; u += st, j++) { const v = y + amp * (zig ? (j & 1 ? 1 : -1) : Math.sin(u / wl * TAU)); l.push([u * S.c - v * S.s, u * S.s + v * S.c]); }
+      if (k & 1) l.reverse();
+      out.push(...clipToRings(l, R));
+    });
+    return out;
+  },
+  zigzag: (rings, R, P, rnd) => FILLS.waves(rings, R, P, rnd, true),
+  contour: (rings, R, P) => {
+    const S = ringSDF(rings, sdfCell(rings, P.sp / 3)), n = +P.count > 0 ? +P.count : Infinity, out = [];
+    fadeSteps(0, S.max, P.sp, -(P.fade || 0), P.sp).slice(0, n).forEach(lv => out.push(...sdfLines(S, lv)));
+    return out;
+  },
+  spiral: (rings, R, P) => {
+    const c = patternCentre(rings, P), Rm = farCorner(rings, c), st = clamp(Rm / 300, 0.25, 1.5), a0 = (P.angle || 0) * D2R, l = [];
+    for (let th = 0, r = 0; r <= Rm; th += st / Math.max(r, P.sp)) { r = P.sp * th / TAU; l.push([c[0] + r * Math.cos(th + a0), c[1] + r * Math.sin(th + a0)]); }
+    return clipToRings(l, R);
+  },
+  circles: (rings, R, P) => {
+    const c = patternCentre(rings, P), Rm = farCorner(rings, c), out = [];
+    for (let r = P.sp / 2; r <= Rm; r += P.sp) out.push(...clipToRings(circlePts(c[0], c[1], r, clamp(r / 40, 0.2, 1)), R));
+    return out;
+  },
+  radial: (rings, R, P) => {
+    const c = patternCentre(rings, P), Rm = farCorner(rings, c) + 1, n = clamp(Math.round(+P.rays || 60), 3, 720), out = [];
+    const r0 = n * P.sp / TAU;   // rays start staggered so that near the centre they are never closer than the spacing
+    for (let k = 0; k < n; k++) {
+      const a = (P.angle || 0) * D2R + k / n * TAU, r = n >= 8 ? (k % 4 === 0 ? r0 / 4 : k % 2 === 0 ? r0 / 2 : r0) : 0;
+      const l = [[c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)], [c[0] + Rm * Math.cos(a), c[1] + Rm * Math.sin(a)]];
+      out.push(...clipToRings(k & 1 ? l.reverse() : l, R));
+    }
+    return out;
+  },
+  dots: (rings, R, P, rnd) => {
+    const S = ringSpan(rings, P.angle), r = Math.max(0.05, (+P.dot || 0.4) / 2), dy = P.sp * Math.sqrt(3) / 2, jit = P.layout === 'random' ? P.sp * 0.45 : 0, out = [];
+    let row = 0;
+    for (let v = (Math.ceil(S.v0 / dy) - 0.5) * dy; v <= S.v1 + dy; v += dy, row++) {
+      const line = [];
+      for (let u = (Math.floor(S.u0 / P.sp) - 1 + (row & 1) * 0.5) * P.sp; u <= S.u1 + P.sp; u += P.sp) {
+        const uu = u + (rnd() - 0.5) * 2 * jit, vv = v + (rnd() - 0.5) * 2 * jit, x = uu * S.c - vv * S.s, y = uu * S.s + vv * S.c;
+        if (ringInside(R, x, y)) line.push(circlePts(x, y, r, 0.25));
+      }
+      out.push(...(row & 1 ? line.reverse() : line));
+    }
+    return out;
+  },
+  scribble: (rings, R, P) => {
+    const rnd = mulberry(1000 + (+P.seed || 1)), loose = clamp(+P.loose || 0, 0, 1), out = [];
+    const ang = P.angle + (rnd() - 0.5) * 30 * loose;
+    for (const ch of chainRuns(scanRings(rings, ang, rowYs(rings, ang, P.sp, P.fade)), R, P.sp * 3)) {
+      let l = [];
+      for (let i = 0; i + 1 < ch.length; i += 2) {
+        const [a, b] = [ch[i], ch[i + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
+        const ia = Math.min(L * 0.3, rnd() * loose * P.sp * 2.5), ib = Math.min(L * 0.3, rnd() * loose * P.sp * 2.5), j = () => (rnd() - 0.5) * loose * P.sp;
+        l.push([a[0] + ux * ia - uy * j(), a[1] + uy * ia + ux * j()], [b[0] - ux * ib - uy * j(), b[1] - uy * ib + ux * j()]);
+      }
+      if (l.length < 2) continue;
+      l = chaikin(chaikin(l));
+      out.push(...clipToRings(l, R));
+    }
+    return out;
+  },
+  hilbert: (rings, R, P) => {
+    const b = bboxOf(rings), L = Math.max(b[2] - b[0], b[3] - b[1]), n = clamp(Math.ceil(Math.log2(L / P.sp)), 1, 9), N = 1 << n, cell = Math.max(P.sp, L / N);
+    const cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, a = (P.angle || 0) * D2R, c = Math.cos(a), s = Math.sin(a), l = [];
+    for (let d = 0; d < N * N; d++) { const [i, j] = hilbertXY(N, d), x = (i - (N - 1) / 2) * cell, y = (j - (N - 1) / 2) * cell; l.push([cx + x * c - y * s, cy + x * s + y * c]); }
+    return clipToRings(l, R);
+  },
+};
+// ---- line effects ----
+function resample(p, step) {
+  const out = [p[0]]; let carry = 0;
+  for (let i = 1; i < p.length; i++) {
+    const [ax, ay] = p[i - 1], [bx, by] = p[i], L = Math.hypot(bx - ax, by - ay); if (L < 1e-9) continue;
+    let t = step - carry;
+    for (; t < L; t += step) out.push([ax + (bx - ax) * t / L, ay + (by - ay) * t / L]);
+    carry = L - (t - step);
+  }
+  const e = p[p.length - 1], q = out[out.length - 1];
+  if (Math.hypot(e[0] - q[0], e[1] - q[1]) > step * 0.2 || out.length < 2) out.push(e); else out[out.length - 1] = e;
+  return out;
+}
+function noise1(rnd, n) {
+  const k = Array.from({length: n + 3}, () => rnd() * 2 - 1);
+  return t => { const i = clamp(Math.floor(t), 0, n + 1), f = clamp(t - i, 0, 1), u = f * f * (3 - 2 * f); return k[i] + (k[i + 1] - k[i]) * u; };
+}
+function fxSketch(p, A, rnd, passes) {   // hand-drawn: a slow wobble, ends that overshoot, loops that don't quite close
+  const L = pathLen(p); if (L < 1e-6) return [p];
+  const closed = ringClosed(p), out = [], wl = 9;
+  for (let k = 0; k < passes; k++) {
+    let q = resample(p, clamp(L / 24, 0.3, 1.2));
+    if (closed && q.length > 3) {
+      q.pop(); const s = Math.floor(rnd() * q.length); q = q.slice(s).concat(q.slice(0, s));
+      q = q.concat(q.slice(0, Math.max(1, Math.round(q.length * (0.03 + rnd() * 0.07))) + 1));
+    } else {
+      const ext = (a, b, e) => { const d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; return [a[0] + (a[0] - b[0]) / d * e, a[1] + (a[1] - b[1]) / d * e]; };
+      q[0] = ext(q[0], q[1], A * (rnd() * 2.4 - 0.8)); q[q.length - 1] = ext(q[q.length - 1], q[q.length - 2], A * (rnd() * 2.4 - 0.8));
+    }
+    let len = 0; for (let i = 1; i < q.length; i++) len += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]);
+    const nx = noise1(rnd, Math.ceil(len / wl) + 1), ny = noise1(rnd, Math.ceil(len / wl) + 1);
+    let s = 0;
+    out.push(q.map((pt, i) => { if (i) s += Math.hypot(pt[0] - q[i - 1][0], pt[1] - q[i - 1][1]); return [pt[0] + nx(s / wl) * A, pt[1] + ny(s / wl) * A]; }));
+  }
+  return out;
+}
+function fxWobble(p, A, wl) {
+  const L = pathLen(p); if (L < 1e-6) return [p];
+  const closed = ringClosed(p); wl = Math.max(0.3, wl); if (closed) wl = L / Math.max(1, Math.round(L / wl));
+  const q = resample(p, clamp(wl / 12, 0.05, 1)), n = q.length; let s = 0;
+  return [q.map((pt, i) => {
+    if (i) s += Math.hypot(pt[0] - q[i - 1][0], pt[1] - q[i - 1][1]);
+    const a = i ? q[i - 1] : closed ? q[n - 2] : q[0], b = i < n - 1 ? q[i + 1] : closed ? q[1] : q[n - 1];
+    const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1, o = A * Math.sin(s / wl * TAU);
+    return [pt[0] - dy / d * o, pt[1] + dx / d * o];
+  })];
+}
+function fxDash(p, dash, gap) {
+  dash = Math.max(dash, 0.1); gap = Math.max(gap, 0.1);
+  const out = []; let cur = null, on = true, left = dash;
+  for (let i = 1; i < p.length; i++) {
+    let [ax, ay] = p[i - 1], L = Math.hypot(p[i][0] - ax, p[i][1] - ay); const [bx, by] = p[i];
+    while (L > 1e-9) {
+      const d = Math.min(left, L), nx = ax + (bx - ax) * d / L, ny = ay + (by - ay) * d / L;
+      if (on) { if (!cur) { cur = [[ax, ay]]; out.push(cur); } cur.push([nx, ny]); }
+      ax = nx; ay = ny; L -= d; left -= d;
+      if (left <= 1e-9) { on = !on; left = on ? dash : gap; cur = null; }
+    }
+  }
+  return out.filter(q => q.length > 1);
+}
+function fxFur(p, len, gap, rnd, side) {   // short strokes out of the line; side(point, nx, ny, i) → +1 / −1
+  const q = resample(p, Math.max(gap, 0.2)), out = [p];
+  for (let i = 1; i < q.length - 1; i++) {
+    const a = q[i - 1], b = q[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1, sg = side(q[i], -dy / d, dx / d, i);
+    const nx = -dy / d * sg, ny = dx / d * sg, l = len * (0.55 + 0.9 * rnd()), tw = (rnd() - 0.5) * 0.7, c = Math.cos(tw), s = Math.sin(tw);
+    out.push([q[i], [q[i][0] + (nx * c - ny * s) * l, q[i][1] + (nx * s + ny * c) * l]]);
+  }
+  return out;
+}
+// outline: true for outlines and the drawing's own lines (several passes, fur), false for fill lines
+function applyFx(lines, F, seed, R, outline) {
+  if (!F.fx || F.fx === 'none' || (F.fx === 'fur' && !outline)) return lines;
+  const rnd = mulberry(seed), out = [];
+  for (const l of lines) {
+    if (l.length < 2) continue;
+    if (F.fx === 'sketch') out.push(...fxSketch(l, Math.max(0, +F.fxAmt || 0), rnd, outline ? clamp(Math.round(+F.fxPasses || 1), 1, 3) : 1));
+    else if (F.fx === 'wobble') out.push(...fxWobble(l, +F.fxAmt || 0, +F.fxLen || 4));
+    else if (F.fx === 'dashed') out.push(...fxDash(l, +F.fxLen || 3, +F.fxGap || 1.5));
+    else if (F.fx === 'dotted') out.push(...fxDash(l, 0.2, +F.fxGap || 1.5));
+    else if (F.fx === 'fur') out.push(...fxFur(l, Math.max(0.2, +F.fxLen || 3), +F.fxGap || 1.5, rnd, R ? ([x, y], nx, ny) => ringInside(R, x + nx * 0.05, y + ny * 0.05) ? -1 : 1 : (pt, nx, ny, i) => i & 1 ? 1 : -1));
+    else out.push(l);
+  }
+  return out;
+}
+// a polyline moved sideways by d (left of its direction); corners mitred up to 2×
+const segNormal = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [-dy / L, dx / L]; };
+function offsetPoly(p, d) {
+  p = dedupe(p); if (p.length < 2 || !d) return p;
+  const closed = ringClosed(p), q = closed ? p.slice(0, -1) : p, m = q.length, out = [];
+  for (let i = 0; i < m; i++) {
+    const prev = closed ? q[(i - 1 + m) % m] : q[Math.max(i - 1, 0)], next = closed ? q[(i + 1) % m] : q[Math.min(i + 1, m - 1)];
+    let n1 = segNormal(prev, q[i]), n2 = segNormal(q[i], next);
+    if (!closed && i === 0) n1 = n2; if (!closed && i === m - 1) n2 = n1;
+    let nx = n1[0] + n2[0], ny = n1[1] + n2[1]; const L = Math.hypot(nx, ny);
+    if (L < 1e-9) { nx = n1[0]; ny = n1[1]; } else { nx /= L; ny /= L; }
+    const k = d / Math.max(nx * n1[0] + ny * n1[1], 0.5);
+    out.push([q[i][0] + nx * k, q[i][1] + ny * k]);
+  }
+  if (closed) out.push(out[0]);
+  return out;
+}
+function inwardSign(r, R) {   // +1 when the inside of the filled area is on the left of the ring's direction
+  let bi = 1, bl = -1;
+  for (let i = 1; i < r.length; i++) { const l = Math.hypot(r[i][0] - r[i - 1][0], r[i][1] - r[i - 1][1]); if (l > bl) { bl = l; bi = i; } }
+  const a = r[bi - 1], b = r[bi], [nx, ny] = segNormal(a, b), e = Math.min(0.02, bl / 4);
+  return ringInside(R, (a[0] + b[0]) / 2 + nx * e, (a[1] + b[1]) / 2 + ny * e) ? 1 : -1;
 }
 
 // =====================================================================
@@ -2031,7 +2390,8 @@ function importSVG(text) {
       else { const p = (e.getAttribute('points') || '').trim(); if (!p) continue; d = 'M' + p + (tag === 'polygon' ? 'Z' : ''); }
       const subs = parsePathD(d, 0.25 / (unit * scale));
       for (const s of subs) s.pts = s.pts.map(([x, y]) => [(M.a * x + M.c * y + M.e) * unit, (M.b * x + M.d * y + M.f) * unit]);
-      if (subs.length) shapes.push({subs, stroke, fill});
+      const sw = stroke ? (parseFloat(cs.strokeWidth) || 0) * scale * unit : 0;   // mm, for "draw the line width"
+      if (subs.length) shapes.push({subs, stroke, fill, sw: round(sw, 4)});
     }
     return {shapes, warn: skippedText ? `${skippedText} text element(s) skipped — convert text to paths in your editor` : ''};
   } finally { host.remove(); }
@@ -2134,7 +2494,45 @@ function penForColor(hex, budget) {
 const IMG_DEF = {mode: 'hatch', spacing: 0.7, angle: 45, levels: 3, brightness: 0, contrast: 0, gamma: 1, invert: false, blur: 0,
   threshold: 0.5, amplitude: 1, frequency: 1, skipWhite: true, dots: 3000, dotSize: 0.4, colors: 4, outline: true, fill: true, tone: true,
   detail: 1500, smooth: true, lineLen: 12, pitch: 2.5, jumpLift: 6, edges: false, edgeSrc: 'lines', edgeStrength: 0.5, edgePen: '', pen: ''};
-const VEC_DEF = {strokes: true, fills: 'auto', spacing: 0.8, angle: 45, cross: false, occlude: false, pen: ''};
+// SVG / DXF / G-code drawings. Every fill colour (areas) and stroke colour (lines) has a style, and picked
+// shapes can have their own on top. Styles are stored sparse: only what differs from AREA_DEF / LINE_DEF
+// (a shape's: from its colour's style), so a project stays small and a colour change reaches its shapes.
+const VEC_DEF = {v: 2, strokes: true, occlude: false, tone: false, pen: '', areas: {}, lines: {}, shapes: {}};
+const FX_DEF = {fx: 'none', fxAmt: 0.5, fxLen: 4, fxGap: 1.5, fxPasses: 2};
+const AREA_DEF = {fill: 'none', spacing: 0.8, angle: 45, solid: false, dirs: 2, join: false, fade: 0, amp: 1, wave: 6, count: 0, rays: 72, ox: 0, oy: 0, dot: 0.4, layout: 'grid', loose: 0.5, seed: 1,
+  outline: 'auto', weight: 1, echo: 0, echoGap: 1.5, ...FX_DEF, fxFill: true, shadow: false, shDist: 2, shDir: -45, shSpacing: 0.6, pen: '', oPen: '', shPen: ''};
+const LINE_DEF = {on: true, thick: false, weight: 1, ...FX_DEF, pen: ''};
+function vecMigrate(it) {   // projects from before per-colour styles had one fill setting for the whole drawing
+  const o = it.opts;
+  if (o.v >= 2) { for (const k of ['areas', 'lines', 'shapes']) if (!o[k] || typeof o[k] !== 'object') o[k] = {}; return o; }
+  const F = o.fills || 'auto', base = {};
+  if (F === 'none') base.outline = 'off';
+  else if (F === 'outline') base.outline = 'on';
+  else if (F === 'hatch' || F === 'hatch+outline') { base.fill = o.cross ? 'cross' : 'hatch'; base.outline = F === 'hatch' ? 'off' : 'on'; }
+  if (o.spacing != null && o.spacing !== AREA_DEF.spacing) base.spacing = o.spacing;
+  if (o.angle != null && o.angle !== AREA_DEF.angle) base.angle = o.angle;
+  o.areas = {}; o.lines = {}; o.shapes = {};
+  if (Object.keys(base).length) for (const s of it.shapes || []) if (s.fill) o.areas[s.fill] = {...base};
+  for (const k of ['fills', 'spacing', 'angle', 'cross']) delete o[k];
+  Object.assign(o, {v: 2, tone: !!o.tone, strokes: o.strokes !== false, occlude: !!o.occlude, pen: o.pen || ''});
+  return o;
+}
+const shapeOv = (o, i) => (o.shapes && o.shapes[i]) || null;
+const vecOff = (o, i) => { const v = shapeOv(o, i); return !!(v && v.off); };
+const colourArea = (o, hex) => ({...AREA_DEF, ...(o.areas[hex] || {})});
+const colourLine = (o, hex) => ({...LINE_DEF, ...(o.lines[hex] || {})});
+function areaStyle(it, i) { const o = it.opts, s = it.shapes[i], v = shapeOv(o, i); return {...colourArea(o, s.fill), ...(v && v.a || {})}; }
+function lineStyle(it, i) { const o = it.opts, s = it.shapes[i], v = shapeOv(o, i); return {...colourLine(o, s.stroke), ...(v && v.l || {})}; }
+// keep only what differs from base; numbers typed into selects come back as strings
+function sparseStyle(st, base) {
+  const out = {};
+  for (const [k, v0] of Object.entries(st)) {
+    if (!(k in base)) continue;
+    const v = typeof base[k] === 'number' && typeof v0 === 'string' && v0 !== '' ? +v0 : v0;
+    if (v !== base[k]) out[k] = v;
+  }
+  return out;
+}
 const TXT_DEF = {text: 'Hello', font: 'Caveat', weight: '700', italic: false, align: 'center', lineHeight: 1.15, style: 'single', spacing: 0.5, angle: 45, cross: false, pen: ''};
 const SHP_DEF = {shape: 'rect', sides: 5, inner: 0.45, corner: 0, fill: false, spacing: 1, angle: 45, cross: false, pen: ''};
 const PAT_DEF = {pattern: 'waves', count: 40, amplitude: 3, frequency: 0.08, seed: 1, rings: 30, step: 2, pen: ''};
@@ -3148,28 +3546,95 @@ function inkLines(D, strength, smooth) {
   const L = maskSkeleton(m, gw, gh, 1, 1, gw, gh, smooth).filter(l => pathLen(l) > 4);
   return optimize(L, {order: true, merge: 1.5, simplify: 0, minLen: 0}, [-gw / 2, gh / 2]);
 }
+// one shape of a drawing in its styles → [[pen, polyline], …] (before occlusion)
+function styleLines(s, A, L, C) {
+  const out = [], add = (pen, ls) => { if (pen && penById(pen)) for (const l of ls) if (l.length > 1) out.push([pen, l]); };
+  const pw = id => (penById(id) || {width: 0.4}).width;
+  const lPen = L && L.on !== false ? (!C.one && L.pen) || C.pen(s.stroke) : '';
+  const strokeOn = !!(C.strokes && s.stroke && lPen);
+  if (strokeOn) {
+    let ls = s.subs.map(sb => sb.pts);
+    const w = pw(lPen), sw = (s.sw || 0) * C.f, thick = L.thick && sw > w * 1.2;
+    const passes = thick ? Math.min(40, Math.round((sw - w) / (w * 0.8)) + 1) : clamp(Math.round(+L.weight || 1), 1, 8);
+    if (passes > 1) {
+      const span = thick ? sw - w : (passes - 1) * w * 0.8;
+      ls = ls.flatMap(l => Array.from({length: passes}, (_, j) => { const q = offsetPoly(l, -span / 2 + span * j / (passes - 1)); return j & 1 ? q.slice().reverse() : q; }));
+    }
+    add(lPen, applyFx(ls, L, C.seed, null, true));
+  }
+  if (!s.fill || !A) return out;
+  const rings = s.subs.filter(sb => sb.pts.length > 2).map(sb => closeRing(sb.pts)); if (!rings.length) return out;
+  const R = ringIndex(rings), fPen = (!C.one && A.pen) || C.pen(s.fill), oPen = (!C.one && A.oPen) || fPen, shPen = (!C.one && A.shPen) || oPen;
+  if (A.shadow && shPen) {   // a hatched copy, moved, where it isn't covered by the shape itself
+    const a = (+A.shDir || 0) * D2R, d = +A.shDist || 0, sr = rings.map(r => r.map(([x, y]) => [x + Math.cos(a) * d, y + Math.sin(a) * d]));
+    add(shPen, hatchRings(sr, Math.max(0.1, +A.shSpacing || 0.6), (+A.angle || 0) - 90).flatMap(l => clipToRings(l, R, false)));
+  }
+  if (A.fill !== 'none' && fPen && FILLS[A.fill]) {
+    const sp = Math.max(0.1, (A.solid && A.fill !== 'dots' ? pw(fPen) * 0.85 : +A.spacing || 0.8) * C.tone(s.fill));
+    let ls = FILLS[A.fill](rings, R, {...A, sp}, mulberry(C.seed));
+    if (A.fxFill) ls = applyFx(ls, A, C.seed + 1, R, false);
+    add(fPen, ls);
+  }
+  const outlineOn = A.outline === 'on' || (A.outline === 'auto' && !strokeOn);
+  if (outlineOn && oPen) {
+    const ls = rings.slice(), weight = clamp(Math.round(+A.weight || 1), 1, 8);
+    if (weight > 1) { const w = pw(oPen) * 0.8; for (const r of rings) { const sg = inwardSign(r, R); for (let j = 1; j < weight; j++) ls.push(offsetPoly(r, sg * j * w)); } }
+    const echo = clamp(Math.round(+A.echo || 0), 0, 40), gap = Math.max(0.2, +A.echoGap || 1.5);
+    if (echo) { const S = ringSDF(rings, sdfCell(rings, gap / 4, (echo + 1) * gap), (echo + 1) * gap); for (let k = 1; k <= echo; k++) ls.push(...sdfLines(S, -k * gap)); }
+    add(oPen, applyFx(ls, A, C.seed + 2, R, true));
+  }
+  return out;
+}
+// keep the parts of a polyline outside every occluder ({R: ring index}) whose box it touches
+function clipHidden(poly, occs) {
+  const pb = bboxOf([poly]); occs = occs.filter(o => !(o.R.bb[0] > pb[2] || o.R.bb[2] < pb[0] || o.R.bb[1] > pb[3] || o.R.bb[3] < pb[1]));
+  if (!occs.length) return [poly];
+  const out = [], ts = []; let cur = null;
+  for (let i = 1; i < poly.length; i++) {
+    const [ax, ay] = poly[i - 1], [bx, by] = poly[i];
+    ts.length = 0; ts.push(0, 1); for (const o of occs) ringHits(o.R, ax, ay, bx, by, ts);
+    if (ts.length > 2) ts.sort((p, q) => p - q);
+    for (let j = 1; j < ts.length; j++) {
+      const t0 = ts[j - 1], t1 = ts[j]; if (t1 - t0 < 1e-9) continue;
+      const tm = (t0 + t1) / 2, x = ax + (bx - ax) * tm, y = ay + (by - ay) * tm;
+      if (!occs.some(o => ringInside(o.R, x, y))) {
+        if (!cur) { cur = [[ax + (bx - ax) * t0, ay + (by - ay) * t0]]; out.push(cur); }
+        cur.push([ax + (bx - ax) * t1, ay + (by - ay) * t1]);
+      } else cur = null;
+    }
+  }
+  return out.filter(p => p.length > 1);
+}
+// the drawing's shapes in item mm (centred, Y up), kept per size with each shape's lines
+function vecLocal(it) {
+  const [x0, y0, x1, y1] = it.nb, f = it.w / (x1 - x0), mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  if (it._vloc && it._vloc.f === f && it._vloc.src === it.shapes) return it._vloc;
+  const T = p => [(p[0] - mx) * f, -(p[1] - my) * f];
+  return it._vloc = {f, mx, my, src: it.shapes, cache: [], occ: [],
+    shapes: it.shapes.map(s => ({subs: s.subs.map(sb => ({pts: sb.pts.map(T), closed: sb.closed})), stroke: s.stroke, fill: s.fill, sw: s.sw || 0}))};
+}
 const builders = {
   async vector(it) {
-    const o = it.opts, out = new Map(), push = (pen, l) => { if (!pen || !penById(pen)) return; let a = out.get(pen); if (!a) out.set(pen, a = []); a.push(l); };
-    const [x0, y0, x1, y1] = it.nb, f = it.w / (x1 - x0), mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
-    const T = p => [(p[0] - mx) * f, -(p[1] - my) * f];
-    const shapes = it.shapes.map(s => ({subs: s.subs.map(sb => ({pts: sb.pts.map(T), closed: sb.closed})), stroke: s.stroke, fill: s.fill}));
-    const pen = hex => o.pen ? o.pen : it.map[hex];
-    // occluders: filled shapes (in front = later in document order)
-    const occ = o.occlude ? shapes.map(s => s.fill ? {rings: s.subs.filter(sb => sb.pts.length > 2).map(sb => sb.pts), bb: bboxOf(s.subs.map(sb => sb.pts))} : null) : [];
+    const o = vecMigrate(it), out = new Map(), push = (pen, l) => { let a = out.get(pen); if (!a) out.set(pen, a = []); a.push(l); };
+    const V = vecLocal(it), shapes = V.shapes, widths = pens.map(p => p.id + ':' + p.width).join();
+    const one = !!(o.pen && penById(o.pen));   // one pen for everything: style pens are ignored, skipped colours stay skipped
+    const C = {strokes: o.strokes, f: V.f, one, pen: hex => (it.map[hex] ? (one ? o.pen : it.map[hex]) : '') || '',
+      tone: hex => o.tone && hex ? 1 / clamp((1 - lightness(hex)) * 1.3, 0.2, 1) : 1};
+    // occluders: filled shapes in front (later in the file); a left-out shape hides nothing
+    const occ = o.occlude ? shapes.map((s, i) => {
+      if (!s.fill || vecOff(o, i) || !s.subs.some(sb => sb.pts.length > 2)) return null;
+      return V.occ[i] || (V.occ[i] = {i, R: ringIndex(s.subs.filter(sb => sb.pts.length > 2).map(sb => closeRing(sb.pts)))});
+    }).filter(Boolean) : [];
     for (let i = 0; i < shapes.length; i++) {
-      const s = shapes[i], lines = [];   // [pen, polyline]
-      const strokeOn = o.strokes && s.stroke && pen(s.stroke);
-      if (strokeOn) for (const sb of s.subs) lines.push([pen(s.stroke), sb.pts]);
-      if (s.fill && pen(s.fill)) {
-        const rings = s.subs.filter(sb => sb.pts.length > 2).map(sb => sb.pts);
-        const outline = o.fills === 'outline' || o.fills === 'hatch+outline' || (o.fills === 'auto' && !strokeOn);
-        if (outline) for (const r of rings) lines.push([pen(s.fill), r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r : [...r, r[0]]]);
-        if (o.fills === 'hatch' || o.fills === 'hatch+outline') for (const l of hatchFill(rings, o)) lines.push([pen(s.fill), l]);
-      }
-      const front = o.occlude ? occ.slice(i + 1).filter(Boolean) : [];
-      for (const [p, l] of lines) for (const part of clipByOccluders(l, front)) push(p, part);
-      if (i % 200 === 199) await tick();
+      if (vecOff(o, i)) continue;
+      const s = shapes[i], A = s.fill ? areaStyle(it, i) : null, L = s.stroke ? lineStyle(it, i) : null;
+      const key = JSON.stringify([A, L, C.strokes, C.one, o.tone, s.fill && C.pen(s.fill), s.stroke && C.pen(s.stroke), widths]);
+      let e = V.cache[i];
+      if (!e || e.key !== key) e = V.cache[i] = {key, lines: styleLines(s, A, L, {...C, seed: 7 + i * 7919})};
+      let F = [];
+      if (occ.length && e.lines.length) { const bb = bboxOf(e.lines.map(x => x[1])); F = occ.filter(q => q.i > i && !(q.R.bb[0] > bb[2] || q.R.bb[2] < bb[0] || q.R.bb[1] > bb[3] || q.R.bb[3] < bb[1])); }
+      for (const [p, l] of e.lines) { if (F.length) for (const part of clipHidden(l, F)) push(p, part); else push(p, l); }
+      if (i % 40 === 39) await tick();
     }
     return out;
   },
@@ -3463,7 +3928,7 @@ async function textMask(it) {
 // =====================================================================
 function geomKey(it, w = it.w, aspect = it.aspect) {
   const pal = (it.palette ? it.palette.map(p => p.hex + p.pen).join() : '') + (it.inks ? it.inks.map(p => p.pen).join() : '');
-  return JSON.stringify([it.kind, it.opts, it.map, pal, round(w, 2), freeAspect(it) ? round(aspect, 4) : 0, pens.map(p => p.id).join()]);
+  return JSON.stringify([it.kind, it.opts, it.map, pal, round(w, 2), freeAspect(it) ? round(aspect, 4) : 0, pens.map(p => p.id + ':' + p.width).join()]);   // widths: solid fills and line weight follow the pen
 }
 let buildTimer = null, building = false, again = false;
 function schedule(delay = 150) { clearTimeout(buildTimer); buildTimer = setTimeout(runBuild, delay); }
@@ -3842,6 +4307,7 @@ function render() {
     }
     c.restore();
   }
+  if (shapeEdit && shapeEdit === sel && items.includes(sel) && !(simT < 1 && sim)) drawPick(c, sel);
   // origin
   c.fillStyle = css('--accent'); c.beginPath(); c.arc(0, 0, 3 / k, 0, TAU); c.fill();
   // selection
@@ -3879,7 +4345,7 @@ function render() {
     c.restore();
   }
   $('zPct').textContent = Math.round(V.k / 2 * 100) + '%';
-  renderMapTools();
+  renderMapTools(); renderVecTools();
 }
 function applyItem(c, it, fx, fy = fx) {
   const a = it.rot * D2R;
@@ -3964,6 +4430,11 @@ $('simPlay').onclick = () => {
 };
 
 // ---------- pointer interaction ----------
+function inItemBox(it, wx, wy) {
+  const a = -it.rot * D2R, dx = wx - it.cx, dy = wy - it.cy, lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
+  const [hw, hh] = dispHalf(it), pad = 2 / V.k;
+  return Math.abs(lx) <= hw + pad && Math.abs(ly) <= hh + pad;
+}
 function hitItem(wx, wy) {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i]; if (!it.visible) continue;
@@ -4003,6 +4474,14 @@ cv.addEventListener('pointerdown', e => {
       return;
     }
     mapEdit = null; draw();   // clicked outside the map: leave map mode and handle the click as usual
+  }
+  if (shapeEdit && e.button === 0 && !(e.pointerType === 'touch' && touches.size)) {
+    if (shapeEdit === sel && inItemBox(sel, wx, wy)) {   // pick mode: a click picks the shape under it (Shift: more)
+      if (e.pointerType === 'touch') touches.set(e.pointerId, [px, py]);
+      pickShape(shapeAt(sel, wx, wy), e.shiftKey || e.ctrlKey || e.metaKey);
+      return;
+    }
+    exitPick();   // clicked outside the drawing: leave pick mode and handle the click as usual
   }
   const ind = offMarks.find(m => Math.hypot(px - m.x, py - m.y) < 16);   // arrow to an object outside the view
   if (ind && e.button === 0) { select(ind.it); centreOn(ind.it); return; }
@@ -4068,6 +4547,11 @@ cv.addEventListener('pointermove', e => {
   if (!drag) {
     if (geoPick) { cv.style.cursor = 'crosshair'; return; }
     if (mapEdit) { cv.style.cursor = mapEdit === sel && inMapBox(mapEdit, wx, wy) ? 'grab' : 'default'; return; }
+    if (shapeEdit && shapeEdit === sel) {
+      const h = inItemBox(sel, wx, wy) ? shapeAt(sel, wx, wy) : -1;
+      if (h !== shapeHover) { shapeHover = h; draw(); }
+      cv.style.cursor = h >= 0 ? 'pointer' : 'default'; return;
+    }
     let cur = 'grab';
     if (offMarks.some(m => Math.hypot(px - m.x, py - m.y) < 16)) { cv.style.cursor = 'pointer'; return; }
     if (sel) {
@@ -4163,11 +4647,13 @@ cv.addEventListener('wheel', e => {
 cv.addEventListener('dblclick', e => {
   const r = cv.getBoundingClientRect(), w = toW(e.clientX - r.left, e.clientY - r.top);
   if (ws !== 'design') return fitView();
-  if (mapEdit) return;
+  if (mapEdit || shapeEdit) return;
   const h = isMapItem(sel) && inMapBox(sel, ...w) ? sel : hitItem(...w);
+  if (h && h.kind === 'vector') { if (sel !== h) select(h); enterPick(h); pickShape(shapeAt(h, ...w), false); return; }
   if (!h) fitView(); else if (isMapItem(h)) { if (sel !== h) select(h); mapEdit = h; draw(); }
 });
 $('mEdit').onclick = () => { mapEdit = mapEdit ? null : (isMapItem(sel) ? sel : null); draw(); };
+$('vPick').onclick = () => { if (shapeEdit) exitPick(); else if (sel && sel.kind === 'vector') enterPick(sel); };
 $('mIn').onclick = () => { if (isMapItem(sel)) mapZoom(sel, 0.8); };
 $('mOut').onclick = () => { if (isMapItem(sel)) mapZoom(sel, 1.25); };
 const zoomBy = f => { const cx = V.W / 2, cy = V.H / 2, [wx, wy] = toW(cx, cy); V.k = clamp(V.k * f, 0.3, 200); V.ox = cx - wx * V.k; V.oy = cy + wy * V.k; V.auto = false; draw(); };
@@ -4188,6 +4674,7 @@ const ICON = {
   eyeOff: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/></svg>',
 };
 function select(it) {
+  if (it !== sel) { vecOpen = null; if (shapeEdit && shapeEdit !== it) { shapeEdit = null; shapeSel = []; shapeHover = -1; } }
   sel = it; renderObjects(); renderInspector(); draw();
   if (it) document.querySelector('.tab[data-tab=obj]').click();
 }
@@ -4243,6 +4730,7 @@ function renderPens() {
     row.querySelectorAll('[data-k]').forEach(inp => inp.oninput = () => {
       const k = inp.dataset.k; p[k] = k === 'width' ? Math.max(0.05, +inp.value || 0.4) : inp.value;
       if (k === 'color' || k === 'width') { draw(); renderObjects(); if (sel) renderInspector(); }
+      if (k === 'width') schedule(400);   // solid fills, line weight and halftone rings follow the pen width
       if (k === 'feed') { computePlan(); row.querySelector('.pen-meta').textContent = penStats(p.id); renderStatus(); }
     });
     row.querySelector('.pname').onchange = () => { if (sel) renderInspector(); };
@@ -4362,11 +4850,12 @@ function kindFields(it) {
     return F;
   }
   if (it.kind === 'vector') {
-    const F = [['check', 'strokes', 'Draw strokes'],
-      ['select', 'fills', 'Filled shapes', {options: [['auto', 'Outline shapes without a stroke'], ['none', 'Ignore fills'], ['outline', 'Outline every fill'], ['hatch', 'Hatch fills'], ['hatch+outline', 'Hatch + outline fills']]}]];
-    if (o.fills.startsWith('hatch')) F.push(['num', 'spacing', 'Hatch spacing', {unit: 'mm', step: 0.05, min: 0.1}], ['num', 'angle', 'Angle', {unit: '°', step: 5}], ['check', 'cross', 'Crosshatch']);
-    F.push(['check', 'occlude', 'Hide lines behind filled shapes (occlusion)']);
-    return F;
+    vecMigrate(it);
+    return [['html', '', '', {html: `<div class="field full"><span>Pens</span><div class="seg"><button type="button" data-vpen="colour" class="${o.pen ? '' : 'on'}">By colour</button><button type="button" data-vpen="one" class="${o.pen ? 'on' : ''}">One pen for all</button></div></div>`}],
+      ...(o.pen ? [['pen', 'pen', 'Pen']] : []),
+      ['check', 'strokes', 'Draw the lines (strokes)'],
+      ['check', 'occlude', 'Hide what is behind filled shapes'],
+      ['check', 'tone', 'Shade: lighter colours get sparser fills']];
   }
   if (it.kind === 'text') {
     return [['area', 'text', 'Text'],
@@ -4496,12 +4985,6 @@ function mapHTML(it) {
       <div class="sub">Layers → pens</div><div class="map">${Object.keys(st.roles).map(role => `<div class="map-row"><span class="sw" style="background:${PL.INKS[pal.inks[role]].c}"></span><span class="mono">${role} ${st.roles[role]}</span>
       <select data-role="${role}"><option value="">— skip —</option>${pens.map(p => `<option value="${p.id}" ${it.opts.roles[role] === p.id ? 'selected' : ''}>● ${esc(p.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
   }
-  if (it.kind === 'vector' && !it.opts.pen) {
-    const cols = Object.keys(it.map);
-    if (!cols.length) return '';
-    return `<div class="sub">Colours → pens</div><div class="map">${cols.map(h => `<div class="map-row"><span class="sw" style="background:${h}"></span><span class="mono">${h}</span>
-      <select data-map="${h}"><option value="">— skip —</option>${pens.map(p => `<option value="${p.id}" ${it.map[h] === p.id ? 'selected' : ''}>● ${esc(p.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
-  }
   if (it.kind === 'image' && it.opts.mode === 'cmyk' && it.inks) {
     return `<div class="sub">Inks → pens</div><div class="map">${it.inks.map((e, k) => `<div class="map-row"><span class="sw" style="background:${e.hex}"></span><span class="mono">${e.name}</span>
       <select data-ink="${k}"><option value="">— skip —</option>${pens.map(p => `<option value="${p.id}" ${e.pen === p.id ? 'selected' : ''}>● ${esc(p.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
@@ -4512,6 +4995,260 @@ function mapHTML(it) {
   }
   return '';
 }
+// ---------- drawings (SVG, DXF, G-code): a style per colour, and per picked shape ----------
+let vecOpen = null;   // 'a#hex' / 'l#hex': the area or line colour whose style is open
+let shapeEdit = null, shapeSel = [], shapeHover = -1;   // pick mode: the drawing, the picked shapes (indices, in pick order), the one under the pointer
+const vicon = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const FILL_ICONS = {
+  none: vicon('<rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 2.6"/>'),
+  hatch: vicon('<path d="M4 10l6-6M4 16L16 4M5 21L21 5M10 21l11-11M16 21l5-5"/>'),
+  cross: vicon('<path d="M4 10l6-6M4 16L16 4M5 21L21 5M10 21l11-11M16 21l5-5M14 4l6 6M8 4l12 12M3 7l14 14M3 13l8 8M3 19l2 2"/>'),
+  zigzag: vicon('<path d="M3 8l3-3 3 3 3-3 3 3 3-3 3 3M3 14l3-3 3 3 3-3 3 3 3-3 3 3M3 20l3-3 3 3 3-3 3 3 3-3 3 3"/>'),
+  waves: vicon('<path d="M3 7c3-3 6 3 9 0s6 3 9 0M3 12c3-3 6 3 9 0s6 3 9 0M3 17c3-3 6 3 9 0s6 3 9 0"/>'),
+  contour: vicon('<rect x="3" y="4" width="18" height="16" rx="5"/><rect x="7" y="8" width="10" height="8" rx="3"/><path d="M11 12h2"/>'),
+  spiral: vicon('<path d="M12 12c0-1 1-1.5 2-1s1.5 2 .5 3.5-4 2-5.5 0-1-6 2.5-7 7 1 7.5 5-2 8-6.5 8.5-9-2-9.5-7"/>'),
+  circles: vicon('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/>'),
+  radial: vicon('<path d="M12 12V3M12 12l6.4-6.4M12 12h9M12 12l6.4 6.4M12 12v9M12 12l-6.4 6.4M12 12H3M12 12L5.6 5.6"/>'),
+  dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="6" r="1.7"/><circle cx="12" cy="6" r="1.7"/><circle cx="19" cy="6" r="1.7"/><circle cx="8.5" cy="12" r="1.7"/><circle cx="15.5" cy="12" r="1.7"/><circle cx="5" cy="18" r="1.7"/><circle cx="12" cy="18" r="1.7"/><circle cx="19" cy="18" r="1.7"/></svg>',
+  scribble: vicon('<path d="M4 8c4-4 3 2 7-2s1 6 5 2 2 4 4 2M4 15c3-4 4 3 7-1s2 5 5 1 3 3 4 2"/>'),
+  hilbert: vicon('<path d="M4 20h5.3v-5.3H4V4h5.3v5.3h5.4V4H20v10.7h-5.3V20H20"/>'),
+};
+const FILL_OPTS = [['none', 'None'], ['hatch', 'Hatch'], ['cross', 'Cross'], ['zigzag', 'Zigzag'], ['waves', 'Waves'], ['contour', 'Contour'], ['spiral', 'Spiral'], ['circles', 'Rings'], ['radial', 'Rays'], ['dots', 'Dots'], ['scribble', 'Scribble'], ['hilbert', 'Maze']];
+const FX_OPTS = [['none', 'Clean'], ['sketch', 'Hand-drawn'], ['wobble', 'Wobble'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['fur', 'Fur / grass']];
+const FILL_NAME = Object.fromEntries(FILL_OPTS), FX_NAME = Object.fromEntries(FX_OPTS);
+const AREA_STRUCT = ['fill', 'solid', 'outline', 'fx', 'shadow', 'echo'], LINE_STRUCT = ['on', 'thick', 'fx'];
+const PICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-6 2-2 6z"/></svg>';
+function areaSummary(A) {
+  const b = [A.fill === 'none' ? 'No fill' : FILL_NAME[A.fill] + (A.solid && A.fill !== 'dots' && A.fill !== 'radial' ? ' · solid' : ` · ${+A.spacing} mm`)];
+  if (A.outline === 'on') b.push(A.weight > 1 ? `outline ×${A.weight}` : 'outline'); else if (A.outline === 'off') b.push('no outline');
+  if (A.echo > 0 && A.outline !== 'off') b.push(`${A.echo} echo${A.echo > 1 ? 'es' : ''}`);
+  if (A.fx !== 'none') b.push(FX_NAME[A.fx].toLowerCase());
+  if (A.shadow) b.push('shadow');
+  return b.join(' · ');
+}
+function lineSummary(L) {
+  const b = [L.on === false ? 'Not drawn' : L.thick ? 'Line width from the file' : L.weight > 1 ? `Line ×${L.weight}` : 'Line'];
+  if (L.fx !== 'none') b.push(FX_NAME[L.fx].toLowerCase());
+  return b.join(' · ');
+}
+function vecColours(it) {   // the fill and line colours in file order, with how many shapes use each
+  if (it._vcols && it._vcols.src === it.shapes) return it._vcols;
+  const a = new Map(), l = new Map();
+  for (const s of it.shapes) {
+    if (s.fill) a.set(s.fill, (a.get(s.fill) || 0) + 1);
+    if (s.stroke) { const e = l.get(s.stroke) || {n: 0, sw: 0}; e.n++; e.sw = Math.max(e.sw, s.sw || 0); l.set(s.stroke, e); }
+  }
+  return it._vcols = {src: it.shapes, areas: [...a].map(([hex, n]) => ({hex, n})), lines: [...l].map(([hex, e]) => ({hex, ...e}))};
+}
+const penOpts = first => [['', first], ...pens.map(p => [p.id, '● ' + p.name])];
+const colourPenName = (it, hex) => { const p = it.map[hex] && penById(it.map[hex]); return p ? p.name : 'skipped'; };
+function fxFields(F, S, area) {
+  F.push(['sub', '', 'Effect'], ['select', 'fx', 'Line effect', {options: FX_OPTS}]);
+  const x = S.fx;
+  if (x === 'sketch') F.push(['range', 'fxAmt', 'Roughness (mm)', {min: 0, max: 3, step: 0.05}], ['range', 'fxPasses', 'Strokes over each other', {min: 1, max: 3, step: 1}]);
+  if (x === 'wobble') F.push(['num', 'fxAmt', 'Wobble height', {unit: 'mm', step: 0.1, min: 0}], ['num', 'fxLen', 'Wobble length', {unit: 'mm', step: 0.5, min: 0.3}]);
+  if (x === 'dashed') F.push(['num', 'fxLen', 'Dash', {unit: 'mm', step: 0.5, min: 0.1}], ['num', 'fxGap', 'Gap', {unit: 'mm', step: 0.1, min: 0.1}]);
+  if (x === 'dotted') F.push(['num', 'fxGap', 'Dot spacing', {unit: 'mm', step: 0.1, min: 0.3, full: true}]);
+  if (x === 'fur') F.push(['num', 'fxLen', 'Hair length', {unit: 'mm', step: 0.5, min: 0.2}], ['num', 'fxGap', 'Hair spacing', {unit: 'mm', step: 0.1, min: 0.2}]);
+  if (area && x !== 'none' && x !== 'fur') F.push(['check', 'fxFill', 'Also on the fill lines']);
+}
+function areaFields(A, it, hex, forShape) {
+  const f = A.fill, one = !!it.opts.pen, F = [['modes', 'fill', '', {options: FILL_OPTS.map(([v, l]) => [v, l, FILL_ICONS[v]])}]];
+  if (f !== 'none') {
+    const solidable = f !== 'dots' && f !== 'radial';
+    if (!(A.solid && solidable)) F.push(['num', 'spacing', {dots: 'Dot distance', hilbert: 'Maze cell', radial: 'Closest at the centre'}[f] || 'Line spacing', {unit: 'mm', step: 0.05, min: 0.1}]);
+    if (f !== 'contour' && f !== 'circles') F.push(['num', 'angle', f === 'radial' || f === 'spiral' ? 'Turn' : 'Angle', {unit: '°', step: 5}]);
+    if (f === 'cross') F.push(['select', 'dirs', 'Directions', {half: true, options: [[2, '2 · squares'], [3, '3 · triangles'], [4, '4 · stars']]}]);
+    if (f === 'waves' || f === 'zigzag') F.push(['num', 'amp', f === 'zigzag' ? 'Zigzag height' : 'Wave height', {unit: 'mm', step: 0.1, min: 0}], ['num', 'wave', f === 'zigzag' ? 'Zigzag length' : 'Wave length', {unit: 'mm', step: 0.5, min: 0.5}]);
+    if (f === 'contour') F.push(['num', 'count', 'Rings (0 = all)', {step: 1, min: 0}]);
+    if (f === 'radial') F.push(['num', 'rays', 'Rays', {step: 4, min: 3}]);
+    if (f === 'dots') F.push(['num', 'dot', 'Dot size', {unit: 'mm', step: 0.05, min: 0.1}], ['select', 'layout', 'Layout', {half: true, options: [['grid', 'Grid'], ['random', 'Scattered']]}]);
+    if (f === 'scribble') F.push(['num', 'seed', 'Variation', {step: 1}], ['range', 'loose', 'Looseness', {min: 0, max: 1, step: 0.05}]);
+    if (['spiral', 'circles', 'radial'].includes(f)) F.push(['range', 'ox', 'Centre ← →  (% of the width)', {min: -50, max: 50, step: 1}], ['range', 'oy', 'Centre ↓ ↑  (% of the height)', {min: -50, max: 50, step: 1}]);
+    if (['hatch', 'cross', 'zigzag', 'waves', 'contour', 'scribble'].includes(f)) F.push(['range', 'fade', 'Fade: lines spread out across (%)', {min: -100, max: 100, step: 5}]);
+    if (solidable) F.push(['check', 'solid', 'Solid: lines as close as the pen is wide']);
+    if (f === 'hatch') F.push(['check', 'join', 'One line: join along the edge (fewer pen lifts)']);
+  }
+  F.push(['sub', '', 'Outline'], ['select', 'outline', 'Draw the outline', {options: [['auto', 'Where the file has no line around it'], ['on', 'Always'], ['off', 'Never']]}]);
+  if (A.outline !== 'off') F.push(['range', 'weight', 'Weight (strokes side by side)', {min: 1, max: 6, step: 1}], ['range', 'echo', 'Echo lines around it', {min: 0, max: 12, step: 1}], ...(A.echo > 0 ? [['num', 'echoGap', 'Echo spacing', {unit: 'mm', step: 0.1, min: 0.2, full: true}]] : []));
+  fxFields(F, A, true);
+  F.push(['sub', '', 'Shadow'], ['check', 'shadow', 'Hatched drop shadow']);
+  if (A.shadow) F.push(['num', 'shDist', 'Distance', {unit: 'mm', step: 0.5, min: 0}], ['num', 'shDir', 'Direction', {unit: '°', step: 15}], ['num', 'shSpacing', 'Shadow line spacing', {unit: 'mm', step: 0.05, min: 0.1, full: true}]);
+  if (!one) {
+    F.push(['sub', '', 'Pens']);
+    if (forShape) F.push(['select', 'pen', 'Fill', {half: true, options: penOpts(`Colour’s (${colourPenName(it, hex)})`)}]);
+    F.push(['select', 'oPen', 'Outline', {half: true, options: penOpts('Same as fill')}]);
+    if (A.shadow) F.push(['select', 'shPen', 'Shadow', {half: true, options: penOpts('Same as outline')}]);
+  }
+  return F;
+}
+function lineFields(L, it, hex, forShape, maxSw) {
+  const F = [], VL = vecLocal(it), pw = (penById(it.opts.pen || it.map[hex]) || {width: 0.4}).width, w = (maxSw || 0) * VL.f;
+  if (forShape) F.push(['check', 'on', 'Draw the line']);
+  if (L.thick || w > pw * 1.2) F.push(['check', 'thick', `Line width from the file (${round(w, 2)} mm, strokes side by side)`]);
+  if (!L.thick) F.push(['range', 'weight', 'Weight (strokes side by side)', {min: 1, max: 6, step: 1}]);
+  fxFields(F, L, false);
+  if (forShape && !it.opts.pen) F.push(['sub', '', 'Pen'], ['select', 'pen', 'Pen', {options: penOpts(`Colour’s (${colourPenName(it, hex)})`)}]);
+  return F;
+}
+function setColourStyle(it, kind, hex, k, v) {
+  const bag = kind === 'a' ? it.opts.areas : it.opts.lines, DEF = kind === 'a' ? AREA_DEF : LINE_DEF;
+  const st = sparseStyle({...DEF, ...(bag[hex] || {}), [k]: v}, DEF);
+  if (Object.keys(st).length) bag[hex] = st; else delete bag[hex];
+}
+function setShapeStyle(it, kind, i, k, v) {
+  const o = it.opts, s = it.shapes[i]; if (kind === 'a' ? !s.fill : !s.stroke) return;
+  const base = kind === 'a' ? colourArea(o, s.fill) : colourLine(o, s.stroke), ov = {...(o.shapes[i] || {})};
+  const st = sparseStyle({...base, ...(ov[kind] || {}), [k]: v}, base);
+  if (Object.keys(st).length) ov[kind] = st; else delete ov[kind];
+  if (Object.keys(ov).length) o.shapes[i] = ov; else delete o.shapes[i];
+}
+function vecHTML(it) {
+  const o = vecMigrate(it), C = vecColours(it), one = !!(o.pen && penById(o.pen));
+  const own = (kind, hex) => Object.entries(o.shapes).filter(([i, v]) => { const s = it.shapes[+i]; return s && v[kind] && (kind === 'a' ? s.fill : s.stroke) === hex; }).length;
+  const penSel = hex => one
+    ? `<select data-map="${esc(hex)}" title="Draw or skip this colour"><option value="${o.pen}" ${it.map[hex] ? 'selected' : ''}>● ${esc(penById(o.pen).name)}</option><option value="" ${it.map[hex] ? '' : 'selected'}>— skip —</option></select>`
+    : `<select data-map="${esc(hex)}" title="Pen for this colour"><option value="">— skip —</option>${pens.map(p => `<option value="${p.id}" ${it.map[hex] === p.id ? 'selected' : ''}>● ${esc(p.name)}</option>`).join('')}</select>`;
+  const row = (kind, c) => {
+    const key = kind + c.hex, open = vecOpen === key, st = kind === 'a' ? colourArea(o, c.hex) : colourLine(o, c.hex), n = own(kind, c.hex);
+    return `<div class="vrow ${open ? 'on' : ''}" data-vopen="${esc(key)}" role="button" tabindex="0" aria-expanded="${open}" title="${open ? 'Close' : 'Choose how this colour is drawn'}"><span class="sw" style="background:${esc(c.hex)}"></span>
+      <b data-vsum="${esc(key)}">${esc(kind === 'a' ? areaSummary(st) : lineSummary(st))}</b><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      <span class="vmeta">${esc(c.hex)} · ${c.n} shape${c.n > 1 ? 's' : ''}${n ? ` · ${n} own` : ''}</span>${penSel(c.hex)}</div>
+      ${open ? `<div class="vstyle fields" data-vstyle="${esc(key)}">${(kind === 'a' ? areaFields(st, it, c.hex, false) : lineFields(st, it, c.hex, false, c.sw)).map(f => fieldHTML(f, st)).join('')}
+        <div class="row" style="grid-column:1/-1;margin-top:2px"><button type="button" class="btn sm" data-vact="all" data-k="${esc(key)}">Use for all ${kind === 'a' ? 'areas' : 'lines'}</button><button type="button" class="btn sm" data-vact="reset" data-k="${esc(key)}">Reset</button></div></div>` : ''}`;
+  };
+  return `<div class="fields">
+    ${C.areas.length ? `<div class="sub">Areas · by fill colour</div><div class="vlist">${C.areas.map(c => row('a', c)).join('')}</div>` : ''}
+    ${C.lines.length ? `<div class="sub">Lines · by colour${o.strokes ? '' : ' · <span style="color:var(--warn)">switched off above</span>'}</div><div class="vlist">${C.lines.map(c => row('l', c)).join('')}</div>` : ''}
+    <div class="row" style="grid-column:1/-1"><button type="button" class="btn sm" data-pk="start">${PICK_ICON}Pick shapes</button><span class="note" style="margin:0">…to give single shapes their own style, or double-click the drawing</span></div>
+  </div>`;
+}
+function pickHTML(it) {
+  if (shapeEdit !== it) return '';
+  const o = it.opts, n = shapeSel.length;
+  if (!n) return `<div class="card vpick" id="vpk"><h3>Pick shapes <button type="button" class="btn sm" data-pk="done">Done</button></h3>
+    <p class="note" style="margin:0">Click a shape on the drawing to give it its own fill, outline or effect. Shift-click picks more, Del leaves the picked ones out, Esc when done.</p></div>`;
+  const fills = shapeSel.filter(i => it.shapes[i].fill), strokes = shapeSel.filter(i => it.shapes[i].stroke);
+  const off = shapeSel.every(i => vecOff(o, i)), own = shapeSel.some(i => o.shapes[i] && (o.shapes[i].a || o.shapes[i].l));
+  const A = fills.length ? areaStyle(it, fills[0]) : null, L = strokes.length ? lineStyle(it, strokes[0]) : null;
+  const cols = [...new Set(shapeSel.flatMap(i => [it.shapes[i].fill, it.shapes[i].stroke]).filter(Boolean))];
+  const what = fills.length && strokes.length ? 'areas and lines' : fills.length ? (fills.length > 1 ? 'areas' : 'area') : (strokes.length > 1 ? 'lines' : 'line');
+  return `<div class="card vpick" id="vpk"><h3>${n} shape${n > 1 ? 's' : ''} picked <span class="row" style="gap:6px">${own ? '<span class="vtag">own style</span>' : ''}<button type="button" class="btn sm" data-pk="done">Done</button></span></h3>
+    <div class="row" style="margin-bottom:8px">${cols.slice(0, 8).map(h => `<span class="sw" style="width:16px;height:16px;border-radius:4px;background:${esc(h)}" title="${esc(h)}"></span>`).join('')}<span class="note" style="margin:0">${what}${n > 1 ? ' · changes apply to all picked' : ''}</span></div>
+    <div class="fields" data-pkoff>${fieldHTML(['check', 'off', 'Leave out (not plotted)'], {off})}</div>
+    ${!off && A ? `<div class="fields" data-pkstyle="a" style="margin-top:8px"><div class="sub">Area</div>${areaFields(A, it, it.shapes[fills[0]].fill, true).map(f => fieldHTML(f, A)).join('')}</div>` : ''}
+    ${!off && L ? `<div class="fields" data-pkstyle="l" style="margin-top:8px"><div class="sub">Line</div>${lineFields(L, it, it.shapes[strokes[0]].stroke, true, Math.max(...strokes.map(i => it.shapes[i].sw || 0))).map(f => fieldHTML(f, L)).join('')}</div>` : ''}
+    <div class="row" style="margin-top:10px"><button type="button" class="btn sm" data-pk="reset">Use the colour’s style</button><button type="button" class="btn sm" data-pk="same">Pick all of this colour</button></div>
+  </div>`;
+}
+function vecBind(it) {
+  const o = it.opts, I = $('inspector');
+  I.querySelectorAll('[data-vpen]').forEach(b => b.onclick = () => { o.pen = b.dataset.vpen === 'one' ? (o.pen || firstPen()) : ''; renderInspector(); schedule(0); });
+  I.querySelectorAll('[data-vopen]').forEach(b => {
+    const toggle = () => { vecOpen = vecOpen === b.dataset.vopen ? null : b.dataset.vopen; renderInspector(); };
+    b.onclick = e => { if (!e.target.closest('select')) toggle(); };
+    b.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === b) { e.preventDefault(); toggle(); } };
+  });
+  I.querySelectorAll('#vx [data-map]').forEach(s => s.onchange = () => { it.map[s.dataset.map] = s.value; renderInspector(); schedule(0); });
+  I.querySelectorAll('[data-vstyle]').forEach(el => {
+    const key = el.dataset.vstyle, kind = key[0], hex = key.slice(1), st = kind === 'a' ? colourArea(o, hex) : colourLine(o, hex);
+    bindForm(el, st, (k, structural) => {
+      setColourStyle(it, kind, hex, k, st[k]);
+      const sum = I.querySelector(`[data-vsum="${CSS.escape(key)}"]`);
+      if (sum) sum.textContent = kind === 'a' ? areaSummary(colourArea(o, hex)) : lineSummary(colourLine(o, hex));
+      if (structural) renderInspector();
+      schedule(150);
+    }, kind === 'a' ? AREA_STRUCT : LINE_STRUCT);
+  });
+  I.querySelectorAll('[data-vact]').forEach(b => b.onclick = () => {
+    const key = b.dataset.k, kind = key[0], hex = key.slice(1), bag = kind === 'a' ? o.areas : o.lines, C = vecColours(it);
+    if (b.dataset.vact === 'reset') delete bag[hex];
+    else { for (const c of kind === 'a' ? C.areas : C.lines) { if (bag[hex]) bag[c.hex] = structuredClone(bag[hex]); else delete bag[c.hex]; } toast(`Every ${kind === 'a' ? 'area' : 'line'} colour now uses this style`); }
+    renderInspector(); schedule(0);
+  });
+  I.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => {
+    const a = b.dataset.pk;
+    if (a === 'start') return enterPick(it);
+    if (a === 'done') return exitPick();
+    if (a === 'reset') for (const i of shapeSel) { const v = o.shapes[i]; if (!v) continue; delete v.a; delete v.l; if (!Object.keys(v).length) delete o.shapes[i]; }
+    if (a === 'same') { const s = it.shapes[shapeSel[0]], key = s.fill ? 'fill' : 'stroke'; shapeSel = it.shapes.map((q, i) => q[key] === s[key] ? i : -1).filter(i => i >= 0); toast(`Picked ${shapeSel.length} shape${shapeSel.length > 1 ? 's' : ''} of ${s[key]}`); }
+    renderInspector(); draw(); schedule(0);
+  });
+  const offEl = I.querySelector('[data-pkoff]');
+  if (offEl) { const ob = {off: false}; bindForm(offEl, ob, () => { setOff(it, shapeSel, ob.off); renderInspector(); draw(); schedule(0); }); }
+  I.querySelectorAll('[data-pkstyle]').forEach(el => {
+    const kind = el.dataset.pkstyle, idx = shapeSel.filter(i => kind === 'a' ? it.shapes[i].fill : it.shapes[i].stroke);
+    const st = kind === 'a' ? areaStyle(it, idx[0]) : lineStyle(it, idx[0]);
+    bindForm(el, st, (k, structural) => {
+      for (const i of idx) setShapeStyle(it, kind, i, k, st[k]);
+      if (structural) renderInspector();
+      else if (!I.querySelector('#vpk .vtag')) { const h = I.querySelector('#vpk h3 .row'); if (h) h.insertAdjacentHTML('afterbegin', '<span class="vtag">own style</span>'); }
+      schedule(150);
+    }, kind === 'a' ? AREA_STRUCT : LINE_STRUCT);
+  });
+}
+function setOff(it, idx, off) {
+  const o = it.opts;
+  for (const i of idx) { const v = {...(o.shapes[i] || {})}; if (off) v.off = true; else delete v.off; if (Object.keys(v).length) o.shapes[i] = v; else delete o.shapes[i]; }
+}
+function enterPick(it) { shapeEdit = it; shapeSel = []; shapeHover = -1; mapEdit = null; if (sel !== it) select(it); else renderInspector(); draw(); }
+function exitPick() { if (!shapeEdit) return; shapeEdit = null; shapeSel = []; shapeHover = -1; cv.style.cursor = ''; renderInspector(); draw(); }
+function pickShape(i, add) {
+  if (i < 0) { if (!add) shapeSel = []; }
+  else if (add) shapeSel = shapeSel.includes(i) ? shapeSel.filter(j => j !== i) : [...shapeSel, i];
+  else shapeSel = [i];
+  renderInspector(); draw();
+}
+function toItemLocal(it, wx, wy) {   // world mm → the item's own mm (centred, Y up, before mirror)
+  const a = -it.rot * D2R, dx = wx - it.cx, dy = wy - it.cy;
+  return [(dx * Math.cos(a) - dy * Math.sin(a)) * (it.flipX ? -1 : 1), (dx * Math.sin(a) + dy * Math.cos(a)) * (it.flipY ? -1 : 1)];
+}
+function distToPoly(p, x, y) {
+  let best = Infinity;
+  for (let i = 1; i < p.length; i++) {
+    const [ax, ay] = p[i - 1], [bx, by] = p[i], dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    const t = L ? clamp(((x - ax) * dx + (y - ay) * dy) / L, 0, 1) : 0;
+    best = Math.min(best, Math.hypot(ax + dx * t - x, ay + dy * t - y));
+  }
+  return best;
+}
+function shapeAt(it, wx, wy) {   // the topmost shape under a world point: inside a filled shape, or on a line
+  const VL = vecLocal(it), [x, y] = toItemLocal(it, wx, wy), tol = 6 / V.k;
+  if (!VL.bbs) VL.bbs = VL.shapes.map(s => bboxOf(s.subs.map(sb => sb.pts)));
+  for (let i = VL.shapes.length - 1; i >= 0; i--) {
+    const s = VL.shapes[i], b = VL.bbs[i], r = tol + (s.sw || 0) * VL.f / 2;
+    if (x < b[0] - r || x > b[2] + r || y < b[1] - r || y > b[3] + r) continue;
+    if (s.fill && insideRings(s.subs.filter(sb => sb.pts.length > 2).map(sb => sb.pts), x, y)) return i;
+    if (s.stroke || s.fill) for (const sb of s.subs) if (distToPoly(sb.pts, x, y) < r) return i;
+  }
+  return -1;
+}
+function drawPick(c, it) {   // world transform: picked shapes tinted, the one under the pointer lighter, left-out ones dashed
+  const VL = vecLocal(it), k = V.k, acc = css('--accent');
+  VL.p2d = VL.p2d || [];
+  const path = i => VL.p2d[i] || (VL.p2d[i] = (() => { const p = new Path2D(); for (const sb of VL.shapes[i].subs) { sb.pts.forEach(([x, y], j) => j ? p.lineTo(x, y) : p.moveTo(x, y)); if (sb.closed) p.closePath(); } return p; })());
+  c.save(); applyItem(c, it, 1, 1); c.lineCap = 'round'; c.lineJoin = 'round';
+  c.setLineDash([3 / k, 3 / k]); c.lineWidth = 1 / k; c.strokeStyle = acc; c.globalAlpha = 0.7;
+  for (const i of Object.keys(it.opts.shapes)) if (vecOff(it.opts, +i) && VL.shapes[+i]) c.stroke(path(+i));
+  c.setLineDash([]);
+  const mark = (i, a) => {
+    const s = VL.shapes[i]; if (!s) return;
+    if (s.fill) { c.globalAlpha = a; c.fillStyle = acc; c.fill(path(i), 'evenodd'); }
+    c.globalAlpha = Math.min(1, a * 3); c.strokeStyle = acc; c.lineWidth = s.fill ? 1.6 / k : Math.max(4 / k, (s.sw || 0) * VL.f); c.stroke(path(i));
+  };
+  if (shapeHover >= 0 && !shapeSel.includes(shapeHover)) mark(shapeHover, 0.12);
+  for (const i of shapeSel) mark(i, 0.3);
+  c.restore();
+}
+function renderVecTools() {
+  const box = $('vecTools'); if (!box) return;
+  const it = sel && sel.kind === 'vector' && items.includes(sel) ? sel : null;
+  if (shapeEdit && shapeEdit !== it) { shapeEdit = null; shapeSel = []; shapeHover = -1; }
+  box.hidden = !it || ws !== 'design'; if (!it) return;
+  $('vPick').classList.toggle('on', shapeEdit === it);
+  const hint = shapeEdit === it ? (shapeSel.length ? `${shapeSel.length} picked · Shift-click for more · Esc when done` : 'Click a shape · Shift-click for more · Esc when done') : '';
+  $('vHint').textContent = hint; $('vHint').hidden = !hint;
+}
 function renderInspector() {
   if (palHi) { palHi = null; draw(); }
   const I = $('inspector');
@@ -4521,7 +5258,7 @@ function renderInspector() {
     return;
   }
   const it = sel, aspectLocked = it.kind !== 'shape' && it.kind !== 'pattern';
-  I.innerHTML = `
+  I.innerHTML = `${it.kind === 'vector' ? pickHTML(it) : ''}
     <div class="card">
       <h3><span style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--fg)">${esc(it.name)}</span><small>${it.kind}</small></h3>
       <div class="fields" id="tf">
@@ -4540,6 +5277,7 @@ function renderInspector() {
     </div>
     <div class="card"><h3>Conversion <small>${it.kind === 'image' ? 'raster → lines' : it.kind === 'vector' ? 'paths → lines' : it.kind === 'style' ? 'plot range style' : ''}</small></h3>
       <div class="fields" id="kf">${kindFields(it).map(f => fieldHTML(f, it.opts)).join('')}${mapHTML(it)}</div>
+      ${it.kind === 'vector' ? `<div id="vx" style="margin-top:12px">${vecHTML(it)}</div>` : ''}
     </div>`;
   syncTransformFields();
   I.querySelectorAll('[data-t]').forEach(inp => inp.oninput = () => {
@@ -4577,10 +5315,12 @@ function renderInspector() {
       relabel(it); const m = $('geoMoved'); if (m && isMapItem(it)) m.innerHTML = geoMovedNote(it);
       if (isMapItem(it)) geoAutoCheck(it);
     }
+    else if (it.kind === 'vector' && (k === 'pen' || k === 'strokes')) renderInspector();
     else if (structural) renderInspector();
     schedule(k === 'text' ? 350 : 150);
   }, ['mode', 'fills', 'style', 'shape', 'fill', 'pattern', 'colors', 'edges', 'edgeSrc', 'palette']);
   kf.querySelectorAll('[data-role]').forEach(s => s.onchange = () => { it.opts.roles[s.dataset.role] = s.value; schedule(0); });
+  if (it.kind === 'vector') vecBind(it);
   if ($('skyQ')) {
     const setPlace = (lat, lon, place) => { Object.assign(it.opts, {lat, lon, place, tz: guessTz(lat, lon)}); relabel(it); renderInspector(); schedule(0); };
     const findSky = async () => {
@@ -4674,7 +5414,7 @@ function deleteSel() { if (!sel) return; const n = sel.name; items = items.filte
 function duplicateSel() {
   if (!sel) return;
   const c = Object.assign({}, sel, {id: uid(), name: sel.name + ' copy', cx: sel.cx + 10, cy: sel.cy - 10, opts: structuredClone(sel.opts), map: {...sel.map},
-    palette: sel.palette && sel.palette.map(e => ({...e})), inks: sel.inks && sel.inks.map(e => ({...e})), _geom: null, _p2d: null, _grids: null, _mask: null});
+    palette: sel.palette && sel.palette.map(e => ({...e})), inks: sel.inks && sel.inks.map(e => ({...e})), _geom: null, _p2d: null, _grids: null, _mask: null, _vloc: null, _spath: null});
   items.push(c); select(c); schedule(0);
 }
 
@@ -4899,7 +5639,7 @@ function addVector(name, res, nativeSize) {
   if (nb[2] - nb[0] < 1e-6) { nb[0] -= 0.5; nb[2] += 0.5; } if (nb[3] - nb[1] < 1e-6) { nb[1] -= 0.5; nb[3] += 0.5; }
   const map = {}, budget = {n: 8};
   for (const s of res.shapes) for (const c of [s.stroke, s.fill]) if (c && !(c in map)) map[c] = penForColor(c, budget);
-  const it = newItem('vector', name, {shapes: res.shapes, nb, map, w: nb[2] - nb[0], aspect: (nb[3] - nb[1]) / (nb[2] - nb[0]), opts: {...VEC_DEF}});
+  const it = newItem('vector', name, {shapes: res.shapes, nb, map, w: nb[2] - nb[0], aspect: (nb[3] - nb[1]) / (nb[2] - nb[0]), opts: structuredClone(VEC_DEF)});
   const u = usable();
   if (!nativeSize || it.w > u.w || H(it) > u.h) fitItem(it); else { it.cx = u.x + u.w / 2; it.cy = u.y + u.h / 2; }
   items.push(it); select(it); renderPens(); schedule(0);
@@ -4975,6 +5715,7 @@ function openMenu(menu, anchor) {
 addEventListener('pointerdown', e => { if (openMenuEl && !openMenuEl.contains(e.target) && !openMenuAnchor.contains(e.target)) closeMenu(); }, true);
 addEventListener('keydown', e => { if (e.key === 'Escape' && openMenuEl) { closeMenu(); e.stopImmediatePropagation(); } }, true);
 addEventListener('keydown', e => { if (e.key === 'Escape' && mapEdit && !geoPick) { mapEdit = null; draw(); e.stopImmediatePropagation(); } }, true);
+addEventListener('keydown', e => { if (e.key === 'Escape' && shapeEdit && !openMenuEl && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { exitPick(); e.stopImmediatePropagation(); } }, true);
 addEventListener('keydown', e => { if (e.key === 'Escape' && geoPick) { geoPick = null; cv.style.cursor = ''; toast('Picking cancelled'); e.stopImmediatePropagation(); } }, true);
 addEventListener('resize', closeMenu);
 addEventListener('scroll', e => { if (openMenuEl && !openMenuEl.contains(e.target)) closeMenu(); }, true);
@@ -5011,6 +5752,10 @@ addEventListener('keydown', e => {
   if (ws === 'machine') { const d = {ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]}[e.key]; if (d && canTravel()) { e.preventDefault(); jog(...d); } return; }
   if (ws !== 'design') return;
   if (!sel) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && shapeEdit === sel && shapeSel.length) {   // pick mode: leave the picked shapes out (again: put them back)
+    e.preventDefault(); const off = !shapeSel.every(i => vecOff(sel.opts, i)); setOff(sel, shapeSel, off); renderInspector(); draw(); schedule(0);
+    toast(`${shapeSel.length} shape${shapeSel.length > 1 ? 's' : ''} ${off ? 'left out' : 'put back'}`, false, {label: 'Undo', fn: () => History.undo()}); return;
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSel(); return; }
   const d = {ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]}[e.key];
@@ -5149,7 +5894,7 @@ async function applyProject(d) {
   if (d.app !== 'plot-studio') throw new Error('not a Plot Studio project');
   for (const k of Object.keys(DEFAULTS)) { if (k === 'machine' && activeMachine()) continue; S[k] = Object.assign(structuredClone(DEFAULTS[k]), d.settings[k] || {}); }   // the machine in use decides the machine settings
   pens = d.pens; items = [];
-  for (const it of d.items) { if (it.kind === 'image' || (it.kind === 'style' && it.src)) it._img = await loadImage(it.src); items.push(it); }
+  for (const it of d.items) { if (it.kind === 'image' || (it.kind === 'style' && it.src)) it._img = await loadImage(it.src); if (it.kind === 'vector') vecMigrate(it); items.push(it); }
   sel = null; saveSettings(); renderDoc(); renderMach(); renderInspector(); renderPens(); fitView(); schedule(0);
 }
 // autosave: the project is kept in this browser as you work, so a crash or a closed tab loses nothing
@@ -7021,7 +7766,7 @@ let booted = false;
   } else autoConnect();
 })();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
-window.__studio = {bver, noteBridgeVersion, bridgeOld, BRIDGE_MIN, conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
+window.__studio = {vec: {FILLS, styleLines, areaStyle, lineStyle, vecMigrate, vecLocal, shapeAt, enterPick, exitPick, pickShape, ringIndex, ringInside, applyProject, pick: () => ({edit: shapeEdit, sel: shapeSel.slice(), hover: shapeHover})}, bver, noteBridgeVersion, bridgeOld, BRIDGE_MIN, conn: () => conn, server: () => server, GrblSerial, SimGrbl, select: it => select(it), selected: () => sel, handles: it => handles(it), toPx: (x, y) => toPx(x, y), planSVG, importSVG, importDXF, importGcode, addVector, addImage, addKind, items: () => items, pens: () => pens, plan: () => plan, gcodeFor, activePens, runBuild, S,
   ws: () => ws, setWs, connectDemo, demo: () => demo, usb: () => usb, curJob, session: () => session, offline, live, IDB, booted: () => booted,
   servoTestPlan, servoTestGcode, chainSegs, servoHit, setServoPreview: v => { servoPreview = v; }, segText, machines: () => machines, activeMachine, wizard: () => wz, openWizard, testMarkGcode, syncProfile, commitProfile, normBridge,
   cleanLines, resumePoint, resumePreamble, strokeStarts, gcAnalyse, lineKinds,
