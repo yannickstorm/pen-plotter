@@ -854,6 +854,16 @@ async def vectors():
           return JSON.stringify({VEC_IT}.opts.shapes);
         }})()""")
         check(json.loads(r) == {"0": {"off": True}, "2": {"l": {"fx": "dashed"}}}, f"styles of picked shapes are saved with the project ({r})")
+        # one line of 300 000 points (a "one line" drawing): G-code export and plotting used to throw "Maximum call stack size exceeded"
+        r = await b.js("""(async () => {
+          const T = __studio, pts = [], N = 300000; T.items().length = 0;
+          for (let i = 0; i < N; i++) { const a = i * 0.0021; pts.push([100 + 80 * Math.cos(a) * (i / N) + (i % 2) * 0.4, 100 + 80 * Math.sin(a) * (i / N) + (i % 3) * 0.4]); }
+          T.addVector('one line', {shapes: [{subs: [{pts, closed: false}], stroke: '#000000', fill: null}], warn: ''}, false);
+          for (let i = 0; i < 40; i++) { await T.runBuild(); await new Promise(r => setTimeout(r, 30)); }
+          const n = T.activePens().reduce((a, pp) => a + pp.paths.reduce((s, p) => s + p.length, 0), 0);
+          try { return {n, lines: T.gcodeFor(T.activePens(), 'x').split('\\n').length}; } catch (e) { return {n, error: e.message}; }
+        })()""")
+        check(r.get("n", 0) > 250000 and r.get("lines", 0) > r["n"], f"a single line of 300 000 points becomes G-code ({r})")
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()

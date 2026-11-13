@@ -4094,6 +4094,8 @@ function optimize(paths, o, start) {
 // =====================================================================
 //  G-code
 // =====================================================================
+// L.push(...arr) passes every element as an argument: past ~100 000 (one long single-line drawing) it throws "Maximum call stack size exceeded"
+function pushAll(L, arr) { for (let i = 0; i < arr.length; i++) L.push(arr[i]); return L; }
 function gcodePen(pp, M, paperCx) {
   const f = v => v.toFixed(M.decimals), X = x => f(M.mirrorX ? 2 * paperCx - x : x);
   const down = pp.pen.down !== '' && pp.pen.down != null ? +pp.pen.down : M.down, feed = +pp.pen.feed || M.feed;
@@ -4111,16 +4113,16 @@ function gcodeJob(title, body) {   // what every job starts and ends with; body(
   const L = [`; ${title}`, `; made with Plot Studio · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
     `; pen up M3 S${M.up}, default pen down M3 S${M.down}${M.mirrorX ? ' · X mirrored about the paper centre' : ''}`, 'G21', 'G90', `M3 S${M.up}`];
   if (M.dwell > 0) L.push(`G4 P${M.dwell}`);
-  if (M.header.trim()) L.push(...M.header.trim().split('\n'));
+  if (M.header.trim()) pushAll(L, M.header.trim().split('\n'));
   body(L, park, cx);
   if (M.park) L.push(park);
-  if (M.footer.trim()) L.push(...M.footer.trim().split('\n'));
+  if (M.footer.trim()) pushAll(L, M.footer.trim().split('\n'));
   return L.join('\n') + '\n';
 }
 function gcodeFor(list, title) {
   return gcodeJob(title, (L, park, cx) => list.forEach((pp, k) => {
     if (k > 0) { L.push(park, `M0 ; pause — load pen "${pp.pen.name}", then resume (cycle start ~)`); }
-    L.push(...gcodePen(pp, S.machine, cx));
+    pushAll(L, gcodePen(pp, S.machine, cx));
   }));
 }
 // The square around everything that will be plotted, all pens together (paper coordinates). Tracing it with the pen up
@@ -5527,14 +5529,14 @@ function servoTestGcode(waits) {
   const L = ['; Plot Studio — servo wait test', `; rows top→bottom: servo wait ${waits.join(', ')} s · pen up S${M.up}, down S${M.down}`,
     '; read it: dash must touch BOTH guide lines; no ink between dashes; every dot present. Pick the first row that is clean.',
     'G21', 'G90', up, 'G4 P1'];
-  if (M.header.trim()) L.push(...M.header.trim().split('\n'));
+  if (M.header.trim()) pushAll(L, M.header.trim().split('\n'));
   for (const [pts, wt] of servoTestPlan(waits).strokes) {
     L.push(`${tv} X${X(pts[0][0])} Y${f(pts[0][1])}${tf}`, `M3 S${M.down}`); if (wt > 0) L.push(`G4 P${wt}`);
     for (let i = 1; i < pts.length; i++) L.push(`G1 X${X(pts[i][0])} Y${f(pts[i][1])}${i === 1 ? ` F${M.feed}` : ''}`);
     L.push(up); if (wt > 0) L.push(`G4 P${wt}`);
   }
   if (M.park) L.push(`${tv} X${X(M.parkX)} Y${f(M.parkY)}${tf}`);
-  if (M.footer.trim()) L.push(...M.footer.trim().split('\n'));
+  if (M.footer.trim()) pushAll(L, M.footer.trim().split('\n'));
   return L.join('\n') + '\n';
 }
 let servoPreview = null;   // strokes shown on the paper once the test card was hovered (until you leave the Machine view)
@@ -7165,7 +7167,7 @@ function testMarkGcode(P) {   // a small asymmetric "F" at the origin; mirrored 
   const strokes = [[[12, 12], [12, 40]], [[12, 40], [30, 40]], [[12, 27], [26, 27]]].map(s => s.map(([x, y]) => [12 + (x - 12) * k, 12 + (y - 12) * k]));
   const up = `M3 S${P.up}`, dw = P.dwell > 0 ? `G4 P${P.dwell}` : null, tv = P.travelG0 ? 'G0' : 'G1', tf = P.travelG0 ? '' : ` F${P.travel}`;
   const L = ['G21', 'G90', up]; if (dw) L.push(dw);
-  if ((P.header || '').trim()) L.push(...P.header.trim().split('\n'));
+  if ((P.header || '').trim()) pushAll(L, P.header.trim().split('\n'));
   for (const s of strokes) {
     L.push(`${tv} X${X(s[0][0])} Y${f(s[0][1])}${tf}`, `M3 S${P.down}`); if (dw) L.push(dw);
     L.push(`G1 X${X(s[1][0])} Y${f(s[1][1])} F${P.feed}`, up); if (dw) L.push(dw);
