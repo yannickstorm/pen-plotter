@@ -2924,6 +2924,7 @@ function maskSkeleton(mask, gw, gh, cw, ch, w, h, smooth) {
 }
 // straight scan lines across the item box at angle a, keeping runs where test() holds
 function scanRuns(w, h, sp, a, step, test) {
+  sp = Math.max(sp, 0.05); step = Math.max(step, 0.01);
   const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux, cs = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
   const on = cs.map(p => p[0] * nx + p[1] * ny), ou = cs.map(p => p[0] * ux + p[1] * uy);
   const o0 = Math.min(...on), o1 = Math.max(...on), t0 = Math.min(...ou), t1 = Math.max(...ou), out = [];
@@ -4307,8 +4308,23 @@ function bindForm(root, obj, onChange, structural = []) {
     const read = () => inp.type === 'checkbox' ? inp.checked : inp.type === 'number' || inp.type === 'range' ? +inp.value : inp.value;
     const evt = inp.type === 'number' || inp.tagName === 'TEXTAREA' || inp.type === 'text' ? 'input' : 'change';
     inp.addEventListener(evt, () => {
+      // While typing, a number below its min (e.g. "0" on the way to "0.5") must not reach the
+      // generators: a tiny line spacing means millions of scan lines and freezes the UI.
+      if (inp.type === 'number') {
+        const v = parseFloat(inp.value);
+        if (!isFinite(v) || (inp.min !== '' && v < +inp.min) || (inp.max !== '' && v > +inp.max)) return;
+      }
       obj[k] = read(); if (inp.type === 'range') { const em = inp.parentElement.querySelector('em'); if (em) em.textContent = inp.value; }
       onChange(k, structural.includes(k));
+    });
+    if (inp.type === 'number') inp.addEventListener('change', () => {
+      // On blur/enter, snap an out-of-range or empty value back into range and apply it.
+      let v = parseFloat(inp.value);
+      if (!isFinite(v)) v = +obj[k];
+      if (inp.min !== '') v = Math.max(v, +inp.min);
+      if (inp.max !== '') v = Math.min(v, +inp.max);
+      inp.value = v;
+      if (obj[k] !== v) { obj[k] = v; onChange(k, structural.includes(k)); }
     });
     if (inp.type === 'range') inp.addEventListener('input', () => { const em = inp.parentElement.querySelector('em'); if (em) em.textContent = inp.value; });
   });
