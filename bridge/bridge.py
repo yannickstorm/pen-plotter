@@ -151,13 +151,28 @@ def numbered(idx, line):
     return s if len(s) <= NUMBERED_MAX else line
 
 
-def line_kinds(lines):
+def parse_lines(lines):
+    """Every line's words, once (None for '$' commands): a job is analysed several ways, and parsing is what takes the time.
+    Identical lines (pen up, pen down, dwell) share one parse; callers only read it."""
+    memo, out = {}, []
+    for line in lines:
+        if line.startswith('$'):
+            out.append(None)
+            continue
+        w = memo.get(line)
+        if w is None:
+            w = memo[line] = _words(line)
+        out.append(w)
+    return out
+
+
+def line_kinds(lines, words=None):
     """Per line: 1 = a move (takes planner blocks), 2 = G4 dwell (GRBL finishes every move before it answers), 0 = other."""
     kinds = bytearray(len(lines))
     for i, line in enumerate(lines):
         if line.startswith('$'):
             continue
-        w = _words(line)
+        w = _words(line) if words is None else words[i]
         g = w.get('G', [])
         if 4 in g:
             kinds[i] = 2
@@ -166,18 +181,18 @@ def line_kinds(lines):
     return kinds
 
 
-def job_dwell(lines):
+def job_dwell(lines, words=None):
     """The servo wait the job uses (its first G4 P…), for the pen lift when resuming."""
-    for line in lines:
+    for i, line in enumerate(lines):
         if line.startswith('$'):
             continue
-        w = _words(line)
+        w = _words(line) if words is None else words[i]
         if 4 in w.get('G', []) and 'P' in w:
             return w['P'][0]
     return DEFAULT_DWELL
 
 
-def walk(lines, pen_up=None, upto=None):
+def walk(lines, pen_up=None, upto=None, words=None):
     """Run through the program; yields (index, state) after each line. The state dict is updated in place:
     x, y (end of the last move), feed, mode (G0–G3), units (20/21), absolute, down (pen), down_at (line where it went down)."""
     st = {'x': 0.0, 'y': 0.0, 'feed': None, 'mode': None, 'units': 21, 'absolute': True, 'down': False, 'down_at': None, 'ref': pen_up}
@@ -185,7 +200,7 @@ def walk(lines, pen_up=None, upto=None):
     for i in range(n):
         line = lines[i]
         if not line.startswith('$'):
-            w = _words(line)
+            w = _words(line) if words is None else words[i]
             g = [int(v) for v in w.get('G', [])]
             m = [int(v) for v in w.get('M', [])]
             for c in g:
@@ -261,10 +276,10 @@ def resume_preamble(lines, start, pen_up=None, dwell=None):
     return pre
 
 
-def analyse(lines, pen_up=None):
+def analyse(lines, pen_up=None, words=None):
     """Plotted moves for the preview, and cumulative drawn+travel length per line for progress."""
     moves, cum, total, px, py = [], [], 0.0, 0.0, 0.0
-    for i, st in walk(lines, pen_up):
+    for i, st in walk(lines, pen_up, None, words):
         x, y = st['x'], st['y']
         if (x, y) != (px, py):
             total += math.hypot(x - px, y - py)
@@ -891,10 +906,11 @@ class Plotter:
 
     # ----- jobs -----
     def _new_job(self, lines, name, pen_up, meta=None, dwell=None):
-        moves, cum, total = analyse(lines, pen_up)
+        words = parse_lines(lines)      # a big job takes seconds on a Raspberry Pi: parse it once, not once per analysis
+        moves, cum, total = analyse(lines, pen_up, words)
         now = time.time()
-        return {'id': self.job_seq, 'name': name, 'meta': meta or {}, 'lines': lines, 'kinds': line_kinds(lines),
-                'pen_up': pen_up, 'dwell': job_dwell(lines) if dwell is None else dwell,
+        return {'id': self.job_seq, 'name': name, 'meta': meta or {}, 'lines': lines, 'kinds': line_kinds(lines, words),
+                'pen_up': pen_up, 'dwell': job_dwell(lines, words) if dwell is None else dwell,
                 'pre': [], 'pre_next': 0, 'next': 0, 'acked': 0, 'done': 0, 'done0': 0, 'recent': collections.deque(),
                 'running': True, 'stopping': False, 'paused': False, 'state': 'running', 'error': None,
                 'started': now, 'ended': None, 'run_time': 0.0, 't_run': now, 'all_acked': None, 'last_ack': now,

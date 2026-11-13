@@ -6542,7 +6542,7 @@ function bridgeUpload(url, token, body, onProgress) {   // fetch cannot report h
 }
 async function bridgeFetch(base, token, p, body, onProgress) {
   if (onProgress && body !== undefined) {
-    const r = await bridgeUpload((base || '') + '/api/' + p, token, JSON.stringify(body), onProgress);
+    const r = await bridgeUpload((base || '') + '/api/' + p, token, typeof body === 'string' ? body : JSON.stringify(body), onProgress);
     if (r.status === 401) throw new Error('The bridge needs its access token');
     if (r.json.error) { const e = new Error(r.json.error); e.data = r.json; throw e; }
     return r.json;
@@ -7472,21 +7472,29 @@ function stripHTML() {   // which plotter this plots on
 }
 let wakeLock = null;
 // Sending a job to a bridge can take a while (a big drawing is megabytes of G-code): the Plot card shows how much has gone out.
-let sending = null;   // {label, frac (0…1), done: all bytes sent, waiting for the bridge to answer}
-async function sendJob(label, body) {
-  if (conn.kind !== 'bridge') return act('run', body);
-  const size = new Blob([JSON.stringify(body)]).size;
-  sending = {label, frac: 0, size, done: false}; renderQueue();
+let sending = null;   // {label, phase: 'prepare' | 'send' | 'wait', frac (0…1), size, t0}
+const nextPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+// build() makes the job's body. The bar is on screen before it runs: building the G-code of a big drawing blocks the page for a moment.
+async function sendJob(label, build) {
+  if (conn.kind !== 'bridge') return act('run', build());
+  sending = {label, phase: 'prepare', frac: 1, size: 0, t0: Date.now()}; renderQueue();
+  const tick = setInterval(renderSending, 500);
   try {
-    return await act('run', body, e => { if (!sending) return; sending.frac = e.done ? 1 : e.sent / Math.max(e.total, 1); sending.done = !!e.done; renderSending(); });
-  } finally { sending = null; renderQueue(); }
+    await nextPaint();
+    const json = JSON.stringify(build());
+    sending.size = json.length; sending.phase = 'send'; sending.frac = 0; sending.t0 = Date.now(); renderSending();
+    await nextPaint();
+    return await act('run', json, e => { if (!sending) return; sending.frac = e.done ? 1 : e.sent / Math.max(e.total, 1); if (e.done && sending.phase !== 'wait') { sending.phase = 'wait'; sending.t0 = Date.now(); } renderSending(); });
+  } finally { clearInterval(tick); sending = null; renderQueue(); }
 }
 function renderSending() {   // the bar and the text, without rebuilding the card
   const el = $('queueCard').querySelector('[data-q="send"]'); if (!el || !sending) return;
-  const pct = Math.round(sending.frac * 100);
-  el.querySelector('.bigbar').classList.toggle('wait', sending.done);
-  el.querySelector('.bigbar > div').style.width = pct + '%';
-  el.querySelector('[data-q="sendtxt"]').textContent = sending.done ? 'Sent — the bridge is getting the plot ready…' : `${fmtBytes(sending.frac * sending.size)} of ${fmtBytes(sending.size)} · ${pct}%`;
+  const secs = Math.round((Date.now() - sending.t0) / 1000), s = sending, pct = Math.round(s.frac * 100);
+  el.querySelector('.bigbar').classList.toggle('wait', s.phase !== 'send');
+  el.querySelector('.bigbar > div').style.width = (s.phase === 'send' ? pct : 100) + '%';
+  el.querySelector('[data-q="sendtxt"]').textContent = s.phase === 'prepare' ? 'Preparing the G-code…'
+    : s.phase === 'wait' ? `Sent — the bridge is getting the plot ready… ${secs} s`
+    : `${fmtBytes(s.frac * s.size)} of ${fmtBytes(s.size)} · ${pct}%`;
 }
 async function startPen() {
   const pp = nextPen(); if (!pp) return;
@@ -7498,8 +7506,8 @@ async function startPen() {
   if (conn.kind === 'demo' && !session.done.size && demo && demo.ink.length && confirm('Put a fresh sheet on the demo plotter?')) clearSheet({quiet: true});
   if (conn.kind === 'demo') demo.inkColor = pp.pen.color;
   if (sending) return;
-  const r = await sendJob(`Sending ${pp.pen.name} to the bridge`, {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
-    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel(), sid: session.id, width: pp.pen.width}});
+  const r = await sendJob(`Sending ${pp.pen.name} to the bridge`, () => ({gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
+    meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel(), sid: session.id, width: pp.pen.width}}));
   if (r && isLocal() && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
   pollServer();
 }
@@ -7508,7 +7516,7 @@ async function startOutline(ol) {   // its own short job: the pen stays up, noth
   ensureSession();
   const name = `${projName()} — outline`;
   if (sending) return;
-  await sendJob('Sending the outline to the bridge', {gcode: gcodeOutline(ol.box, name), name, penUp: S.machine.up, dwell: S.machine.dwell, meta: {outline: true, sig: ol.sig, project: projLabel(), sid: session.id}});
+  await sendJob('Sending the outline to the bridge', () => ({gcode: gcodeOutline(ol.box, name), name, penUp: S.machine.up, dwell: S.machine.dwell, meta: {outline: true, sig: ol.sig, project: projLabel(), sid: session.id}}));
   pollServer();
 }
 $('plotLeft').addEventListener('click', async e => {

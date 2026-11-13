@@ -292,6 +292,11 @@ def helpers():
     check(B.clean_lines('N10 G1 X1 ; c\n(x)\n$H\n') == ['G1 X1', '$H'], 'old line numbers and comments are stripped')
     check(B.numbered(4, 'G1 X1') == 'N5 G1 X1' and B.numbered(4, '$H') == '$H', 'lines are numbered for Ln reports')
     check(list(B.line_kinds(['G1 X1', 'G4 P1', 'M3 S0', 'G10 L20 P1 X0'])) == [1, 2, 0, 0], 'line kinds: move, dwell, other')
+    L2 = B.clean_lines(make_job(12, 4, seed=5)[0]) + ['$H', 'G4 P0.3', 'G91', 'G1 X-1 Y2']
+    W = B.parse_lines(L2)
+    check(W[L2.index('$H')] is None and len(W) == len(L2), 'parse_lines: one entry per line, none for $ commands')
+    check(B.analyse(L2, 0) == B.analyse(L2, 0, W) and list(B.line_kinds(L2)) == list(B.line_kinds(L2, W)) and B.job_dwell(L2) == B.job_dwell(L2, W),
+          'analysing with the lines parsed once gives the same moves, kinds and dwell')
 
 
 def full_run(tmp):

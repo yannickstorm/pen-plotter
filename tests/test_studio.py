@@ -890,18 +890,20 @@ async def sending_bar():
     try:
         await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
         await wait(b, "__studio.conn().kind === 'bridge' && __studio.server().st && __studio.server().st.connected", 8000)
-        await b.js("__studio.addKind('star'); const g0 = window.gcodeFor; window.gcodeFor = (...a) => g0(...a) + '\\n' + '; padding to make the job a few MB\\n'.repeat(560000)")   # ~20 MB of comments (more than the socket buffers hold); the bridge drops them
+        await b.js("__studio.addKind('star'); const g0 = window.gcodeFor; window.gcodeFor = (...a) => { window.__atBuild = [!!document.querySelector('#queueCard [data-q=send]'), sending && sending.phase, document.querySelector('#queueCard [data-q=sendtxt]').textContent]; return g0(...a) + '\\n' + '; padding to make the job a few MB\\n'.repeat(560000); }")   # ~20 MB of comments (more than the socket buffers hold); the bridge drops them
         await b.js(SETTLE)
         await click(b, "#wsSeg [data-ws=plot]")
-        await b.js("window.__fr = []; setInterval(() => { if (sending) window.__fr.push([sending.frac, sending.done, !!document.querySelector('#queueCard [data-q=send]'), document.querySelector('#queueCard [data-p=go]').disabled, document.querySelector('#queueCard [data-q=sendtxt]').textContent]); }, 40)")
+        await b.js("window.__fr = []; setInterval(() => { if (sending) window.__fr.push([sending.frac, sending.phase, !!document.querySelector('#queueCard [data-q=send]'), document.querySelector('#queueCard [data-p=go]').disabled, document.querySelector('#queueCard [data-q=sendtxt]').textContent]); }, 40)")
         await click(b, "[data-p=go]")
         check(await wait(b, "window.__fr.some(f => f[2])", 5000), "a bar appears in the Plot card while the job is sent")
         await wait(b, "__studio.curJob() && __studio.curJob().running", 30000)
         fr = await b.js("window.__fr")
-        fracs = [f[0] for f in fr if not f[1]]
+        fracs = [f[0] for f in fr if f[1] == 'send']
         check(len(set(round(x, 2) for x in fracs)) >= 4, f"it fills up bit by bit ({len(fracs)} samples, {min(fracs):.0%} → {max(fracs):.0%})")
         check(fracs == sorted(fracs), "…and never goes backwards")
         check(all(f[3] for f in fr), "the Plot button stays disabled while sending")
+        at = await b.js("window.__atBuild")
+        check(at[0] and at[1] == "prepare" and "Preparing" in at[2], f"the bar is already on screen when the G-code starts to be built ({at})")
         check(any(" of " in f[4] and "MB" in f[4] for f in fr), f"it says how much has been sent ({next((f[4] for f in fr if ' of ' in f[4]), '')})")
         check(await b.js("sending === null") and await b.js("!document.querySelector('#queueCard [data-q=send]')"), "the bar is gone once the job has started")
         check(not b.errors, f"no page errors {b.errors[:3]}")
