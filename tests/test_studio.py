@@ -417,7 +417,7 @@ async def on_bridge():
         j = await b.js("__studio.curJob()")
         check(j["resume_from"] < j["total"] and drawn >= 3, f"crashed mid-stroke ({drawn} segments drawn), resumed from the stroke's start (line {j['resume_from'] + 1})")
         check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed through the bridge and finished")
-        M = P.job["moves"]
+        M = P.job_detail()["job"]["moves"]   # [[line, x, y, down], …] as the live view gets them
         have = {tuple(round(v, 2) for v in seg) for seg in fake.ink}
         miss = [i for i in range(1, len(M)) if M[i][3] and (round(M[i - 1][1], 2), round(M[i - 1][2], 2), round(M[i][1], 2), round(M[i][2], 2)) not in have]
         check(not miss, f"every line is on the paper ({len(miss)} missing)")

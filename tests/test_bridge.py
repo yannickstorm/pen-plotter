@@ -293,10 +293,12 @@ def helpers():
     check(B.numbered(4, 'G1 X1') == 'N5 G1 X1' and B.numbered(4, '$H') == '$H', 'lines are numbered for Ln reports')
     check(list(B.line_kinds(['G1 X1', 'G4 P1', 'M3 S0', 'G10 L20 P1 X0'])) == [1, 2, 0, 0], 'line kinds: move, dwell, other')
     L2 = B.clean_lines(make_job(12, 4, seed=5)[0]) + ['$H', 'G4 P0.3', 'G91', 'G1 X-1 Y2']
-    W = B.parse_lines(L2)
-    check(W[L2.index('$H')] is None and len(W) == len(L2), 'parse_lines: one entry per line, none for $ commands')
-    check(B.analyse(L2, 0) == B.analyse(L2, 0, W) and list(B.line_kinds(L2)) == list(B.line_kinds(L2, W)) and B.job_dwell(L2) == B.job_dwell(L2, W),
-          'analysing with the lines parsed once gives the same moves, kinds and dwell')
+    A = B.analyse_job(L2, 0)
+    moves, cum, total = B.analyse(L2, 0)
+    flat = [v for m in moves for v in m]
+    check(list(A['moves']) == flat and list(A['cum']) == cum and A['length'] == total, 'one-pass analysis: the same moves and progress as analyse()')
+    check(list(A['kinds']) == list(B.line_kinds(L2)) and A['strokes'] == B.stroke_starts(L2, 0) and A['dwell'] == B.job_dwell(L2), '…the same line kinds, stroke starts and dwell')
+    check(json.loads(B.moves_json(A['moves'])) == moves, '…and its moves as JSON are what analyse() gives')
 
 
 def full_run(tmp):
