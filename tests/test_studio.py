@@ -1199,6 +1199,7 @@ async def bridge_update_card():
                                          {"tag": "v0.9.0", "version": "0.9.0", "name": "n", "published": None, "notes": "", "prerelease": False, "installable": True, "current": False, "newer": False}]
         U.install = lambda tag: picked.append(tag)
         await b.js("__studio.setWs('plot'); __studio.setWs('machine')")
+        await b.js("for (const k in swd) swd[k].at = 0")   # the tab only reloads when its data is older than 9 s: make it so, whatever the speed of this machine
         await click(b, "[data-mtab=sw]")
         check(await wait(b, "document.querySelectorAll('#swPane details.rel').length === 3", 8000), "the releases are listed")
         check(await b.js("document.querySelector('#swPane [data-tag=\"v9.0.0\"]').textContent") == "Update to this" and await b.js("document.querySelector('#swPane [data-tag=\"v0.9.0\"]').textContent") == "Go back to this", "newer ones offer “Update to this”, older ones “Go back to this”")
