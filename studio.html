@@ -136,6 +136,9 @@
   .bigbar { height: 9px; border-radius: 999px; background: var(--raise); overflow: hidden; margin: 10px 0; }
   .bigbar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #ff7ab6); transition: width .35s; }
   .bigbar.bad > div { background: var(--danger); } .bigbar.ok > div { background: var(--ok); }
+  .bigbar.wait > div { background: linear-gradient(90deg, var(--accent), #ff7ab6, var(--accent)); background-size: 200% 100%; animation: bbwait 1.1s linear infinite; }
+  @keyframes bbwait { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .bigbar.wait > div { animation: none; } }
   .livehead { display: flex; align-items: baseline; gap: 10px; }
   .livehead b { font-size: 26px; font-weight: 650; letter-spacing: -.02em; font-family: var(--mono); }
   .livehead span { color: var(--muted); font-size: 12px; }
@@ -6525,19 +6528,37 @@ let conn = {kind: null, base: '', token: '', id: null}, usb = null, demo = null;
 let server = {up: false, st: null}, pollTimer = null;
 const offline = {};   // machine id → checkpoint of the job last streamed from this browser, shown while that machine is not connected
 const isLocal = () => conn.kind === 'usb' || conn.kind === 'demo';
-async function bridgeFetch(base, token, p, body) {
+function bridgeUpload(url, token, body, onProgress) {   // fetch cannot report how much of a request body has gone out; XMLHttpRequest can
+  return new Promise((ok, no) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url); x.setRequestHeader('X-Bridge-Token', token || ''); x.setRequestHeader('Content-Type', 'application/json');
+    x.upload.onprogress = e => { if (e.lengthComputable) onProgress({sent: e.loaded, total: e.total}); };
+    x.upload.onload = () => onProgress({sent: 1, total: 1, done: true});   // all bytes are out: the bridge is now reading the job
+    x.onerror = () => no(new Error('Could not reach the bridge'));
+    x.ontimeout = () => no(new Error('The bridge did not answer in time'));
+    x.onload = () => { try { ok({status: x.status, json: JSON.parse(x.responseText)}); } catch { no(new Error('The bridge sent an unreadable answer')); } };
+    x.send(body);
+  });
+}
+async function bridgeFetch(base, token, p, body, onProgress) {
+  if (onProgress && body !== undefined) {
+    const r = await bridgeUpload((base || '') + '/api/' + p, token, JSON.stringify(body), onProgress);
+    if (r.status === 401) throw new Error('The bridge needs its access token');
+    if (r.json.error) { const e = new Error(r.json.error); e.data = r.json; throw e; }
+    return r.json;
+  }
   const opt = {headers: {'X-Bridge-Token': token || ''}};
   if (body !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
   const r = await fetch((base || '') + '/api/' + p, opt);
   if (r.status === 401) throw new Error('The bridge needs its access token');
   const j = await r.json(); if (j.error) { const e = new Error(j.error); e.data = j; throw e; } return j;
 }
-async function api(path, body) {
+async function api(path, body, onProgress) {
   if (isLocal()) return usb.api(path, body || {});
-  if (conn.kind === 'bridge') return bridgeFetch(conn.base, conn.token, path, body || {});
+  if (conn.kind === 'bridge') return bridgeFetch(conn.base, conn.token, path, body || {}, onProgress);
   throw new Error('Connect a plotter first (Machine)');
 }
-const act = (path, body) => api(path, body).catch(e => { toast(e.message, true); return null; });
+const act = (path, body, onProgress) => api(path, body, onProgress).catch(e => { toast(e.message, true); return null; });
 let devLog = [], logSeen = 0;
 function setConn(c) {
   conn = {base: '', token: '', id: null, ...c}; server = {up: !!c.kind, st: null}; devLog = []; logSeen = 0;
@@ -7406,7 +7427,7 @@ function renderQueue() {
       <span class="sw ol">${OUTLINE_ICON}</span>
       <div><b>Outline</b><span>${round(ol.box.x1 - ol.box.x0, 1)} × ${round(ol.box.y1 - ol.box.y0, 1)} mm · pen up · ~${fmtTime(outlineTime(ol.box))}</span>
         ${jo && (running || j.resumable) ? `<div class="bigbar ${j.resumable ? 'bad' : ''}" style="margin:6px 0 0;height:5px"><div data-q="bar"></div></div>` : ''}</div>
-      <div class="row"><span class="st" ${jo && ol.state === 'pending' ? 'data-q="st"' : ''}>${ol.state === 'traced' ? '✓ traced' : ol.state === 'skipped' ? 'skipped' : ''}</span>${olNext ? '' : `<button class="btn ghost sm" data-p="otrace" ${!on || running || building || (j && j.resumable) ? 'disabled' : ''} title="Move the pen round the box now">${ol.state === 'pending' ? 'Trace' : '↺'}</button>`}</div></div>`;
+      <div class="row"><span class="st" ${jo && ol.state === 'pending' ? 'data-q="st"' : ''}>${ol.state === 'traced' ? '✓ traced' : ol.state === 'skipped' ? 'skipped' : ''}</span>${olNext ? '' : `<button class="btn ghost sm" data-p="otrace" ${!on || running || building || sending || (j && j.resumable) ? 'disabled' : ''} title="Move the pen round the box now">${ol.state === 'pending' ? 'Trace' : '↺'}</button>`}</div></div>`;
   const steps = olRow + a.map((pp, i) => {
     const id = pp.pen.id, mine = jp === id, d = session.done.has(id), sk = session.skipped.has(id);
     return `<div class="step ${nx && nx.pen.id === id && !running && !olNext ? 'cur' : ''} ${d ? 'done' : ''} ${sk ? 'skip' : ''} ${mine && j.resumable ? 'int' : ''}">
@@ -7426,10 +7447,11 @@ function renderQueue() {
     ${S.machine.mirrorX ? '<div class="callout" style="margin-bottom:10px">X is mirrored in the output (Machine settings).</div>' : ''}
     <div style="display:flex;flex-direction:column;gap:8px">${steps}</div>
     <label class="check" style="margin-top:10px" title="Before the first pen, move the pen (up) round the box that holds everything that will be plotted, to check the design is well placed"><input type="checkbox" data-p="outline" ${outlineOn ? 'checked' : ''}>Trace the outline first</label>
-    <div class="callout" style="margin-top:10px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)">${prompt}</div>
+    ${sending ? `<div class="callout" data-q="send" style="margin-top:10px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)"><b>${esc(sending.label)}</b><div class="bigbar" style="margin:8px 0 6px"><div style="width:${Math.round(sending.frac * 100)}%"></div></div><span data-q="sendtxt" style="font-size:11.5px;color:var(--muted)"></span></div>`
+    : `<div class="callout" style="margin-top:10px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)">${prompt}</div>`}
     <div class="row" style="margin-top:10px">
       ${running ? `<button class="btn grow" data-p="pause">${held ? 'Resume' : 'Pause'}</button><button class="btn danger" data-p="stop">Stop</button>`
-        : `<button class="btn primary grow" data-p="go" ${!nx || !on || building || (j && j.resumable) ? 'disabled' : ''}>${olNext ? 'Trace outline' : nx ? `Plot ${esc(nx.pen.name)}` : 'Finished'}</button>
+        : `<button class="btn primary grow" data-p="go" ${!nx || !on || building || sending || (j && j.resumable) ? 'disabled' : ''}>${olNext ? 'Trace outline' : nx ? `Plot ${esc(nx.pen.name)}` : 'Finished'}</button>
            <button class="btn" data-p="skip" ${!nx ? 'disabled' : ''} ${olNext ? 'title="Skip the outline"' : ''}>Skip</button>`}
     </div>
     ${!running && (session.done.size || session.skipped.size || session.outline) ? '<div class="row" style="margin-top:8px"><span class="grow"></span><button class="btn ghost sm" data-p="over">Start over</button></div>' : ''}
@@ -7439,6 +7461,7 @@ function renderQueue() {
   // the numbers that change while plotting are filled in without rebuilding the buttons
   const q = n => $('queueCard').querySelector(`[data-q="${n}"]`), left = a.filter(pp => !session.done.has(pp.pen.id)).reduce((s, pp) => s + pp.time, 0);
   q('left').textContent = left ? ` · ~${fmtTime(left)} left` : '';
+  if (sending) renderSending();
   if (q('bar')) q('bar').style.width = (j.progress * 100) + '%';
   if (q('st')) q('st').textContent = running ? `${Math.round(j.progress * 100)}%${j.eta ? ' · ' + fmtTime(j.eta) + ' left' : ''}` : j && j.resumable ? `${Math.round(j.progress * 100)}% · unfinished` : '';
 }
@@ -7448,6 +7471,23 @@ function stripHTML() {   // which plotter this plots on
     ${am && !conn.kind ? '<button class="btn sm primary" data-p="mconnect">Connect</button>' : ''}<button class="btn sm" data-p="machine">${am ? 'Change' : 'Add…'}</button></div>`;
 }
 let wakeLock = null;
+// Sending a job to a bridge can take a while (a big drawing is megabytes of G-code): the Plot card shows how much has gone out.
+let sending = null;   // {label, frac (0…1), done: all bytes sent, waiting for the bridge to answer}
+async function sendJob(label, body) {
+  if (conn.kind !== 'bridge') return act('run', body);
+  const size = new Blob([JSON.stringify(body)]).size;
+  sending = {label, frac: 0, size, done: false}; renderQueue();
+  try {
+    return await act('run', body, e => { if (!sending) return; sending.frac = e.done ? 1 : e.sent / Math.max(e.total, 1); sending.done = !!e.done; renderSending(); });
+  } finally { sending = null; renderQueue(); }
+}
+function renderSending() {   // the bar and the text, without rebuilding the card
+  const el = $('queueCard').querySelector('[data-q="send"]'); if (!el || !sending) return;
+  const pct = Math.round(sending.frac * 100);
+  el.querySelector('.bigbar').classList.toggle('wait', sending.done);
+  el.querySelector('.bigbar > div').style.width = pct + '%';
+  el.querySelector('[data-q="sendtxt"]').textContent = sending.done ? 'Sent — the bridge is getting the plot ready…' : `${fmtBytes(sending.frac * sending.size)} of ${fmtBytes(sending.size)} · ${pct}%`;
+}
 async function startPen() {
   const pp = nextPen(); if (!pp) return;
   if (building) return toast('Still processing — try again in a moment', true);
@@ -7457,7 +7497,8 @@ async function startPen() {
   if (ol) return startOutline(ol);
   if (conn.kind === 'demo' && !session.done.size && demo && demo.ink.length && confirm('Put a fresh sheet on the demo plotter?')) clearSheet({quiet: true});
   if (conn.kind === 'demo') demo.inkColor = pp.pen.color;
-  const r = await act('run', {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
+  if (sending) return;
+  const r = await sendJob(`Sending ${pp.pen.name} to the bridge`, {gcode: gcodeFor([pp], `${projName()} — pen ${pp.pen.name}`), name: `${projName()} — ${pp.pen.name}`, penUp: S.machine.up, dwell: S.machine.dwell,
     meta: {penId: pp.pen.id, color: pp.pen.color, project: projLabel(), sid: session.id, width: pp.pen.width}});
   if (r && isLocal() && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
   pollServer();
@@ -7466,7 +7507,8 @@ async function startOutline(ol) {   // its own short job: the pen stays up, noth
   if (building) return toast('Still processing — try again in a moment', true);
   ensureSession();
   const name = `${projName()} — outline`;
-  await act('run', {gcode: gcodeOutline(ol.box, name), name, penUp: S.machine.up, dwell: S.machine.dwell, meta: {outline: true, sig: ol.sig, project: projLabel(), sid: session.id}});
+  if (sending) return;
+  await sendJob('Sending the outline to the bridge', {gcode: gcodeOutline(ol.box, name), name, penUp: S.machine.up, dwell: S.machine.dwell, meta: {outline: true, sig: ol.sig, project: projLabel(), sid: session.id}});
   pollServer();
 }
 $('plotLeft').addEventListener('click', async e => {

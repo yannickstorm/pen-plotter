@@ -12,9 +12,11 @@ Tools for a CoreXY pen plotter running GRBL 1.1 with a servo pen (`M3 S0` = pen 
 | `build_artifact.py` | Builds the hosted copy of Plot Studio: `python3 build_artifact.py OUT.html [example-image]` |
 | `send.py` | Minimal command-line G-code sender |
 | `make_*.py` | Scripts that generate individual designs |
-| `tests/` | `python3 tests/test_bridge.py`: the bridge's checkpoint and resume against a simulated GRBL (crash mid-stroke, bridge restart, stop, pulled cable, HTTP API). `python3 tests/test_studio.py`: browser tests for Plot Studio with real mouse/touch input — resizing, moving and zooming a map, and a plot on the demo plotter that crashes, is recovered, and survives a page reload; SVG styling (every fill pattern stays inside a concave shape with a hole, styles per colour and per picked shape set with real mouse and keys, effects, one-pen mode, old projects) (needs Chrome or Chromium and `websockets`). `great-wave.webp` is the test image and the hosted example. |
+| `tests/` | `python3 tests/test_bridge.py`: the bridge's checkpoint and resume against a simulated GRBL (crash mid-stroke, bridge restart, stop, pulled cable, HTTP API). `python3 tests/test_studio.py`: browser tests for Plot Studio with real mouse/touch input — resizing, moving and zooming a map, the loading bar while a big job is sent to a (slow) bridge, and a plot on the demo plotter that crashes, is recovered, and survives a page reload; SVG styling (every fill pattern stays inside a concave shape with a hole, styles per colour and per picked shape set with real mouse and keys, effects, one-pen mode, old projects) (needs Chrome or Chromium and `websockets`). `great-wave.webp` is the test image and the hosted example. |
 
 Plot Studio also works opened directly as a file or hosted; without a plotter it exports G-code / SVG / HPGL, and the **demo plotter** (Machine → Demo plotter, or open the page with `?demo`) shows how plotting, the live view and crash recovery work without hardware.
+
+Sending a job to a Plotter Bridge can take a while for a big drawing (megabytes of G-code over Wi-Fi or Tailscale): the Plot card shows a loading bar with how much has been sent, and the Plot buttons stay disabled until the bridge has the job.
 
 ## Machines and the setup wizard
 

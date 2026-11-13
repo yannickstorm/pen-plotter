@@ -859,6 +859,57 @@ async def vectors():
         await b.close()
 
 
+async def sending_bar():
+    """Sending a big job to a bridge shows a progress bar in the Plot card, and nothing can be started twice meanwhile."""
+    print("sending a plot to the bridge shows a loading bar")
+    import io
+    import tempfile
+    import threading
+    import time
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.01)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    orig = B.Handler.do_POST
+
+    def slow_post(self):   # a slow link: the job's body is read in small pieces
+        if self.path.startswith("/api/run"):
+            n, data = int(self.headers.get("Content-Length") or 0), b""
+            while len(data) < n:
+                data += self.rfile.read(min(1048576, n - len(data)))
+                time.sleep(0.1)
+            self.rfile = io.BytesIO(data)
+        return orig(self)
+    B.Handler.do_POST = slow_post
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
+        await wait(b, "__studio.conn().kind === 'bridge' && __studio.server().st && __studio.server().st.connected", 8000)
+        await b.js("__studio.addKind('star'); const g0 = window.gcodeFor; window.gcodeFor = (...a) => g0(...a) + '\\n' + '; padding to make the job a few MB\\n'.repeat(560000)")   # ~20 MB of comments (more than the socket buffers hold); the bridge drops them
+        await b.js(SETTLE)
+        await click(b, "#wsSeg [data-ws=plot]")
+        await b.js("window.__fr = []; setInterval(() => { if (sending) window.__fr.push([sending.frac, sending.done, !!document.querySelector('#queueCard [data-q=send]'), document.querySelector('#queueCard [data-p=go]').disabled, document.querySelector('#queueCard [data-q=sendtxt]').textContent]); }, 40)")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "window.__fr.some(f => f[2])", 5000), "a bar appears in the Plot card while the job is sent")
+        await wait(b, "__studio.curJob() && __studio.curJob().running", 30000)
+        fr = await b.js("window.__fr")
+        fracs = [f[0] for f in fr if not f[1]]
+        check(len(set(round(x, 2) for x in fracs)) >= 4, f"it fills up bit by bit ({len(fracs)} samples, {min(fracs):.0%} → {max(fracs):.0%})")
+        check(fracs == sorted(fracs), "…and never goes backwards")
+        check(all(f[3] for f in fr), "the Plot button stays disabled while sending")
+        check(any(" of " in f[4] and "MB" in f[4] for f in fr), f"it says how much has been sent ({next((f[4] for f in fr if ' of ' in f[4]), '')})")
+        check(await b.js("sending === null") and await b.js("!document.querySelector('#queueCard [data-q=send]')"), "the bar is gone once the job has started")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+        B.Handler.do_POST = orig
+
+
 async def history_not_doubled():
     """Machine and Plot show the plotter's own frame, so the history must sit exactly where the job drew — also when the X mirror
     (or the paper) is changed after plotting. Design maps it through the settings that are current."""
@@ -1200,7 +1251,7 @@ async def servo_test_card():
 
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("vectors", vectors), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("doubled", history_not_doubled), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("vectors", vectors), ("sending", sending_bar), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("doubled", history_not_doubled), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
