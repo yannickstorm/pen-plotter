@@ -19,7 +19,7 @@ can be resumed from the stroke it was drawing.
 Only the Python 3 standard library is needed on Linux and macOS. On Windows,
 install pyserial (pip install pyserial); it is also used on Linux/macOS when present.
 """
-import argparse, collections, glob, hashlib, json, math, os, re, select, shutil, socket, ssl, sys, threading, time, uuid
+import argparse, array, collections, glob, hashlib, json, math, os, re, select, shutil, socket, ssl, sys, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -179,13 +179,15 @@ def job_dwell(lines):
 
 def walk(lines, pen_up=None, upto=None):
     """Run through the program; yields (index, state) after each line. The state dict is updated in place:
-    x, y (end of the last move), feed, mode (G0–G3), units (20/21), absolute, down (pen), down_at (line where it went down)."""
-    st = {'x': 0.0, 'y': 0.0, 'feed': None, 'mode': None, 'units': 21, 'absolute': True, 'down': False, 'down_at': None, 'ref': pen_up}
+    x, y (end of the last move), feed, mode (G0–G3), units (20/21), absolute, down (pen), down_at (line where it went down),
+    w (the line's words, None for a '$' command)."""
+    st = {'x': 0.0, 'y': 0.0, 'feed': None, 'mode': None, 'units': 21, 'absolute': True, 'down': False, 'down_at': None, 'ref': pen_up, 'w': None}
     n = len(lines) if upto is None else min(upto, len(lines))
     for i in range(n):
         line = lines[i]
+        st['w'] = None
         if not line.startswith('$'):
-            w = _words(line)
+            w = st['w'] = _words(line)
             g = [int(v) for v in w.get('G', [])]
             m = [int(v) for v in w.get('M', [])]
             for c in g:
@@ -274,6 +276,44 @@ def analyse(lines, pen_up=None):
             px, py = x, y
         cum.append(total)
     return moves, cum, total
+
+
+def analyse_job(lines, pen_up=None):
+    """All a job needs from its G-code, in one pass that keeps nothing per line but numbers. A job of 300 000 lines
+    on a Raspberry Pi: parsing each line once instead of three times, and flat arrays instead of a Python list per
+    move, are the difference between seconds and minutes (and hundreds of MB, i.e. swapping).
+    moves: flat array line, x, y, pen down (4 per move, as analyse() returns them); cum: drawn+travel length up to
+    each line; kinds: as line_kinds(); strokes: as stroke_starts(); dwell: as job_dwell()."""
+    moves, cum, kinds, strokes = array.array('d'), array.array('d'), bytearray(len(lines)), []
+    total, px, py, was, dwell = 0.0, 0.0, 0.0, False, None
+    for i, st in walk(lines, pen_up):
+        w = st['w']
+        if w is not None:
+            g = w.get('G', ())
+            if 4 in g:
+                kinds[i] = 2
+                if dwell is None and 'P' in w:
+                    dwell = w['P'][0]
+            elif any(k in w for k in 'XYZIJ') and not (10 in g or 92 in g):
+                kinds[i] = 1
+        x, y = st['x'], st['y']
+        if (x, y) != (px, py):
+            total += math.hypot(x - px, y - py)
+            rx, ry = round(px, 3), round(py, 3)
+            if not moves or moves[-3] != rx or moves[-2] != ry:
+                moves.extend((i, rx, ry, 0))
+            moves.extend((i, round(x, 3), round(y, 3), 1 if st['down'] else 0))
+            px, py = x, y
+        cum.append(total)
+        if st['down'] and not was:
+            strokes.append(i)
+        was = st['down']
+    return {'moves': moves, 'cum': cum, 'length': total, 'kinds': kinds, 'strokes': strokes, 'dwell': DEFAULT_DWELL if dwell is None else dwell}
+
+
+def moves_json(m):
+    """The flat moves array as the JSON analyse() would give: [[line, x, y, down], …]."""
+    return '[' + ','.join(f'[{int(m[k])},{m[k + 1]!r},{m[k + 2]!r},{int(m[k + 3])}]' for k in range(0, len(m), 4)) + ']'
 
 
 # ---------------------------------------------------------------------------
@@ -890,30 +930,27 @@ class Plotter:
                 self._end_job('The plotter stopped answering mid-plot (it may have reset)')
 
     # ----- jobs -----
-    def _new_job(self, lines, name, pen_up, meta=None, dwell=None):
-        moves, cum, total = analyse(lines, pen_up)
+    def _new_job(self, lines, name, pen_up, meta=None, dwell=None, a=None):
+        a = a or analyse_job(lines, pen_up)
         now = time.time()
-        return {'id': self.job_seq, 'name': name, 'meta': meta or {}, 'lines': lines, 'kinds': line_kinds(lines),
-                'pen_up': pen_up, 'dwell': job_dwell(lines) if dwell is None else dwell,
+        return {'id': self.job_seq, 'name': name, 'meta': meta or {}, 'lines': lines, 'kinds': a['kinds'],
+                'pen_up': pen_up, 'dwell': a['dwell'] if dwell is None else dwell,
                 'pre': [], 'pre_next': 0, 'next': 0, 'acked': 0, 'done': 0, 'done0': 0, 'recent': collections.deque(),
                 'running': True, 'stopping': False, 'paused': False, 'state': 'running', 'error': None,
                 'started': now, 'ended': None, 'run_time': 0.0, 't_run': now, 'all_acked': None, 'last_ack': now,
-                'moves': moves, 'cum': cum, 'length': total, 'pos': None, 'resume_at': None, 'resume_from': 0,
-                'strokes': None, 'dirty': False}
+                'moves': a['moves'], 'cum': a['cum'], 'length': a['length'], 'pos': None, 'resume_at': None, 'resume_from': 0,
+                'strokes': a['strokes'], 'moves_json': None, 'dirty': False}
 
     def run(self, gcode, name='Plot', pen_up=None, meta=None, dwell=None):
         lines = clean_lines(gcode)
         if not lines:
             raise RuntimeError('The G-code is empty')
+        self._can_run()   # say no before the work below, which takes a while for a big job on a Pi
+        a = analyse_job(lines, pen_up)   # without the lock: the plotter keeps being served meanwhile
         with self.cond:
-            if not self.ser:
-                raise RuntimeError('The plotter is not connected')
-            if self.job and self.job['running']:
-                raise RuntimeError('A plot is already running')
-            if self.state == 'Alarm':
-                raise RuntimeError('The plotter is in alarm — unlock or home it first')
+            self._can_run()
             self.job_seq += 1
-            self.job = self._new_job(lines, name, pen_up, meta, dwell)
+            self.job = self._new_job(lines, name, pen_up, meta, dwell, a)
             if self.store:
                 try:
                     self.store.save_lines(lines)
@@ -923,6 +960,15 @@ class Plotter:
             self.say('sys', f'Started "{name}" — {len(lines)} lines')
             self.cond.notify_all()
         return self.job['id']
+
+    def _can_run(self):
+        with self.lock:
+            if not self.ser:
+                raise RuntimeError('The plotter is not connected')
+            if self.job and self.job['running']:
+                raise RuntimeError('A plot is already running')
+            if self.state == 'Alarm':
+                raise RuntimeError('The plotter is in alarm — unlock or home it first')
 
     def resume_job(self, start=None):
         """Continue a stopped or interrupted job from line `start` (default: the start of the stroke it was on)."""
@@ -1313,18 +1359,23 @@ class Plotter:
                 st['log'] = [e for e in self.log if e['seq'] > since]
             return st
 
-    def job_detail(self, with_gcode=False):
+    def job_detail_json(self, with_gcode=False):
+        """The job for the live view, as JSON bytes. The lock is held only to copy a few values: turning a big job's
+        moves into JSON takes seconds on a Pi, and the plotter must keep getting its lines meanwhile."""
         with self.lock:
             j = self.job
             if not j:
-                return {'job': None}
-            if j['strokes'] is None:
-                j['strokes'] = stroke_starts(j['lines'], j['pen_up'])
-            out = {'id': j['id'], 'name': j['name'], 'total': len(j['lines']), 'moves': j['moves'], 'strokes': j['strokes'],
-                   'done': j['done'], 'state': j['state'], 'resume_at': j['resume_at'], 'pen_up': j['pen_up'], 'meta': j['meta']}
-            if with_gcode:
-                out['lines'] = j['lines']
-            return {'job': out}
+                return b'{"job": null}'
+            head = {'id': j['id'], 'name': j['name'], 'total': len(j['lines']), 'strokes': j['strokes'],
+                    'done': j['done'], 'state': j['state'], 'resume_at': j['resume_at'], 'pen_up': j['pen_up'], 'meta': j['meta']}
+            lines = j['lines'] if with_gcode else None
+        if j['moves_json'] is None:
+            j['moves_json'] = moves_json(j['moves'])   # once per job (the moves never change)
+        out = json.dumps(head)[:-1] + ', "moves": ' + j['moves_json'] + (', "lines": ' + json.dumps(lines) if lines is not None else '') + '}'
+        return ('{"job": ' + out + '}').encode()
+
+    def job_detail(self, with_gcode=False):
+        return json.loads(self.job_detail_json(with_gcode))
 
 
 def fmt_dur(s):
@@ -1634,7 +1685,7 @@ class Handler(BaseHTTPRequestHandler):
                 since = None
             return self._send(200, self.plotter.status(since))
         if u.path == '/api/job':
-            return self._send(200, self.plotter.job_detail(with_gcode=bool(q.get('gcode'))))
+            return self._send(200, self.plotter.job_detail_json(with_gcode=bool(q.get('gcode'))))
         if u.path == '/api/machine':
             return self._send(200, {'machine': self.plotter.machine.get()})
         if u.path == '/api/grbl':
@@ -1669,7 +1720,7 @@ class Handler(BaseHTTPRequestHandler):
             if cmd == 'status':
                 return self._send(200, P.status(None))
             if cmd == 'job':
-                return self._send(200, P.job_detail(with_gcode=bool(body.get('gcode'))))
+                return self._send(200, P.job_detail_json(with_gcode=bool(body.get('gcode'))))
             if cmd == 'machine':
                 try:
                     return self._send(200, {'ok': True, 'machine': P.machine.save(body.get('name'), body.get('profile'), body.get('baseRev'))})

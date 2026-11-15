@@ -417,7 +417,7 @@ async def on_bridge():
         j = await b.js("__studio.curJob()")
         check(j["resume_from"] < j["total"] and drawn >= 3, f"crashed mid-stroke ({drawn} segments drawn), resumed from the stroke's start (line {j['resume_from'] + 1})")
         check(await wait(b, "__studio.curJob().state === 'finished'", 30000), "resumed through the bridge and finished")
-        M = P.job["moves"]
+        M = P.job_detail()["job"]["moves"]   # [[line, x, y, down], …] as the live view gets them
         have = {tuple(round(v, 2) for v in seg) for seg in fake.ink}
         miss = [i for i in range(1, len(M)) if M[i][3] and (round(M[i - 1][1], 2), round(M[i - 1][2], 2), round(M[i][1], 2), round(M[i][2], 2)) not in have]
         check(not miss, f"every line is on the paper ({len(miss)} missing)")
@@ -699,6 +699,227 @@ async def outline_in_machine():
         check(not b.errors, f"no page errors {b.errors[:3]}")
     finally:
         await b.close()
+
+
+# ---------- SVG drawings: a style per colour, picked shapes with their own, fills and effects ----------
+VEC_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="80mm" viewBox="0 0 120 80">
+<rect x="5" y="5" width="50" height="40" fill="#e11d48"/>
+<circle cx="80" cy="30" r="22" fill="#2563eb" stroke="#111111" stroke-width="2"/>
+<path d="M10 60 C 40 40, 70 80, 110 60" fill="none" stroke="#16a34a" stroke-width="3"/>
+<path d="M60 50 h40 v25 h-40 z M70 55 h20 v15 h-20 z" fill="#f59e0b" fill-rule="evenodd"/>
+</svg>"""
+# lines per pen colour of the drawing, and its total length
+VEC_LINES = """(() => { const it = __studio.items().find(i => i.kind === 'vector'), out = {}; let L = 0;
+  for (const [pid, ls] of it._geom.byPen) { const p = __studio.pens().find(q => q.id === pid); out[p.color] = (out[p.color] || 0) + ls.length;
+    for (const l of ls) for (let i = 1; i < l.length; i++) L += Math.hypot(l[i][0] - l[i - 1][0], l[i][1] - l[i - 1][1]); }
+  out.len = Math.round(L); return out; })()"""
+VEC_IT = "__studio.items().find(i => i.kind === 'vector')"
+
+
+async def key(b, k, code, vk, modifiers=0):
+    await b.send("Input.dispatchKeyEvent", type="keyDown", key=k, code=code, windowsVirtualKeyCode=vk, modifiers=modifiers)
+    await b.send("Input.dispatchKeyEvent", type="keyUp", key=k, code=code, windowsVirtualKeyCode=vk, modifiers=modifiers)
+    await asyncio.sleep(0.15)
+
+
+async def vectors():
+    print("SVG drawings: fills, effects, styles per colour and per shape")
+    b = await Browser(1400, 1400).start()
+    try:
+        await b.goto(serve() + "/studio.html")
+        # every fill pattern stays inside a concave shape with a hole, and draws something
+        r = await b.js("""(() => {
+          const V = __studio.vec, rings = [[[0, 0], [40, 0], [40, 12], [14, 12], [14, 30], [0, 30], [0, 0]], [[3, 3], [9, 3], [9, 9], [3, 9], [3, 3]]], R = V.ringIndex(rings);
+          const near = (x, y) => rings.some(r => r.some((p, i) => { if (!i) return false; const q = r[i - 1], dx = p[0] - q[0], dy = p[1] - q[1], L = dx * dx + dy * dy, t = Math.max(0, Math.min(1, ((x - q[0]) * dx + (y - q[1]) * dy) / L)); return Math.hypot(q[0] + dx * t - x, q[1] + dy * t - y) < 0.3; }));
+          const res = {};
+          for (const f of Object.keys(V.FILLS)) {
+            if (f === 'none') continue;
+            const P = {fill: f, sp: 1, angle: 30, dirs: 3, amp: 1, wave: 5, count: 0, rays: 40, ox: 0, oy: 0, dot: 0.4, layout: 'grid', loose: 0.5, seed: 1, fade: f === 'hatch' ? 60 : 0, join: f === 'hatch'};
+            const ls = V.FILLS[f](rings, R, P, () => 0.5);
+            let pts = 0, out = 0; for (const l of ls) for (const [x, y] of l) { pts++; if (!V.ringInside(R, x, y) && !near(x, y)) out++; }
+            res[f] = [ls.length, pts, out];
+          }
+          return res;
+        })()""")
+        for f, (n, pts, out) in r.items():
+            check(n > 0 and pts > 10, f"{f} fill draws lines ({n} lines)")
+            check(out <= (pts * 0.02 if f == 'dots' else 0), f"{f} fill stays inside a concave shape with a hole ({out} of {pts} points outside)")
+
+        await b.js(f"__studio.addVector('t.svg', __studio.importSVG({json.dumps(VEC_SVG)}), true)")
+        await b.js(SETTLE)
+        base = await b.js(VEC_LINES)
+        sw = await b.js(f"{VEC_IT}.shapes.map(s => s.sw)")
+        check(sw == [0, 2, 3, 0], f"the SVG's line widths are kept ({sw})")
+        check(base.get("#e11d48") == 1 and base.get("#1b1b1f") == 1 and base.get("#f59e0b") == 2 and "#2563eb" not in base,   # #111111 is drawn with the Black pen
+              f"by default: areas without a line are outlined, the circle keeps its own black line ({base})")
+
+        # a colour's style, chosen with the mouse: open the red row, pick Contour
+        await click(b, '#vx [data-vopen="a#e11d48"]')
+        await click(b, '[data-vstyle="a#e11d48"] [data-mode=fill][data-v=contour]')
+        await b.js(SETTLE)
+        st = await b.js(f"JSON.stringify({VEC_IT}.opts.areas)")
+        after = await b.js(VEC_LINES)
+        check(json.loads(st) == {"#e11d48": {"fill": "contour"}}, f"only what differs from the defaults is stored ({st})")
+        check(after["#e11d48"] > 10, f"the red area is filled with contour lines ({after['#e11d48']} lines)")
+        check(await b.js("document.querySelector('[data-vsum=\"a#e11d48\"]').textContent.startsWith('Contour')"), "the row says what the colour is drawn with")
+        await b.js("(() => { const el = document.querySelector('[data-vstyle=\"a#e11d48\"] [data-key=spacing]'); el.value = '2'; el.dispatchEvent(new Event('input', {bubbles: true})); })()")
+        await b.js(SETTLE)
+        wider = await b.js(VEC_LINES)
+        check(wider["#e11d48"] < after["#e11d48"], f"a wider spacing draws fewer contour lines ({after['#e11d48']} → {wider['#e11d48']})")
+        await click(b, '[data-vact=all][data-k="a#e11d48"]')
+        await b.js(SETTLE)
+        alls = await b.js(f"JSON.stringify({VEC_IT}.opts.areas)")
+        check(all(json.loads(alls).get(h, {}).get("fill") == "contour" for h in ("#e11d48", "#2563eb", "#f59e0b")), f"“Use for all areas” gives every fill colour the style ({alls})")
+        await click(b, '[data-vact=reset][data-k="a#e11d48"]')
+        await b.js(f"{VEC_IT}.opts.areas = {{}}")
+        await b.js("__studio.select(__studio.items().find(i => i.kind === 'vector'))")
+        await b.js(SETTLE)
+
+        # pick mode: double-click the circle, give it its own fill; its colour's style stays as it was
+        pt = await b.js(f"""(() => {{ const it = {VEC_IT}, VL = __studio.vec.vecLocal(it), r = document.getElementById('cv').getBoundingClientRect();
+          const q = __studio.toPx(it.cx + (80 - VL.mx) * VL.f + 6, it.cy - (30 - VL.my) * VL.f); return [q[0] + r.left, q[1] + r.top]; }})()""")
+        rect = await b.js(f"""(() => {{ const it = {VEC_IT}, VL = __studio.vec.vecLocal(it), r = document.getElementById('cv').getBoundingClientRect();
+          const q = __studio.toPx(it.cx + (20 - VL.mx) * VL.f, it.cy - (20 - VL.my) * VL.f); return [q[0] + r.left, q[1] + r.top]; }})()""")
+        await b.mouse("mouseMoved", *pt)
+        for n in (1, 2):
+            await b.send("Input.dispatchMouseEvent", type="mousePressed", x=pt[0], y=pt[1], button="left", buttons=1, clickCount=n)
+            await b.send("Input.dispatchMouseEvent", type="mouseReleased", x=pt[0], y=pt[1], button="left", buttons=0, clickCount=n)
+        await asyncio.sleep(0.3)
+        pk = await b.js("__studio.vec.pick()")
+        check(pk["edit"] is not None and pk["sel"] == [1], f"double-clicking the drawing picks the shape under the pointer ({pk['sel']})")
+        check(await b.js("!!document.querySelector('#vpk')") and await b.js("!document.getElementById('vecTools').hidden && document.getElementById('vPick').classList.contains('on')"), "the picked shape gets its own card, the Pick tool is on")
+        await click(b, '#vpk [data-pkstyle=a] [data-mode=fill][data-v=circles]')
+        await b.js(SETTLE)
+        o = await b.js(f"JSON.stringify({{shapes: {VEC_IT}.opts.shapes, areas: {VEC_IT}.opts.areas}})")
+        own = await b.js(VEC_LINES)
+        check(json.loads(o) == {"shapes": {"1": {"a": {"fill": "circles"}}}, "areas": {}}, f"the picked shape has its own fill, its colour is unchanged ({o})")
+        check(own.get("#2563eb", 0) > 5, f"…and it is drawn with rings ({own.get('#2563eb', 0)} lines)")
+        check(await b.js("!!document.querySelector('#vpk .vtag')"), "…and is marked as having its own style")
+
+        # Shift-click adds the rectangle; Del leaves both out, Del again puts them back; Ctrl+Z undoes
+        await b.mouse("mouseMoved", *rect)
+        await b.mouse("mousePressed", *rect, buttons=1, modifiers=8)
+        await b.mouse("mouseReleased", *rect, modifiers=8)
+        await asyncio.sleep(0.2)
+        check((await b.js("__studio.vec.pick()"))["sel"] == [1, 0], "Shift-click picks one more shape")
+        await key(b, "Delete", "Delete", 46)
+        await b.js(SETTLE)
+        gone = await b.js(VEC_LINES)
+        check("#e11d48" not in gone and "#2563eb" not in gone and "#1b1b1f" not in gone, f"Del leaves the picked shapes out ({gone})")
+        check(await b.js("__studio.items().length") == 1, "…the drawing itself is not deleted")
+        await key(b, "z", "KeyZ", 90, modifiers=2)
+        await b.js(SETTLE)
+        back = await b.js(VEC_LINES)
+        check(back.get("#e11d48") == 1 and back.get("#2563eb", 0) > 5, f"Ctrl+Z puts them back ({back})")
+        await key(b, "Escape", "Escape", 27)
+        check((await b.js("__studio.vec.pick()"))["edit"] is None, "Esc leaves pick mode")
+
+        # effects and extras on the lines
+        await b.js(f"{VEC_IT}.opts.shapes = {{}}; {VEC_IT}.opts.areas = {{'#e11d48': {{outline: 'on'}}}}")
+        await b.js(SETTLE)
+        plain = await b.js(VEC_LINES)
+        for fx, test in (("dashed", lambda a: a["#e11d48"] > 20 and a["len"] < plain["len"]), ("dotted", lambda a: a["#e11d48"] > 50), ("sketch", lambda a: a["#e11d48"] == 2),
+                         ("fur", lambda a: a["#e11d48"] > 30), ("wobble", lambda a: a["len"] > plain["len"])):
+            await b.js(f"{VEC_IT}.opts.areas = {{'#e11d48': {{outline: 'on', fx: '{fx}'}}}}")
+            await b.js(SETTLE)
+            a = await b.js(VEC_LINES)
+            check(test(a), f"{fx} effect changes the outline ({plain['#e11d48']} → {a['#e11d48']} lines, {plain['len']} → {a['len']} mm)")
+        await b.js(f"{VEC_IT}.opts.areas = {{'#e11d48': {{outline: 'on', weight: 3, echo: 2, shadow: true}}}}; {VEC_IT}.opts.lines = {{'#16a34a': {{thick: true}}}}")
+        await b.js(SETTLE)
+        ex = await b.js(VEC_LINES)
+        check(ex["#e11d48"] >= 3 + 2 + 5, f"weight, echo lines and a hatched shadow add lines ({ex['#e11d48']})")
+        check(ex["#16a34a"] >= 5, f"a 3 mm line from the file is drawn as several strokes side by side ({ex['#16a34a']})")
+
+        # one pen for everything; a skipped colour stays skipped
+        await b.js(f"{VEC_IT}.opts.areas = {{}}; {VEC_IT}.opts.lines = {{}}; {VEC_IT}.map['#16a34a'] = ''; {VEC_IT}.opts.pen = __studio.pens()[0].id")
+        await b.js(SETTLE)
+        one = await b.js(VEC_LINES)
+        check(set(one) == {"#1b1b1f", "len"} and one["#1b1b1f"] == 4, f"one pen draws every colour except a skipped one ({one})")
+
+        # projects from before: one fill setting for the whole drawing
+        r = await b.js(f"""(async () => {{
+          const d = JSON.parse(JSON.stringify(projectData())), it = d.items.find(i => i.kind === 'vector');
+          it.opts = {{strokes: true, fills: 'hatch+outline', spacing: 1, angle: 30, cross: true, occlude: false, pen: ''}};
+          await __studio.vec.applyProject(d); for (let i = 0; i < 30; i++) {{ await __studio.runBuild(); await new Promise(r => setTimeout(r, 30)); }}
+          const n = {VEC_IT}; return {{opts: n.opts, lines: [...n._geom.byPen.values()].reduce((a, l) => a + l.length, 0)}};
+        }})()""")
+        o = r["opts"]
+        check(o.get("v") == 2 and "fills" not in o and o["areas"].get("#e11d48") == {"fill": "cross", "outline": "on", "spacing": 1, "angle": 30},
+              f"an old project's fill setting becomes every area's style ({o.get('areas')})")
+        check(r["lines"] > 100, f"…and is drawn crosshatched ({r['lines']} lines)")
+        # saved and opened again: the styles come back
+        r = await b.js(f"""(async () => {{
+          {VEC_IT}.opts.shapes = {{2: {{l: {{fx: 'dashed'}}}}, 0: {{off: true}}}};
+          const txt = JSON.stringify(projectData()); await __studio.vec.applyProject(JSON.parse(txt));
+          return JSON.stringify({VEC_IT}.opts.shapes);
+        }})()""")
+        check(json.loads(r) == {"0": {"off": True}, "2": {"l": {"fx": "dashed"}}}, f"styles of picked shapes are saved with the project ({r})")
+        # one line of 300 000 points (a "one line" drawing): G-code export and plotting used to throw "Maximum call stack size exceeded"
+        r = await b.js("""(async () => {
+          const T = __studio, pts = [], N = 300000; T.items().length = 0;
+          for (let i = 0; i < N; i++) { const a = i * 0.0021; pts.push([100 + 80 * Math.cos(a) * (i / N) + (i % 2) * 0.4, 100 + 80 * Math.sin(a) * (i / N) + (i % 3) * 0.4]); }
+          T.addVector('one line', {shapes: [{subs: [{pts, closed: false}], stroke: '#000000', fill: null}], warn: ''}, false);
+          for (let i = 0; i < 40; i++) { await T.runBuild(); await new Promise(r => setTimeout(r, 30)); }
+          const n = T.activePens().reduce((a, pp) => a + pp.paths.reduce((s, p) => s + p.length, 0), 0);
+          try { return {n, lines: T.gcodeFor(T.activePens(), 'x').split('\\n').length}; } catch (e) { return {n, error: e.message}; }
+        })()""")
+        check(r.get("n", 0) > 250000 and r.get("lines", 0) > r["n"], f"a single line of 300 000 points becomes G-code ({r})")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+
+
+async def sending_bar():
+    """Sending a big job to a bridge shows a progress bar in the Plot card, and nothing can be started twice meanwhile."""
+    print("sending a plot to the bridge shows a loading bar")
+    import io
+    import tempfile
+    import threading
+    import time
+    from http.server import ThreadingHTTPServer
+    sys.path.insert(0, str(Path(__file__).parent.parent / "bridge"))
+    import bridge as B
+    from test_bridge import new_bridge
+    P = new_bridge(tempfile.mkdtemp(), move_time=0.01)
+    P.connect()
+    B.Handler.plotter, B.Handler.token = P, None
+    orig = B.Handler.do_POST
+
+    def slow_post(self):   # a slow link: the job's body is read in small pieces
+        if self.path.startswith("/api/run"):
+            n, data = int(self.headers.get("Content-Length") or 0), b""
+            while len(data) < n:
+                data += self.rfile.read(min(1048576, n - len(data)))
+                time.sleep(0.1)
+            self.rfile = io.BytesIO(data)
+        return orig(self)
+    B.Handler.do_POST = slow_post
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), B.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = await Browser(1400, 900).start()
+    try:
+        await b.goto(f"http://127.0.0.1:{srv.server_address[1]}/studio")
+        await wait(b, "__studio.conn().kind === 'bridge' && __studio.server().st && __studio.server().st.connected", 8000)
+        await b.js("__studio.addKind('star'); const g0 = window.gcodeFor; window.gcodeFor = (...a) => { window.__atBuild = [!!document.querySelector('#queueCard [data-q=send]'), sending && sending.phase, document.querySelector('#queueCard [data-q=sendtxt]').textContent]; return g0(...a) + '\\n' + '; padding to make the job a few MB\\n'.repeat(560000); }")   # ~20 MB of comments (more than the socket buffers hold); the bridge drops them
+        await b.js(SETTLE)
+        await click(b, "#wsSeg [data-ws=plot]")
+        await b.js("window.__fr = []; setInterval(() => { if (sending) window.__fr.push([sending.frac, sending.phase, !!document.querySelector('#queueCard [data-q=send]'), document.querySelector('#queueCard [data-p=go]').disabled, document.querySelector('#queueCard [data-q=sendtxt]').textContent]); }, 40)")
+        await click(b, "[data-p=go]")
+        check(await wait(b, "window.__fr.some(f => f[2])", 5000), "a bar appears in the Plot card while the job is sent")
+        await wait(b, "__studio.curJob() && __studio.curJob().running", 30000)
+        fr = await b.js("window.__fr")
+        fracs = [f[0] for f in fr if f[1] == 'send']
+        check(len(set(round(x, 2) for x in fracs)) >= 4, f"it fills up bit by bit ({len(fracs)} samples, {min(fracs):.0%} → {max(fracs):.0%})")
+        check(fracs == sorted(fracs), "…and never goes backwards")
+        check(all(f[3] for f in fr), "the Plot button stays disabled while sending")
+        at = await b.js("window.__atBuild")
+        check(at[0] and at[1] == "prepare" and "Preparing" in at[2], f"the bar is already on screen when the G-code starts to be built ({at})")
+        check(any(" of " in f[4] and "MB" in f[4] for f in fr), f"it says how much has been sent ({next((f[4] for f in fr if ' of ' in f[4]), '')})")
+        check(await b.js("sending === null") and await b.js("!document.querySelector('#queueCard [data-q=send]')"), "the bar is gone once the job has started")
+        check(not b.errors, f"no page errors {b.errors[:3]}")
+    finally:
+        await b.close()
+        B.Handler.do_POST = orig
 
 
 async def history_not_doubled():
@@ -990,6 +1211,7 @@ async def bridge_update_card():
                                          {"tag": "v0.9.0", "version": "0.9.0", "name": "n", "published": None, "notes": "", "prerelease": False, "installable": True, "current": False, "newer": False}]
         U.install = lambda tag: picked.append(tag)
         await b.js("__studio.setWs('plot'); __studio.setWs('machine')")
+        await b.js("for (const k in swd) swd[k].at = 0")   # the tab only reloads when its data is older than 9 s: make it so, whatever the speed of this machine
         await click(b, "[data-mtab=sw]")
         check(await wait(b, "document.querySelectorAll('#swPane details.rel').length === 3", 8000), "the releases are listed")
         check(await b.js("document.querySelector('#swPane [data-tag=\"v9.0.0\"]').textContent") == "Update to this" and await b.js("document.querySelector('#swPane [data-tag=\"v0.9.0\"]').textContent") == "Go back to this", "newer ones offer “Update to this”, older ones “Go back to this”")
@@ -1042,7 +1264,7 @@ async def servo_test_card():
 
 async def main():
     only = sys.argv[1:]
-    for name, fn in (("desktop", desktop), ("phone", phone), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("doubled", history_not_doubled), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
+    for name, fn in (("desktop", desktop), ("phone", phone), ("vectors", vectors), ("sending", sending_bar), ("plotting", plotting), ("bridge", on_bridge), ("outline", outline_and_sheet), ("sheetmirror", sheet_mirrored), ("machineview", outline_in_machine), ("doubled", history_not_doubled), ("machines", machines_wizard), ("hosted", hosted_build), ("addresses", bridge_addresses), ("jog", jog_old_grbl), ("servo", servo_test_card), ("updatecard", bridge_update_card)):
         if not only or name in only:
             await fn()
     print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
